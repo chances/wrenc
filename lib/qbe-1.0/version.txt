@@ -1,0 +1,3 @@
+Tag 1.0
+https://c9x.me/git/qbe.git/snapshot/qbe-1.0.tar.gz
+Note meson.build and config.h have been added

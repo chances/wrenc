@@ -1,0 +1,21 @@
+Checks: >
+  -*,
+  clang-analyzer-*,
+  readability-*,
+  -readability-implicit-bool-conversion,
+  -readability-braces-around-statements,
+  -readability-magic-numbers,
+  -readability-uppercase-literal-suffix,
+  -readability-isolate-declaration,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+
+CheckOptions:
+  - { key: readability-identifier-naming.NamespaceCase,       value: lower_case }
+  - { key: readability-identifier-naming.ClassCase,           value: CamelCase }
+  - { key: readability-identifier-naming.PrivateMemberPrefix, value: m_ }
+  - { key: readability-identifier-naming.StructCase,          value: CamelCase }
+  - { key: readability-identifier-naming.FunctionCase,        value: lower_case }
+  - { key: readability-identifier-naming.MethodCase,          value: CamelCase }
+  - { key: readability-identifier-naming.VariableCase,        value: camelBack }
+  - { key: readability-identifier-naming.ConstantCase,        value: UPPER_CASE }
