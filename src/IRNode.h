@@ -85,3 +85,11 @@ class ExprConst : public IRExpr {
 
 	CcValue value;
 };
+
+class ExprLoad : public IRExpr {
+  public:
+	ExprLoad() = default;
+	ExprLoad(VarDecl *var) : var(var) {}
+
+	VarDecl *var;
+};

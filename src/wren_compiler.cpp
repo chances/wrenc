@@ -537,8 +537,7 @@ static bool matchChar(Parser *parser, char c) {
 // range.
 static void makeToken(Parser *parser, TokenType type) {
 	parser->next.type = type;
-	parser->next.start = parser->tokenStart;
-	parser->next.length = (int)(parser->currentChar - parser->tokenStart);
+	parser->next.contents = std::string(parser->tokenStart, parser->currentChar);
 	parser->next.line = parser->currentLine;
 
 	// Make line tokens appear on the line containing the "\n".
@@ -1100,7 +1099,7 @@ static void nextToken(Parser *parser) {
 					lexError(parser, "Invalid byte 0x%x.", (uint8_t)c);
 				}
 				parser->next.type = TOKEN_ERROR;
-				parser->next.length = 0;
+				parser->next.contents.clear();
 			}
 			return;
 		}
@@ -1788,25 +1787,13 @@ static void namedCall(Compiler *compiler, bool canAssign, Code instruction) {
 }
 
 // Emits the code to load [variable] onto the stack.
-static void loadVariable(Compiler *compiler, Variable variable) {
-	switch (variable.locals) {
-	case SCOPE_LOCAL:
-		loadLocal(compiler, variable.index);
-		break;
-	case SCOPE_UPVALUE:
-		emitByteArg(compiler, CODE_LOAD_UPVALUE, variable.index);
-		break;
-	case SCOPE_MODULE:
-		emitShortArg(compiler, CODE_LOAD_MODULE_VAR, variable.index);
-		break;
-	default:
-		UNREACHABLE();
-	}
+static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) {
+	return compiler->parser->alloc.New<ExprLoad>(variable);
 }
 
 // Loads the receiver of the currently enclosing method. Correctly handles
 // functions defined inside methods.
-static void loadThis(Compiler *compiler) { loadVariable(compiler, resolveNonmodule(compiler, "this", 4)); }
+static IRExpr *loadThis(Compiler *compiler) { return loadVariable(compiler, resolveNonmodule(compiler, "this")); }
 
 // Pushes the value for a module-level variable implicitly imported from core.
 static void loadCoreVariable(Compiler *compiler, const char *name) {
