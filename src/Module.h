@@ -17,6 +17,10 @@ class Module {
 
 	IRGlobalDecl *AddVariable(const std::string &name);
 
+	IRGlobalDecl *FindVariable(const std::string &name);
+
+	std::vector<IRGlobalDecl *> GetGlobalVariables();
+
 	/// Add a top-level node.
 	void AddNode(IRNode *node);
 

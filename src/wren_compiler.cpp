@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <unordered_map>
 #include <vector>
 
 #include "wren_compiler.h"
@@ -47,6 +48,10 @@
 #define MAX_UPVALUES 256
 
 #define MAX_VARIABLE_NAME 64
+
+// The maximum number of fields a class can have, including inherited fields.
+// There isn't any limitation here in wrenc, it's to match intepreted wren.
+#define MAX_FIELDS 255
 
 // The maximum depth that interpolation can nest. For example, this string has
 // three levels:
@@ -241,9 +246,9 @@ struct Loop {
 	// Index of the instruction that the loop should jump back to.
 	int start;
 
-	// Index of the argument for the CODE_JUMP_IF instruction used to exit the
-	// loop. Stored so we can patch it once we know where the loop ends.
-	int exitJump;
+	// Jumps that exit the loop. Once we're done building the loop, all these jumps
+	// will have their targets set to a label just after the end of the loop.
+	std::vector<StmtJump *> exitJumps;
 
 	// Index of the first instruction of the body of the loop.
 	int body;
@@ -253,37 +258,7 @@ struct Loop {
 	int scopeDepth;
 
 	// The loop enclosing this one, or NULL if this is the outermost loop.
-	struct sLoop *enclosing;
-};
-
-// The different signature syntaxes for different kinds of methods.
-enum SignatureType {
-	// A name followed by a (possibly empty) parenthesized parameter list. Also
-	// used for binary operators.
-	SIG_METHOD,
-
-	// Just a name. Also used for unary operators.
-	SIG_GETTER,
-
-	// A name followed by "=".
-	SIG_SETTER,
-
-	// A square bracketed parameter list.
-	SIG_SUBSCRIPT,
-
-	// A square bracketed parameter list followed by "=".
-	SIG_SUBSCRIPT_SETTER,
-
-	// A constructor initializer function. This has a distinct signature to
-	// prevent it from being invoked directly outside of the constructor on the
-	// metaclass.
-	SIG_INITIALIZER
-};
-
-struct Signature {
-	std::string name;
-	SignatureType type;
-	int arity;
+	Loop *enclosing;
 };
 
 // Bookkeeping information for compiling a class definition.
@@ -314,7 +289,8 @@ struct ClassInfo {
 	Signature *signature;
 };
 
-struct Compiler {
+class Compiler {
+  public:
 	Parser *parser;
 
 	ScopeStack locals;
@@ -354,7 +330,12 @@ struct Compiler {
 	// anywhere other than methods or classes.
 	int numAttributes;
 	// Attributes for the next class or method.
-	ObjMap *attributes;
+	std::unordered_map<std::string, CcValue> *attributes;
+
+	// Utility functions:
+	template <typename T, typename... Args> T *New(Args &&...args) {
+		return parser->alloc.New<T, Args...>(std::forward<Args>(args)...);
+	}
 };
 
 // Forward declarations
@@ -439,6 +420,9 @@ static void error(Compiler *compiler, const char *format, ...) {
 	va_end(args);
 }
 
+// Used in IRNode.cpp as a bit of a hack
+ArenaAllocator *getCompilerAlloc(Compiler *compiler) { return &compiler->parser->alloc; }
+
 // Initializes [compiler].
 static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, bool isMethod) {
 	compiler->parser = parser;
@@ -446,18 +430,14 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 	compiler->loop = NULL;
 	compiler->enclosingClass = NULL;
 	compiler->isInitializer = false;
-
-	// Initialize these to NULL before allocating in case a GC gets triggered in
-	// the middle of initializing the compiler.
 	compiler->fn = NULL;
-	compiler->attributes = NULL;
 
 	parser->context->compiler = compiler;
 
 	// Declare the method receiver for methods, so it can be resolved like any other local variable
 
 	if (isMethod) {
-		LocalVariable *var = parser->alloc.New<LocalVariable>();
+		LocalVariable *var = compiler->New<LocalVariable>();
 		var->name = "this";
 		var->depth = -1;
 		compiler->locals.Add(var);
@@ -472,8 +452,7 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 	}
 
 	compiler->numAttributes = 0;
-	compiler->attributes = wrenNewMap(parser->context);
-	compiler->fn = wrenNewFunction(parser->context, parser->module, compiler->numLocals);
+	compiler->fn = parser->alloc.New<IRFn>();
 }
 
 // Lexing ----------------------------------------------------------------------
@@ -1112,6 +1091,12 @@ static void nextToken(Parser *parser) {
 
 // Parsing ---------------------------------------------------------------------
 
+// Returns `true` if [name] is a local variable name (starts with a lowercase letter).
+// Copied from wren_vm.h
+static inline bool wrenIsLocalName(const std::string &name) {
+	return !name.empty() && name[0] >= 'a' && name[0] <= 'z';
+}
+
 // Returns the type of the current token.
 static TokenType peek(Compiler *compiler) { return compiler->parser->current.type; }
 
@@ -1172,13 +1157,26 @@ static void allowLineBeforeDot(Compiler *compiler) {
 // Create a new local variable with [name]. Assumes the current scope is local.
 // If the variable is not unique, returns nullptr.
 static LocalVariable *addLocal(Compiler *compiler, const std::string &name) {
-	LocalVariable *local = compiler->parser->alloc.New<LocalVariable>();
+	LocalVariable *local = compiler->New<LocalVariable>();
 	local->name = name;
 	local->depth = compiler->scopeDepth;
 
 	if (!compiler->locals.Add(local))
 		return nullptr;
 
+	compiler->fn->locals.push_back(local);
+
+	return local;
+}
+
+// Create a new temporary (for compiler use only) local variable with the
+// name [debugName], though this shouldn't ever be shown to the user, doesn't
+// have to be unique and doesn't have to be a valid identifier.
+static LocalVariable *addTemporary(Compiler *compiler, const std::string &debugName) {
+	LocalVariable *local = compiler->New<LocalVariable>();
+	local->name = debugName;
+	local->depth = 0;
+	compiler->fn->temporaries.push_back(local);
 	return local;
 }
 
@@ -1243,7 +1241,7 @@ static VarDecl *declareNamedVariable(Compiler *compiler) {
 // Stores a variable with the previously defined symbol in the current scope.
 static IRNode *defineVariable(Compiler *compiler, VarDecl *var, IRExpr *value) {
 	// Store module-level variable
-	StmtAssign *stmt = compiler->parser->alloc.New<StmtAssign>();
+	StmtAssign *stmt = compiler->New<StmtAssign>();
 	stmt->var = var;
 	stmt->expr = value;
 	return stmt;
@@ -1291,18 +1289,17 @@ static void popScope(Compiler *compiler) {
 // Adds an upvalue to [compiler]'s function with the given properties. Does not
 // add one if an upvalue for that variable is already in the list. Returns the
 // index of the upvalue.
-static int addUpvalue(Compiler *compiler, bool isLocal, int index) {
+static StmtUpvalueImport *addUpvalue(Compiler *compiler, VarDecl *var) {
 	// Look for an existing one.
-	for (int i = 0; i < compiler->fn->numUpvalues; i++) {
-		CompilerUpvalue *upvalue = &compiler->upvalues[i];
-		if (upvalue->index == index && upvalue->isLocal == isLocal)
-			return i;
-	}
+	auto upvalueIter = compiler->fn->upvalues.find(var);
+	if (upvalueIter != compiler->fn->upvalues.end())
+		return upvalueIter->second;
 
-	// If we got here, it's a new upvalue.
-	compiler->upvalues[compiler->fn->numUpvalues].isLocal = isLocal;
-	compiler->upvalues[compiler->fn->numUpvalues].index = index;
-	return compiler->fn->numUpvalues++;
+	// Otherwise, create one
+	StmtUpvalueImport *upvalue = compiler->New<StmtUpvalueImport>(var);
+	compiler->fn->upvalues[var] = upvalue;
+	compiler->fn->unInsertedImports.push_back(upvalue);
+	return upvalue;
 }
 
 // Attempts to look up [name] in the functions enclosing the one being compiled
@@ -1334,7 +1331,7 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 		// compiler->parent->locals[local].isUpvalue = true; // TODO
 		abort(); // Guard TODO
 
-		return addUpvalue(compiler, true, local);
+		return addUpvalue(compiler, local);
 	}
 
 	// See if it's an upvalue in the immediately enclosing function. In other
@@ -1343,9 +1340,9 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 	// intermediate functions to get from the function where a local is declared
 	// all the way into the possibly deeply nested function that is closing over
 	// it.
-	int upvalue = findUpvalue(compiler->parent, name);
-	if (upvalue != -1) {
-		return addUpvalue(compiler, false, upvalue);
+	VarDecl *upvalue = findUpvalue(compiler->parent, name);
+	if (upvalue) {
+		return addUpvalue(compiler, upvalue);
 	}
 
 	// If we got here, we walked all the way up the parent chain and couldn't
@@ -1360,7 +1357,7 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 static VarDecl *resolveNonmodule(Compiler *compiler, const std::string &name) {
 	// Look it up in the local scopes.
 	VarDecl *variable = compiler->locals.Lookup(name);
-	if (!variable || variable->ScopeType() != VarDecl::SCOPE_LOCAL)
+	if (!variable || variable->Scope() != VarDecl::SCOPE_LOCAL)
 		return variable;
 
 	// Tt's not a local, so guess that it's an upvalue.
@@ -1383,48 +1380,23 @@ static VarDecl *resolveName(Compiler *compiler, const std::string &name) {
 	// return variable;
 }
 
-static void loadLocal(Compiler *compiler, int slot) {
-	if (slot <= 8) {
-		emitOp(compiler, (Code)(CODE_LOAD_LOCAL_0 + slot));
-		return;
-	}
-
-	emitByteArg(compiler, CODE_LOAD_LOCAL, slot);
-}
-
 // Finishes [compiler], which is compiling a function, method, or chunk of top
-// level code. If there is a parent compiler, then this emits code in the
-// parent compiler to load the resulting function.
-static IRFn *endCompiler(Compiler *compiler, const char *debugName, int debugNameLength) {
+// level code. If there is a parent compiler, then this returns a expression creating
+// a new closure of this function over the current variables.
+static IRExpr *endCompiler(Compiler *compiler, std::string debugName) {
 	// If we hit an error, don't finish the function since it's borked anyway.
 	if (compiler->parser->hasError) {
 		compiler->parser->context->compiler = compiler->parent;
 		return NULL;
 	}
 
-	// Mark the end of the bytecode. Since it may contain multiple early returns,
-	// we can't rely on CODE_RETURN to tell us we're at the end.
-	emitOp(compiler, CODE_END);
-
-	wrenFunctionBindName(compiler->parser->context, compiler->fn, debugName, debugNameLength);
+	// wrenFunctionBindName(compiler->parser->context, compiler->fn, debugName, debugNameLength);
 
 	// In the function that contains this one, load the resulting function object.
+	ExprClosure *closure = nullptr;
 	if (compiler->parent != NULL) {
-		int constant = addConstant(compiler->parent, OBJ_VAL(compiler->fn));
-
-		// Wrap the function in a closure. We do this even if it has no upvalues so
-		// that the VM can uniformly assume all called objects are closures. This
-		// makes creating a function a little slower, but makes invoking them
-		// faster. Given that functions are invoked more often than they are
-		// created, this is a win.
-		emitShortArg(compiler->parent, CODE_CLOSURE, constant);
-
-		// Emit arguments for each upvalue to know whether to capture a local or
-		// an upvalue.
-		for (int i = 0; i < compiler->fn->numUpvalues; i++) {
-			emitByte(compiler->parent, compiler->upvalues[i].isLocal ? 1 : 0);
-			emitByte(compiler->parent, compiler->upvalues[i].index);
-		}
+		closure = compiler->New<ExprClosure>();
+		closure->func = compiler->fn;
 	}
 
 	// Pop this compiler off the stack.
@@ -1434,7 +1406,7 @@ static IRFn *endCompiler(Compiler *compiler, const char *debugName, int debugNam
 	wrenDumpCode(compiler->parser->vm, compiler->fn);
 #endif
 
-	return compiler->fn;
+	return closure;
 }
 
 // Grammar ---------------------------------------------------------------------
@@ -1480,69 +1452,77 @@ static IRStmt *statement(Compiler *compiler);
 static IRNode *definition(Compiler *compiler);
 static IRExpr *parsePrecedence(Compiler *compiler, Precedence precedence);
 
-// Replaces the placeholder argument for a previous CODE_JUMP or CODE_JUMP_IF
-// instruction with an offset that jumps to the current end of bytecode.
-static void patchJump(Compiler *compiler, int offset) {
-	// -2 to adjust for the bytecode for the jump offset itself.
-	int jump = compiler->fn->code.count - offset - 2;
-	if (jump > MAX_JUMP)
-		error(compiler, "Too much code to jump over.");
-
-	compiler->fn->code.data[offset] = (jump >> 8) & 0xff;
-	compiler->fn->code.data[offset + 1] = jump & 0xff;
-}
-
 // Parses a block body, after the initial "{" has been consumed.
 //
-// Returns true if it was a expression body, false if it was a statement body.
-// (More precisely, returns true if a value was left on the stack. An empty
-// block returns false.)
-static bool finishBlock(Compiler *compiler) {
+// If the block was an expression body, an IRExpr representing it is returned.
+// If the block is not an expression, then an IRNode is returned.
+static IRNode *finishBlock(Compiler *compiler) {
 	// Empty blocks do nothing.
 	if (match(compiler, TOKEN_RIGHT_BRACE))
-		return false;
+		return compiler->New<StmtBlock>();
 
 	// If there's no line after the "{", it's a single-expression body.
 	if (!matchLine(compiler)) {
-		expression(compiler);
+		IRExpr *expr = expression(compiler);
 		consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' at end of block.");
-		return true;
+		return expr;
 	}
+
+	StmtBlock *block = compiler->New<StmtBlock>();
 
 	// Empty blocks (with just a newline inside) do nothing.
 	if (match(compiler, TOKEN_RIGHT_BRACE))
-		return false;
+		return block;
 
 	// Compile the definition list.
 	do {
-		definition(compiler);
+		IRNode *node = definition(compiler);
 		consumeLine(compiler, "Expect newline after statement.");
+
+		if (!node)
+			continue;
+
+		// Don't support classes declared in blocks etc
+		IRStmt *stmt = dynamic_cast<IRStmt *>(node);
+		ASSERT(stmt, "Only statements are supported inside non-expression functions");
+		block->Add(stmt);
 	} while (peek(compiler) != TOKEN_RIGHT_BRACE && peek(compiler) != TOKEN_EOF);
 
 	consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' at end of block.");
-	return false;
+	return block;
 }
 
 // Parses a method or function body, after the initial "{" has been consumed.
 //
 // If [Compiler->isInitializer] is `true`, this is the body of a constructor
 // initializer. In that case, this adds the code to ensure it returns `this`.
-static void finishBody(Compiler *compiler) {
-	bool isExpressionBody = finishBlock(compiler);
+static IRStmt *finishBody(Compiler *compiler) {
+	IRNode *body = finishBlock(compiler);
+
+	IRExpr *expr = dynamic_cast<IRExpr *>(body);
+	IRStmt *stmt = dynamic_cast<IRStmt *>(body);
+	bool isExpressionBody = expr != nullptr;
+
+	ASSERT(expr || stmt, "The contents of a block must either be a statement or an expression");
+
+	IRExpr *returnValue = nullptr;
 
 	if (compiler->isInitializer) {
 		// If the initializer body evaluates to a value, discard it.
-		if (isExpressionBody)
-			emitOp(compiler, CODE_POP);
+		if (expr) {
+			stmt = compiler->New<StmtEvalAndIgnore>(expr);
+		}
 
 		// The receiver is always stored in the first local slot.
-		emitOp(compiler, CODE_LOAD_LOCAL_0);
+		returnValue = compiler->New<ExprLoadReceiver>();
 	} else if (!isExpressionBody) {
 		// Implicitly return null in statement bodies.
-		emitOp(compiler, CODE_NULL);
+		returnValue = compiler->New<ExprConst>(CcValue::NULL_TYPE);
 	}
 
-	emitOp(compiler, CODE_RETURN);
+	StmtBlock *block = compiler->New<StmtBlock>();
+	block->Add(compiler->New<StmtReturn>(returnValue));
+	return block;
 }
 
 // The VM can only handle a certain number of parameters, so check that we
@@ -1567,80 +1547,68 @@ static void finishParameterList(Compiler *compiler, Signature *signature) {
 	} while (match(compiler, TOKEN_COMMA));
 }
 
-// Gets the symbol for a method [name] with [length].
-static int methodSymbol(Compiler *compiler, const char *name, int length) {
-	return wrenSymbolTableEnsure(compiler->parser->context, &compiler->parser->context->methodNames, name, length);
-}
-
-// Appends characters to [name] (and updates [length]) for [numParams] "_"
-// surrounded by [leftBracket] and [rightBracket].
-static void signatureParameterList(char name[MAX_METHOD_SIGNATURE], int *length, int numParams, char leftBracket,
-                                   char rightBracket) {
-	name[(*length)++] = leftBracket;
+// Returns [numParams] "_" surrounded by [leftBracket] and [rightBracket].
+static std::string signatureParameterList(int numParams, char leftBracket, char rightBracket) {
+	std::string name;
+	name += leftBracket;
 
 	// This function may be called with too many parameters. When that happens,
 	// a compile error has already been reported, but we need to make sure we
 	// don't overflow the string too, hence the MAX_PARAMETERS check.
 	for (int i = 0; i < numParams && i < MAX_PARAMETERS; i++) {
 		if (i > 0)
-			name[(*length)++] = ',';
-		name[(*length)++] = '_';
+			name += ',';
+		name += '_';
 	}
-	name[(*length)++] = rightBracket;
+	name += rightBracket;
+	return name;
 }
 
 // Fills [name] with the stringified version of [signature] and updates
 // [length] to the resulting length.
-static void signatureToString(Signature *signature, char name[MAX_METHOD_SIGNATURE], int *length) {
-	*length = 0;
+std::string Signature::ToString() const {
+	std::string str;
 
 	// Build the full name from the signature.
-	memcpy(name + *length, signature->name, signature->length);
-	*length += signature->length;
+	str = name;
 
-	switch (signature->type) {
+	switch (type) {
 	case SIG_METHOD:
-		signatureParameterList(name, length, signature->arity, '(', ')');
+		str += signatureParameterList(arity, '(', ')');
 		break;
 
 	case SIG_GETTER:
-		// The signature is just the name.
+		// The signature is just the str.
 		break;
 
 	case SIG_SETTER:
-		name[(*length)++] = '=';
-		signatureParameterList(name, length, 1, '(', ')');
+		str += '=';
+		str += signatureParameterList(1, '(', ')');
 		break;
 
 	case SIG_SUBSCRIPT:
-		signatureParameterList(name, length, signature->arity, '[', ']');
+		str += signatureParameterList(arity, '[', ']');
 		break;
 
 	case SIG_SUBSCRIPT_SETTER:
-		signatureParameterList(name, length, signature->arity - 1, '[', ']');
-		name[(*length)++] = '=';
-		signatureParameterList(name, length, 1, '(', ')');
+		str += signatureParameterList(arity - 1, '[', ']');
+		str += '=';
+		str += signatureParameterList(1, '(', ')');
 		break;
 
 	case SIG_INITIALIZER:
-		memcpy(name, "init ", 5);
-		memcpy(name + 5, signature->name, signature->length);
-		*length = 5 + signature->length;
-		signatureParameterList(name, length, signature->arity, '(', ')');
+		str = "init " + str;
+		str += signatureParameterList(arity, '(', ')');
 		break;
 	}
 
-	name[*length] = '\0';
+	return str;
 }
 
 // Gets the symbol for a method with [signature].
-static int signatureSymbol(Compiler *compiler, Signature *signature) {
-	// Build the full name from the signature.
-	char name[MAX_METHOD_SIGNATURE];
-	int length;
-	signatureToString(signature, name, &length);
-
-	return methodSymbol(compiler, name, length);
+static Signature *signatureSymbol(Compiler *compiler, Signature *signature) {
+	// Only use one signature object, so if the pointers are different it means a different thing
+	return compiler->parser->context->GetSignature(*signature);
 }
 
 // Returns a signature with [type] whose name is from the last consumed token.
@@ -1662,47 +1630,52 @@ static Signature signatureFromToken(Compiler *compiler, SignatureType type) {
 
 // Parses a comma-separated list of arguments. Modifies [signature] to include
 // the arity of the argument list.
-static void finishArgumentList(Compiler *compiler, Signature *signature) {
+static std::vector<IRExpr *> finishArgumentList(Compiler *compiler, Signature *signature) {
+	std::vector<IRExpr *> args;
+
 	do {
 		ignoreNewlines(compiler);
 		validateNumParameters(compiler, ++signature->arity);
-		expression(compiler);
+		IRExpr *expr = expression(compiler);
+		ASSERT(expr, "expression() returned nullptr");
+		args.push_back(expr);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow a newline before the closing delimiter.
 	ignoreNewlines(compiler);
+
+	return args;
 }
 
-// Compiles a method call with [signature] using [instruction].
-static void callSignature(Compiler *compiler, Code instruction, Signature *signature) {
-	int symbol = signatureSymbol(compiler, signature);
-	emitShortArg(compiler, (Code)(instruction + signature->arity), symbol);
+// Compiles a method call with [args] for a method with [signature] expressed as a string, and calls it on [receiver].
+// If [toAdd] is non-nullptr, then the method is added to the block and nullptr is returned (to avoid accidentally using
+// the expression twice). This is merely a convenience to avoid having to manually add the method to a block.
+static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExpr *receiver, std::vector<IRExpr *> args,
+                                StmtBlock *toAdd = nullptr) {
+	Signature *sig = compiler->parser->context->GetSignature(Signature::Parse(signature));
 
-	if (instruction == CODE_SUPER_0) {
-		// Super calls need to be statically bound to the class's superclass. This
-		// ensures we call the right method even when a method containing a super
-		// call is inherited by another subclass.
-		//
-		// We bind it at class definition time by storing a reference to the
-		// superclass in a constant. So, here, we create a slot in the constant
-		// table and store NULL in it. When the method is bound, we'll look up the
-		// superclass then and store it in the constant slot.
-		emitShort(compiler, addConstant(compiler, NULL_VAL));
-	}
-}
+	ASSERT(args.size() == sig->arity, "callMethod signature and args have different arities");
 
-// Compiles a method call with [numArgs] for a method with [name] with [length].
-static void callMethod(Compiler *compiler, int numArgs, const char *name, int length) {
-	int symbol = methodSymbol(compiler, name, length);
-	emitShortArg(compiler, (Code)(CODE_CALL_0 + numArgs), symbol);
+	ExprFuncCall *call = compiler->New<ExprFuncCall>();
+	call->signature = sig;
+	call->receiver = receiver;
+	call->args = args;
+
+	if (!toAdd)
+		return call;
+
+	toAdd->Add(compiler, call);
+	return nullptr;
 }
 
 // Compiles an (optional) argument list for a method call with [methodSignature]
 // and then calls it.
-static void methodCall(Compiler *compiler, Code instruction, Signature *signature) {
+static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, IRExpr *receiver) {
 	// Make a new signature that contains the updated arity and type based on
 	// the arguments we find.
-	Signature called = {signature->name, signature->length, SIG_GETTER, 0};
+	Signature called = {signature->name, SIG_GETTER, 0};
+
+	std::vector<IRExpr *> args;
 
 	// Parse the argument list, if any.
 	if (match(compiler, TOKEN_LEFT_PAREN)) {
@@ -1713,7 +1686,7 @@ static void methodCall(Compiler *compiler, Code instruction, Signature *signatur
 
 		// Allow empty an argument list.
 		if (peek(compiler) != TOKEN_RIGHT_PAREN) {
-			finishArgumentList(compiler, &called);
+			args = finishArgumentList(compiler, &called);
 		}
 		consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
 	}
@@ -1728,7 +1701,7 @@ static void methodCall(Compiler *compiler, Code instruction, Signature *signatur
 		initCompiler(&fnCompiler, compiler->parser, compiler, false);
 
 		// Make a dummy signature to track the arity.
-		Signature fnSignature = {"", 0, SIG_METHOD, 0};
+		Signature fnSignature = {"", SIG_METHOD, 0};
 
 		// Parse the parameter list, if any.
 		if (match(compiler, TOKEN_PIPE)) {
@@ -1741,12 +1714,10 @@ static void methodCall(Compiler *compiler, Code instruction, Signature *signatur
 		finishBody(&fnCompiler);
 
 		// Name the function based on the method its passed to.
-		char blockName[MAX_METHOD_SIGNATURE + 15];
-		int blockLength;
-		signatureToString(&called, blockName, &blockLength);
-		memmove(blockName + blockLength, " block argument", 16);
+		std::string name = signature->ToString() + " block argument";
 
-		endCompiler(&fnCompiler, blockName, blockLength + 15);
+		IRExpr *closure = endCompiler(&fnCompiler, name);
+		args.push_back(closure);
 	}
 
 	// TODO: Allow Grace-style mixfix methods?
@@ -1761,12 +1732,17 @@ static void methodCall(Compiler *compiler, Code instruction, Signature *signatur
 		called.type = SIG_INITIALIZER;
 	}
 
-	callSignature(compiler, instruction, &called);
+	ExprFuncCall *call = compiler->New<ExprFuncCall>();
+	call->receiver = receiver;
+	call->signature = compiler->parser->context->GetSignature(called);
+	call->args = std::move(args);
+	call->super = super;
+	return call;
 }
 
 // Compiles a call whose name is the previously consumed token. This includes
 // getters, method calls with arguments, and setter calls.
-static void namedCall(Compiler *compiler, bool canAssign, Code instruction) {
+static IRExpr *namedCall(Compiler *compiler, IRExpr *receiver, bool canAssign, bool super) {
 	// Get the token for the method name.
 	Signature signature = signatureFromToken(compiler, SIG_GETTER);
 
@@ -1778,28 +1754,34 @@ static void namedCall(Compiler *compiler, bool canAssign, Code instruction) {
 		signature.arity = 1;
 
 		// Compile the assigned value.
-		expression(compiler);
-		callSignature(compiler, instruction, &signature);
-	} else {
-		methodCall(compiler, instruction, &signature);
-		allowLineBeforeDot(compiler);
+		IRExpr *value = expression(compiler);
+
+		ExprFuncCall *call = compiler->New<ExprFuncCall>();
+		call->receiver = receiver;
+		call->signature = compiler->parser->context->GetSignature(signature);
+		call->super = super;
+		call->args.push_back(value);
+		return call;
 	}
+
+	IRExpr *call = methodCall(compiler, super, &signature, receiver);
+	allowLineBeforeDot(compiler);
+	return call;
 }
 
 // Emits the code to load [variable] onto the stack.
-static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) {
-	return compiler->parser->alloc.New<ExprLoad>(variable);
-}
+static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) { return compiler->New<ExprLoad>(variable); }
 
 // Loads the receiver of the currently enclosing method. Correctly handles
 // functions defined inside methods.
 static IRExpr *loadThis(Compiler *compiler) { return loadVariable(compiler, resolveNonmodule(compiler, "this")); }
 
 // Pushes the value for a module-level variable implicitly imported from core.
-static void loadCoreVariable(Compiler *compiler, const char *name) {
-	int symbol = wrenSymbolTableFind(&compiler->parser->module->variableNames, name, strlen(name));
-	ASSERT(symbol != -1, "Should have already defined core name.");
-	emitShortArg(compiler, CODE_LOAD_MODULE_VAR, symbol);
+static IRExpr *loadCoreVariable(Compiler *compiler, const char *name) {
+	// int symbol = wrenSymbolTableFind(&compiler->parser->module->variableNames, name, strlen(name));
+	// ASSERT(symbol != -1, "Should have already defined core name.");
+	// emitShortArg(compiler, CODE_LOAD_MODULE_VAR, symbol);
+	abort(); // TODO implement
 }
 
 // A parenthesized expression.
@@ -1809,10 +1791,17 @@ static void grouping(Compiler *compiler, bool canAssign) {
 }
 
 // A list literal.
-static void list(Compiler *compiler, bool canAssign) {
+static IRExpr *list(Compiler *compiler, bool canAssign) {
+	// Make a block to put our initialising statements in, and wrap that into an expression
+	LocalVariable *list = addTemporary(compiler, "list-builder");
+	StmtBlock *block = compiler->New<StmtBlock>();
+	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
+	expr->temporary = list;
+	expr->statement = block;
+
 	// Instantiate a new list.
-	loadCoreVariable(compiler, "List");
-	callMethod(compiler, 0, "new()", 5);
+	IRExpr *newListExpr = callMethod(compiler, "new()", loadCoreVariable(compiler, "List"), {});
+	block->Add(compiler->New<StmtAssign>(list, newListExpr));
 
 	// Compile the list elements. Each one compiles to a ".add()" call.
 	do {
@@ -1823,20 +1812,29 @@ static void list(Compiler *compiler, bool canAssign) {
 			break;
 
 		// The element.
-		expression(compiler);
-		callMethod(compiler, 1, "addCore_(_)", 11);
+		IRExpr *toAdd = expression(compiler);
+		callMethod(compiler, "addCore_(_)", loadVariable(compiler, list), {toAdd}, block);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow newlines before the closing ']'.
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_RIGHT_BRACKET, "Expect ']' after list elements.");
+
+	return expr;
 }
 
 // A map literal.
-static void map(Compiler *compiler, bool canAssign) {
+static IRExpr *map(Compiler *compiler, bool canAssign) {
+	// Make a block to put our initialising statements in, and wrap that into an expression
+	LocalVariable *map = addTemporary(compiler, "map-builder");
+	StmtBlock *block = compiler->New<StmtBlock>();
+	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
+	expr->temporary = map;
+	expr->statement = block;
+
 	// Instantiate a new map.
-	loadCoreVariable(compiler, "Map");
-	callMethod(compiler, 0, "new()", 5);
+	IRExpr *newMap = callMethod(compiler, "new()", loadCoreVariable(compiler, "Map"), {});
+	block->Add(compiler->New<StmtAssign>(map, newMap));
 
 	// Compile the map elements. Each one is compiled to just invoke the
 	// subscript setter on the map.
@@ -1853,30 +1851,33 @@ static void map(Compiler *compiler, bool canAssign) {
 		ignoreNewlines(compiler);
 
 		// The value.
-		expression(compiler);
-		callMethod(compiler, 2, "addCore_(_,_)", 13);
+		IRExpr *toAdd = expression(compiler);
+		callMethod(compiler, "addCore_(_,_)", loadVariable(compiler, map), {toAdd}, block);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow newlines before the closing '}'.
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' after map entries.");
+
+	return expr;
 }
 
 // Unary operators like `-foo`.
-static void unaryOp(Compiler *compiler, bool canAssign) {
+static IRExpr *unaryOp(Compiler *compiler, bool canAssign) {
 	GrammarRule *rule = getRule(compiler->parser->previous.type);
 
 	ignoreNewlines(compiler);
 
 	// Compile the argument.
-	parsePrecedence(compiler, (Precedence)(PREC_UNARY + 1));
+	IRExpr *receiver = parsePrecedence(compiler, (Precedence)(PREC_UNARY + 1));
 
 	// Call the operator method on the left-hand side.
-	callMethod(compiler, 0, rule->name, 1);
+	return callMethod(compiler, rule->name, receiver, {});
 }
 
-static void boolean(Compiler *compiler, bool canAssign) {
-	emitOp(compiler, compiler->parser->previous.type == TOKEN_FALSE ? CODE_FALSE : CODE_TRUE);
+static IRExpr *boolean(Compiler *compiler, bool canAssign) {
+	CcValue value = CcValue(compiler->parser->previous.type == TOKEN_TRUE);
+	return compiler->New<ExprConst>(value);
 }
 
 // Walks the compiler chain to find the compiler for the nearest class
@@ -1898,10 +1899,10 @@ static ClassInfo *getEnclosingClass(Compiler *compiler) {
 	return compiler == NULL ? NULL : compiler->enclosingClass;
 }
 
-static void field(Compiler *compiler, bool canAssign) {
+static IRExpr *field(Compiler *compiler, bool canAssign) {
 	// Initialize it with a fake value so we can keep parsing and minimize the
 	// number of cascaded errors.
-	int field = MAX_FIELDS;
+	FieldVariable *field = nullptr;
 
 	ClassInfo *enclosingClass = getEnclosingClass(compiler);
 
@@ -1913,42 +1914,55 @@ static void field(Compiler *compiler, bool canAssign) {
 		error(compiler, "Cannot use an instance field in a static method.");
 	} else {
 		// Look up the field, or implicitly define it.
-		field = wrenSymbolTableEnsure(compiler->parser->context, &enclosingClass->fields,
-		                              compiler->parser->previous.start, compiler->parser->previous.length);
+		field = enclosingClass->fields.Ensure(compiler->parser->previous.contents);
 
-		if (field >= MAX_FIELDS) {
+		if (field->Id() >= MAX_FIELDS) {
 			error(compiler, "A class can only have %d fields.", MAX_FIELDS);
 		}
 	}
 
 	// If there's an "=" after a field name, it's an assignment.
-	bool isLoad = true;
 	if (canAssign && match(compiler, TOKEN_EQ)) {
 		// Compile the right-hand side.
-		expression(compiler);
-		isLoad = false;
-	}
+		IRExpr *value = expression(compiler);
 
-	// If we're directly inside a method, use a more optimal instruction.
-	if (compiler->parent != NULL && compiler->parent->enclosingClass == enclosingClass) {
-		emitByteArg(compiler, isLoad ? CODE_LOAD_FIELD_THIS : CODE_STORE_FIELD_THIS, field);
-	} else {
-		loadThis(compiler);
-		emitByteArg(compiler, isLoad ? CODE_LOAD_FIELD : CODE_STORE_FIELD, field);
+		// Assignments in Wren can be used as expressions themselves, so we have to return an expression
+		ExprRunStatements *run = compiler->New<ExprRunStatements>();
+		LocalVariable *temporary = addTemporary(compiler, "set-field-expr");
+		StmtBlock *block = compiler->New<StmtBlock>();
+		run->statement = block;
+		run->temporary = temporary;
+
+		block->Add(compiler->New<StmtAssign>(temporary, value));
+		block->Add(compiler->New<StmtFieldAssign>(field, loadThis(compiler), loadVariable(compiler, temporary)));
+
+		return run;
 	}
 
 	allowLineBeforeDot(compiler);
+
+	return compiler->New<ExprFieldLoad>(field, loadThis(compiler));
 }
 
 // Compiles a read or assignment to [variable].
-static IRNode *bareName(Compiler *compiler, bool canAssign, VarDecl *variable) {
+static IRExpr *bareName(Compiler *compiler, bool canAssign, VarDecl *variable) {
 	// If there's an "=" after a bare name, it's a variable assignment.
 	if (canAssign && match(compiler, TOKEN_EQ)) {
 		// Compile the right-hand side.
 		IRExpr *expr = expression(compiler);
 
-		// Emit the assignment node.
-		return compiler->parser->alloc.New<StmtAssign>(variable, expr);
+		// This has to be an expression, so wrap it up like that
+		ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
+		StmtBlock *block = compiler->New<StmtBlock>();
+		LocalVariable *tmp = addTemporary(compiler, "bareName-assign-" + variable->Name());
+		wrapper->statement = block;
+		wrapper->temporary = tmp;
+
+		// Emit the assignments - first store to the temporary, then store that to the target variable
+		block->Add(compiler->New<StmtAssign>(tmp, expr));
+		block->Add(compiler->New<StmtAssign>(variable, loadVariable(compiler, tmp)));
+
+		return wrapper;
 	}
 
 	IRExpr *expr = loadVariable(compiler, variable);
@@ -1956,11 +1970,11 @@ static IRNode *bareName(Compiler *compiler, bool canAssign, VarDecl *variable) {
 	return expr;
 }
 
-static void staticField(Compiler *compiler, bool canAssign) {
+static IRExpr *staticField(Compiler *compiler, bool canAssign) {
 	Compiler *classCompiler = getEnclosingClassCompiler(compiler);
 	if (classCompiler == NULL) {
 		error(compiler, "Cannot use a static field outside of a class definition.");
-		return;
+		return compiler->New<ExprConst>(CcValue::NULL_TYPE);
 	}
 
 	// Look up the name in the scope chain.
@@ -1968,24 +1982,23 @@ static void staticField(Compiler *compiler, bool canAssign) {
 
 	// If this is the first time we've seen this static field, implicitly
 	// define it as a variable in the scope surrounding the class definition.
+	// TODO might this be broken for two classes with the same static field name? In Wren the locals array is cleared.
 	VarDecl *local = compiler->locals.Lookup(token->contents);
 	if (local == nullptr) {
-		int symbol = declareVariable(classCompiler, NULL);
+		local = declareVariable(classCompiler, NULL);
 
-		// Implicitly initialize it to null.
-		emitOp(classCompiler, CODE_NULL);
-		defineVariable(classCompiler, symbol);
+		// TODO null initialisation
 	}
 
 	// It definitely exists now, so resolve it properly. This is different from
 	// the above resolveLocal() call because we may have already closed over it
 	// as an upvalue.
 	VarDecl *variable = resolveName(compiler, token->contents);
-	bareName(compiler, canAssign, variable);
+	return bareName(compiler, canAssign, variable);
 }
 
 // Compiles a variable name or method call with an implicit receiver.
-static IRNode *name(Compiler *compiler, bool canAssign) {
+static IRExpr *name(Compiler *compiler, bool canAssign) {
 	// Look for the name in the scope chain up to the nearest enclosing method.
 	Token *token = &compiler->parser->previous;
 
@@ -2004,27 +2017,28 @@ static IRNode *name(Compiler *compiler, bool canAssign) {
 
 	// If we're inside a method and the name is lowercase, treat it as a method
 	// on this.
-	if (wrenIsLocalName(token->start) && getEnclosingClass(compiler) != NULL) {
-		loadThis(compiler);
-		namedCall(compiler, canAssign, CODE_CALL_0);
-		return;
+	if (wrenIsLocalName(token->contents) && getEnclosingClass(compiler) != NULL) {
+		return namedCall(compiler, loadThis(compiler), canAssign, false);
 	}
 
 	// Otherwise, look for a module-level variable with the name.
-	variable.locals = SCOPE_MODULE;
-	variable.index = wrenSymbolTableFind(&compiler->parser->module->variableNames, token->contents);
-	if (variable.index == -1) {
-		// Implicitly define a module-level variable in
-		// the hopes that we get a real definition later.
-		variable.index =
-		    wrenDeclareVariable(compiler->parser->context, compiler->parser->module, token->contents, token->line);
-
-		if (variable.index == -2) {
-			error(compiler, "Too many module variables defined.");
-		}
+	variable = compiler->parser->module->FindVariable(token->contents);
+	if (variable == nullptr) {
+		// Implicitly define a module-level variable in the hopes that we get a real definition later.
+		IRGlobalDecl *decl = compiler->parser->module->AddVariable(token->contents);
+		ASSERT(decl, "Could not find or create global variable");
+		decl->undeclaredLineUsed = token->line;
+		variable = decl;
 	}
 
 	bareName(compiler, canAssign, variable);
+}
+
+static IRExpr *null(Compiler *compiler, bool canAssign = false) { return compiler->New<ExprConst>(CcValue::NULL_TYPE); }
+
+// A number or string literal.
+static IRExpr *literal(Compiler *compiler, bool canAssign = false) {
+	return compiler->New<ExprConst>(compiler->parser->previous.value);
 }
 
 // A string literal that contains interpolated expressions.
@@ -2037,40 +2051,50 @@ static IRNode *name(Compiler *compiler, bool canAssign) {
 // is compiled roughly like:
 //
 //     ["a ", b + c, " d"].join()
-static void stringInterpolation(Compiler *compiler, bool canAssign) {
+static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
+	// Make a block to put our initialising statements in, and wrap that into an expression
+	LocalVariable *parts = addTemporary(compiler, "string-interpolation-parts");
+	LocalVariable *result = addTemporary(compiler, "string-interpolation-result");
+	StmtBlock *block = compiler->New<StmtBlock>();
+	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
+	expr->temporary = result;
+	expr->statement = block;
+
 	// Instantiate a new list.
-	loadCoreVariable(compiler, "List");
-	callMethod(compiler, 0, "new()", 5);
+	IRExpr *newList = callMethod(compiler, "new()", loadCoreVariable(compiler, "List"), {});
+	block->Add(compiler->New<StmtAssign>(parts, newList));
 
 	do {
 		// The opening string part.
-		literal(compiler, false);
-		callMethod(compiler, 1, "addCore_(_)", 11);
+		IRExpr *lit = literal(compiler);
+		callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {lit}, block);
 
 		// The interpolated expression.
 		ignoreNewlines(compiler);
-		expression(compiler);
-		callMethod(compiler, 1, "addCore_(_)", 11);
+		IRExpr *interpolatedExpr = expression(compiler);
+		callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {interpolatedExpr}, block);
 
 		ignoreNewlines(compiler);
 	} while (match(compiler, TOKEN_INTERPOLATION));
 
 	// The trailing string part.
 	consume(compiler, TOKEN_STRING, "Expect end of string interpolation.");
-	literal(compiler, false);
-	callMethod(compiler, 1, "addCore_(_)", 11);
+	IRExpr *trailing = literal(compiler);
+	callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {trailing}, block);
 
-	// The list of interpolated parts.
-	callMethod(compiler, 0, "join()", 6);
+	// The list of interpolated parts. Join them all together and store them in the result variable, as that's set
+	// as the output of the ExprRunStatements.
+	IRExpr *joined = callMethod(compiler, "join()", loadVariable(compiler, parts), {});
+	block->Add(compiler->New<StmtAssign>(result, joined));
+
+	return expr;
 }
 
-static void super_(Compiler *compiler, bool canAssign) {
+static IRExpr *super_(Compiler *compiler, bool canAssign) {
 	ClassInfo *enclosingClass = getEnclosingClass(compiler);
 	if (enclosingClass == NULL) {
 		error(compiler, "Cannot use 'super' outside of a method.");
 	}
-
-	loadThis(compiler);
 
 	// TODO: Super operator calls.
 	// TODO: There's no syntax for invoking a superclass constructor with a
@@ -2080,30 +2104,30 @@ static void super_(Compiler *compiler, bool canAssign) {
 	if (match(compiler, TOKEN_DOT)) {
 		// Compile the superclass call.
 		consume(compiler, TOKEN_NAME, "Expect method name after 'super.'.");
-		namedCall(compiler, canAssign, CODE_SUPER_0);
-	} else if (enclosingClass != NULL) {
-		// No explicit name, so use the name of the enclosing method. Make sure we
-		// check that enclosingClass isn't NULL first. We've already reported the
-		// error, but we don't want to crash here.
-		methodCall(compiler, CODE_SUPER_0, enclosingClass->signature);
+		return namedCall(compiler, loadThis(compiler), canAssign, true);
 	}
+
+	// No explicit name, so use the name of the enclosing method. Make sure we
+	// check that enclosingClass isn't NULL first. We've already reported the
+	// error, but we don't want to crash here.
+	return methodCall(compiler, true, enclosingClass->signature, loadThis(compiler));
 }
 
-static void this_(Compiler *compiler, bool canAssign) {
+static IRExpr *this_(Compiler *compiler, bool canAssign) {
 	if (getEnclosingClass(compiler) == NULL) {
 		error(compiler, "Cannot use 'this' outside of a method.");
-		return;
+		return nullptr;
 	}
 
-	loadThis(compiler);
+	return loadThis(compiler);
 }
 
 // Subscript or "array indexing" operator like `foo[bar]`.
-static void subscript(Compiler *compiler, bool canAssign) {
-	Signature signature = {"", 0, SIG_SUBSCRIPT, 0};
+static IRExpr *subscript(Compiler *compiler, IRExpr *receiver, bool canAssign) {
+	Signature signature = {"", SIG_SUBSCRIPT, 0};
 
 	// Parse the argument list.
-	finishArgumentList(compiler, &signature);
+	std::vector<IRExpr *> args = finishArgumentList(compiler, &signature);
 	consume(compiler, TOKEN_RIGHT_BRACKET, "Expect ']' after arguments.");
 
 	allowLineBeforeDot(compiler);
@@ -2113,10 +2137,15 @@ static void subscript(Compiler *compiler, bool canAssign) {
 
 		// Compile the assigned value.
 		validateNumParameters(compiler, ++signature.arity);
-		expression(compiler);
+		IRExpr *value = expression(compiler);
+		args.push_back(value);
 	}
 
-	callSignature(compiler, CODE_CALL_0, &signature);
+	ExprFuncCall *call = compiler->New<ExprFuncCall>();
+	call->receiver = receiver;
+	call->signature = compiler->parser->context->GetSignature(signature);
+	call->args = args;
+	return call;
 }
 
 static void call(Compiler *compiler, bool canAssign) {
@@ -2168,18 +2197,24 @@ static void conditional(Compiler *compiler, bool canAssign) {
 	patchJump(compiler, elseJump);
 }
 
-void infixOp(Compiler *compiler, bool canAssign) {
+static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign, bool super) {
 	GrammarRule *rule = getRule(compiler->parser->previous.type);
 
 	// An infix operator cannot end an expression.
 	ignoreNewlines(compiler);
 
 	// Compile the right-hand side.
-	parsePrecedence(compiler, (Precedence)(rule->precedence + 1));
+	IRExpr *rhs = parsePrecedence(compiler, (Precedence)(rule->precedence + 1));
 
 	// Call the operator method on the left-hand side.
-	Signature signature = {rule->name, (int)strlen(rule->name), SIG_METHOD, 1};
-	callSignature(compiler, CODE_CALL_0, &signature);
+	Signature signature = {rule->name, SIG_METHOD, 1};
+
+	ExprFuncCall *call = compiler->New<ExprFuncCall>();
+	call->receiver = receiver;
+	call->signature = compiler->parser->context->GetSignature(signature);
+	call->args.push_back(rhs);
+	call->super = super;
+	return call;
 }
 
 // Compiles a method signature for an infix operator.
@@ -2248,7 +2283,7 @@ void subscriptSignature(Compiler *compiler, Signature *signature) {
 
 	// The signature currently has "[" as its name since that was the token that
 	// matched it. Clear that out.
-	signature->length = 0;
+	signature->name = "";
 
 	// Parse the parameters inside the subscript.
 	finishParameterList(compiler, signature);
@@ -2541,10 +2576,14 @@ static void startLoop(Compiler *compiler, Loop *loop) {
 	compiler->loop = loop;
 }
 
-// Emits the [CODE_JUMP_IF] instruction used to test the loop condition and
-// potentially exit the loop. Keeps track of the instruction so we can patch it
+// If a condition is nullptr or evaluates to a falsy value, break out of
+// the loop. Keeps track of the instruction so we can patch it
 // later once we know where the end of the body is.
-static void testExitLoop(Compiler *compiler) { compiler->loop->exitJump = emitJump(compiler, CODE_JUMP_IF); }
+static StmtJump *exitLoop(Compiler *compiler, IRExpr *condition) {
+	StmtJump *jmp = compiler->New<StmtJump>(nullptr, condition);
+	compiler->loop->exitJumps.push_back(jmp);
+	return jmp;
+}
 
 // Compiles the body of the loop and tracks its extent so that contained "break"
 // statements can be handled correctly.
@@ -2580,7 +2619,7 @@ static void endLoop(Compiler *compiler) {
 	compiler->loop = compiler->loop->enclosing;
 }
 
-static void forStatement(Compiler *compiler) {
+static IRStmt *forStatement(Compiler *compiler) {
 	// A for statement like:
 	//
 	//     for (i in sequence.expression) {
@@ -2611,13 +2650,13 @@ static void forStatement(Compiler *compiler) {
 
 	// Create a scope for the hidden local variables used for the iterator.
 	pushScope(compiler);
+	StmtBlock *block = compiler->New<StmtBlock>();
 
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
 	consume(compiler, TOKEN_NAME, "Expect for loop variable name.");
 
 	// Remember the name of the loop variable.
-	const char *name = compiler->parser->previous.start;
-	int length = compiler->parser->previous.length;
+	std::string name = compiler->parser->previous.contents;
 
 	consume(compiler, TOKEN_IN, "Expect 'in' after loop variable.");
 	ignoreNewlines(compiler);
@@ -2625,22 +2664,22 @@ static void forStatement(Compiler *compiler) {
 	// Evaluate the sequence expression and store it in a hidden local variable.
 	// The space in the variable name ensures it won't collide with a user-defined
 	// variable.
-	expression(compiler);
+	IRExpr *seqValue = expression(compiler);
 
-	// Verify that there is space to hidden local variables.
-	// Note that we expect only two addLocal calls next to each other in the
-	// following code.
-	if (compiler->numLocals + 2 > MAX_LOCALS) {
+	// Try to avoid running code that'd fail with interpreted Wren.
+	if (compiler->locals.VariableCount() + 2 > MAX_LOCALS) {
 		error(compiler,
 		      "Cannot declare more than %d variables in one scope. (Not enough space for for-loops internal variables)",
 		      MAX_LOCALS);
-		return;
+		// Keep parsing to find other issues
 	}
-	int seqSlot = addLocal(compiler, "seq ", 4);
+	LocalVariable *seqSlot = addLocal(compiler, "seq ");
+	block->Add(compiler->New<StmtAssign>(seqSlot, seqValue));
 
 	// Create another hidden local for the iterator object.
-	null(compiler, false);
-	int iterSlot = addLocal(compiler, "iter ", 5);
+	LocalVariable *iterSlot = addLocal(compiler, "iter ");
+	ExprConst *nullConst = compiler->New<ExprConst>(CcValue::NULL_TYPE);
+	block->Add(compiler->New<StmtAssign>(iterSlot, nullConst));
 
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after loop expression.");
 
@@ -2648,23 +2687,26 @@ static void forStatement(Compiler *compiler) {
 	startLoop(compiler, &loop);
 
 	// Advance the iterator by calling the ".iterate" method on the sequence.
-	loadLocal(compiler, seqSlot);
-	loadLocal(compiler, iterSlot);
+	ExprFuncCall *iterateCall = compiler->New<ExprFuncCall>();
+	iterateCall->signature = "iterate(_)";
+	iterateCall->receiver = loadVariable(compiler, iterSlot);
+	iterateCall->args.push_back(loadVariable(compiler, seqSlot));
 
 	// Update and test the iterator.
-	callMethod(compiler, 1, "iterate(_)", 10);
-	emitByteArg(compiler, CODE_STORE_LOCAL, iterSlot);
-	testExitLoop(compiler);
+	block->Add(compiler->New<StmtAssign>(iterSlot, iterateCall));
+	block->Add(exitLoop(compiler, loadVariable(compiler, iterSlot)));
 
 	// Get the current value in the sequence by calling ".iteratorValue".
-	loadLocal(compiler, seqSlot);
-	loadLocal(compiler, iterSlot);
-	callMethod(compiler, 1, "iteratorValue(_)", 16);
+	ExprFuncCall *valueCall = compiler->New<ExprFuncCall>();
+	valueCall->signature = "iteratorValue(_)";
+	valueCall->receiver = loadVariable(compiler, seqSlot);
+	valueCall->args.push_back(loadVariable(compiler, iterSlot));
 
 	// Bind the loop variable in its own scope. This ensures we get a fresh
 	// variable each iteration so that closures for it don't all see the same one.
 	pushScope(compiler);
-	addLocal(compiler, name, length);
+	LocalVariable *valueVar = addLocal(compiler, name);
+	block->Add(compiler->New<StmtAssign>(valueVar, valueCall));
 
 	loopBody(compiler);
 
@@ -2818,7 +2860,7 @@ static void createConstructor(Compiler *compiler, Signature *signature, int init
 	// Return the instance.
 	emitOp(&methodCompiler, CODE_RETURN);
 
-	endCompiler(&methodCompiler, "", 0);
+	endCompiler(&methodCompiler, "");
 }
 
 // Loads the enclosing class onto the stack and then binds the function already
@@ -2993,7 +3035,7 @@ static bool method(Compiler *compiler, Variable classVariable) {
 	} else {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
 		finishBody(&methodCompiler);
-		endCompiler(&methodCompiler, fullSignature, length);
+		endCompiler(&methodCompiler, fullSignature);
 	}
 
 	// Define the method. For a constructor, this defines the instance
@@ -3198,7 +3240,7 @@ static IRNode *variableDefinition(Compiler *compiler) {
 		initialiser = expression(compiler);
 	} else {
 		// Default initialize it to null.
-		initialiser = compiler->parser->alloc.New<ExprConst>(CcValue::NULL_TYPE);
+		initialiser = compiler->New<ExprConst>(CcValue::NULL_TYPE);
 	}
 
 	// Now put it in scope.
@@ -3294,18 +3336,20 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	// See if there are any implicitly declared module-level variables that never
 	// got an explicit definition. They will have values that are numbers
 	// indicating the line where the variable was first used.
-	for (int i = numExistingVariables; i < parser.module->variables.count; i++) {
-		if (IS_NUM(parser.module->variables.data[i])) {
+	for (IRGlobalDecl *variable : parser.module->GetGlobalVariables()) {
+		if (variable->undeclaredLineUsed.has_value()) {
 			// Synthesize a token for the original use site.
 			parser.previous.type = TOKEN_NAME;
-			parser.previous.start = parser.module->variableNames.data[i]->value;
-			parser.previous.length = parser.module->variableNames.data[i]->length;
-			parser.previous.line = (int)AS_NUM(parser.module->variables.data[i]);
+			parser.previous.contents = variable->Name();
+			parser.previous.line = variable->undeclaredLineUsed.value();
 			error(&compiler, "Variable is used but not defined.");
 		}
 	}
 
-	return endCompiler(&compiler, "(script)", 8);
+	endCompiler(&compiler, "(script)");
+
+	abort(); // FIXME arena allocations would all be freed at this point, since they're tied to the parser
+	return compiler.fn;
 }
 
 // Helpers for Attributes

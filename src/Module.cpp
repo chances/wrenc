@@ -15,3 +15,19 @@ IRGlobalDecl *Module::AddVariable(const std::string &name) {
 
 	return ptr;
 }
+
+IRGlobalDecl *Module::FindVariable(const std::string &name) {
+	auto iter = m_globals.find(name);
+	if (iter == m_globals.end())
+		return nullptr;
+	return iter->second.get();
+}
+
+std::vector<IRGlobalDecl *> Module::GetGlobalVariables() {
+	std::vector<IRGlobalDecl *> vars;
+	vars.reserve(m_globals.size());
+	for (const auto &entry : m_globals) {
+		vars.push_back(entry.second.get());
+	}
+	return vars;
+}

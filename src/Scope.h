@@ -32,7 +32,7 @@ class LocalVariable : public VarDecl {
 class ScopeFrame {
   public:
 	ScopeFrame *parent = nullptr;
-	std::unordered_map<std::string, LocalVariable *> m_globals;
+	std::unordered_map<std::string, LocalVariable *> locals;
 };
 
 class ScopeStack {
@@ -43,6 +43,9 @@ class ScopeStack {
 	// Add a local variable to the deepest scope. Returns true if the variable was added, or
 	// nullptr if a variable with the same name already existed in the deepest scope.
 	bool Add(LocalVariable *var);
+
+	// Get the total number of variables, including shadowed ones.
+	int VariableCount();
 
   private:
 	std::unique_ptr<ScopeFrame> m_top;
