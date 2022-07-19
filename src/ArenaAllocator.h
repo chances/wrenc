@@ -9,6 +9,9 @@
 #include <utility>
 #include <vector>
 
+// For allocation logging
+// #include <stdio.h>
+
 class ArenaAllocator {
   public:
 	ArenaAllocator();
@@ -24,17 +27,24 @@ class ArenaAllocator {
 	}
 
 	inline void *AllocateMem(size_t size, int alignment) {
-		int overhang = m_currentPageOffset - (m_currentPageOffset % alignment);
+		int overhang = m_currentPageOffset % alignment;
 		int wastage = 0;
 		if (overhang) {
 			wastage = alignment - overhang;
 		}
 
-		if (!m_currentPage || m_currentPageRemaining < (int)size + wastage) {
+		int effectiveSize = (int)size + wastage;
+
+		if (!m_currentPage || m_currentPageRemaining < effectiveSize) {
 			return AllocateSlowPath(size);
 		}
 
-		return (void *)((intptr_t)m_currentPage + wastage);
+		void *result = (void *)((intptr_t)m_currentPage + (intptr_t)m_currentPageOffset + (intptr_t)wastage);
+		m_currentPageOffset += effectiveSize;
+		m_currentPageRemaining -= effectiveSize;
+		// printf("alloc at %p - %d  %d %d\n", result, effectiveSize, m_currentPageOffset, m_currentPageRemaining);
+		// printf("   %p\n", m_currentPage);
+		return result;
 	}
 
   private:

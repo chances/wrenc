@@ -139,6 +139,7 @@ antlr_lib = shared_library('antlr4',
   antlr_rt_dir + '/WritableToken.cpp',
 
   include_directories: [antlr_rt_dir],
+  override_options: ['cpp_std=c++20'],
 )
 antlr = declare_dependency(
   link_with: [antlr_lib],

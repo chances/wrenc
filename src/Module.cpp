@@ -3,12 +3,17 @@
 //
 
 #include "Module.h"
+#include "ClassInfo.h"
 #include "IRNode.h"
+
+// Put the vtable here
+Module::Module() = default;
+Module::~Module() = default;
 
 IRGlobalDecl *Module::AddVariable(const std::string &name) {
 	auto iter = m_globals.find(name);
-	if (iter == m_globals.end())
-		return nullptr;
+	if (iter != m_globals.end())
+		return nullptr; // Return null if the global already exists
 
 	IRGlobalDecl *ptr = new IRGlobalDecl();
 	m_globals[name] = std::unique_ptr<IRGlobalDecl>(ptr);
@@ -31,3 +36,5 @@ std::vector<IRGlobalDecl *> Module::GetGlobalVariables() {
 	}
 	return vars;
 }
+
+void Module::AddNode(IRNode *node) {}

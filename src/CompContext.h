@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "ArenaAllocator.h"
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -52,6 +54,12 @@ class Signature {
 // Compilation context
 class CompContext {
   public:
+	CompContext();
+	~CompContext();
+
+	/// The allocator to be used for compiling everything in this context
+	ArenaAllocator alloc;
+
 	Compiler *compiler = nullptr;
 
 	// Signature deduplication - only store a single signature object for any given signature

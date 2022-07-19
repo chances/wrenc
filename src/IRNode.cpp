@@ -8,6 +8,9 @@
 #include "ClassInfo.h"
 #include "Scope.h"
 
+#include <fmt/format.h>
+#include <sstream>
+
 // Ugly hack to get the allocator out of a compiler
 ArenaAllocator *getCompilerAlloc(Compiler *compiler);
 
@@ -138,3 +141,74 @@ void IRVisitor::VisitExprLogicalNot(ExprLogicalNot *node) { Visit(node->input); 
 void IRVisitor::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
 	// Our IRClass nodes are already in the tree, don't visit them
 }
+
+void IRVisitor::VisitLocalVariable(LocalVariable *var) {}
+
+// Node IR printing
+
+// IR Printer
+IRPrinter::IRPrinter() { m_stream = std::make_unique<std::stringstream>(); }
+IRPrinter::~IRPrinter() {}
+
+void IRPrinter::FullTag(const std::string &str) {
+	StartTag(str, true);
+	EndTag();
+}
+
+void IRPrinter::StartTag(const std::string &str, bool isInline) {
+	m_tagStack.emplace_back(Tag{
+	    .header = str,
+	    .isInline = isInline,
+	});
+}
+void IRPrinter::EndTag() {
+	Tag &tag = m_tagStack.back();
+
+	std::stringstream result;
+	result << "[" << tag.header;
+
+	std::string indent = "  ";
+
+	for (std::string part : tag.components) {
+		if (tag.isInline)
+			result << " ";
+		else
+			result << "\n" << indent;
+
+		// Add a level of indentation
+		for (int i = part.length() - 1; i >= 0; i--) {
+			if (part.at(i) != '\n')
+				continue;
+			part.insert(i + 1, indent);
+		}
+
+		result << part;
+	}
+
+	if (tag.components.empty() || tag.isInline)
+		result << "]";
+	else
+		result << "\n]";
+
+	// Remove this tag
+	m_tagStack.pop_back();
+
+	// If there's another tag below us, add onto that. Otherwise, add to the main output
+	if (!m_tagStack.empty())
+		m_tagStack.back().components.emplace_back(result.str());
+	else
+		*m_stream << result.str() << "\n";
+}
+
+std::unique_ptr<std::stringstream> IRPrinter::Extract() { return std::move(m_stream); }
+
+void IRPrinter::Visit(IRNode *node) {
+	// Default to our typename
+	StartTag(typeid(*node).name(), false);
+	IRVisitor::Visit(node);
+	EndTag();
+}
+
+void IRPrinter::Process(IRNode *root) { Visit(root); }
+
+void IRPrinter::VisitVar(VarDecl *var) { FullTag(std::string(typeid(*var).name()) + ":" + var->Name()); }

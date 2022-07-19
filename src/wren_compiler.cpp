@@ -179,8 +179,6 @@ struct Token {
 struct Parser {
 	CompContext *context;
 
-	ArenaAllocator alloc;
-
 	// The module being parsed.
 	Module *module;
 
@@ -302,13 +300,13 @@ class Compiler {
 
 	// Utility functions:
 	template <typename T, typename... Args> T *New(Args &&...args) {
-		return parser->alloc.New<T, Args...>(std::forward<Args>(args)...);
+		return parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
 	}
 
 	/// Creates and adds a new statement
 	/// This is just shorthand for creating the statement with compiler->New and then adding it to the block.
 	template <typename T, typename... Args> T *AddNew(StmtBlock *block, Args &&...args) {
-		T *value = parser->alloc.New<T, Args...>(std::forward<Args>(args)...);
+		T *value = parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
 		block->Add(value);
 		return value;
 	}
@@ -344,7 +342,7 @@ static IRExpr *null(Compiler *compiler, bool canAssign = false);
 	} while (0)
 
 static void assertionFailure(const char *file, int line, const char *msg) {
-	fmt::print("Assertion failure at {}:{} - {}", file, line, msg);
+	fmt::print("Assertion failure at {}:{} - {}\n", file, line, msg);
 	abort();
 }
 
@@ -361,7 +359,7 @@ static void printError(Parser *parser, int line, const char *label, const char *
 	std::optional<std::string> module = parser->module->Name();
 	std::string moduleName = module ? module.value() : "<unknown>";
 
-	fmt::print("WrenCC at {}:{} - {}", moduleName, line, message);
+	fmt::print("WrenCC at {}:{} - {}\n", moduleName, line, message);
 }
 
 // Outputs a lexical error.
@@ -402,7 +400,7 @@ static void error(Compiler *compiler, const char *format, ...) {
 }
 
 // Used in IRNode.cpp as a bit of a hack
-ArenaAllocator *getCompilerAlloc(Compiler *compiler) { return &compiler->parser->alloc; }
+ArenaAllocator *getCompilerAlloc(Compiler *compiler) { return &compiler->parser->context->alloc; }
 
 // Initializes [compiler].
 static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, bool isMethod) {
@@ -433,7 +431,7 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 	}
 
 	compiler->numAttributes = 0;
-	compiler->fn = parser->alloc.New<IRFn>();
+	compiler->fn = parser->context->alloc.New<IRFn>();
 }
 
 // Lexing ----------------------------------------------------------------------
@@ -3263,7 +3261,6 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 
 	endCompiler(&compiler, "(script)");
 
-	abort(); // FIXME arena allocations would all be freed at this point, since they're tied to the parser
 	return compiler.fn;
 }
 

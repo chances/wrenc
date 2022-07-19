@@ -15,6 +15,9 @@ class ClassInfo;
 
 class Module {
   public:
+	Module();
+	~Module();
+
 	const std::optional<std::string> &Name() const { return m_name; }
 
 	IRGlobalDecl *AddVariable(const std::string &name);

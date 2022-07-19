@@ -10,6 +10,8 @@
 
 class MethodInfo {
   public:
+	~MethodInfo();
+
 	Signature *signature = nullptr;
 	bool isForeign = false;
 	bool isStatic = false;
@@ -20,6 +22,8 @@ class MethodInfo {
 // Bookkeeping information for compiling a class definition.
 class ClassInfo {
   public:
+	~ClassInfo();
+
 	// The name of the class.
 	std::string name;
 

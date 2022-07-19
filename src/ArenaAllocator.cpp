@@ -12,7 +12,7 @@
 ArenaAllocator::ArenaAllocator() {
 	m_pageSize = (int)sysconf(_SC_PAGE_SIZE);
 	if (m_pageSize == -1) {
-		fmt::print(stderr, "Failed to find page size in arena allocator. Error: {} {}", errno, strerror(errno));
+		fmt::print(stderr, "Failed to find page size in arena allocator. Error: {} {}\n", errno, strerror(errno));
 		abort();
 	}
 }
@@ -20,7 +20,7 @@ ArenaAllocator::ArenaAllocator() {
 ArenaAllocator::~ArenaAllocator() {
 	for (const MappedBlock &block : m_blocks) {
 		if (munmap(block.addr, block.size)) {
-			fmt::print(stderr, "Failed to deallocate block in arena allocator: {} {}", errno, strerror(errno));
+			fmt::print(stderr, "Failed to deallocate block in arena allocator: {} {}\n", errno, strerror(errno));
 			abort();
 		}
 	}
@@ -47,7 +47,7 @@ void *ArenaAllocator::AllocateSlowPath(int size) {
 	// Allocate fresh page[s] from the kernel
 	void *addr = mmap(nullptr, blockSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (addr == MAP_FAILED) {
-		fmt::print("Failed to allocate memory block in arena allocator, size {}. Error {} {}", blockSize, errno,
+		fmt::print("Failed to allocate memory block in arena allocator, size {}. Error {} {}\n", blockSize, errno,
 		           strerror(errno));
 		abort();
 	}

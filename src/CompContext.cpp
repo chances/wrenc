@@ -56,6 +56,9 @@ Signature Signature::Parse(const std::string &stringSignature) {
 	return sig;
 }
 
+CompContext::CompContext() {}
+CompContext::~CompContext() = default;
+
 Signature *CompContext::GetSignature(const std::string &sigString) {
 	auto iter = signatures.find(sigString);
 	if (iter != signatures.end())

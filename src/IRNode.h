@@ -22,6 +22,7 @@ class Compiler;      // From wren_compiler.cpp
 class ClassInfo;     // From ClassInfo.h
 class StmtUpvalueImport;
 class IRVisitor;
+class IRPrinter;
 
 // //////////////////// //
 // //// INTERFACES //// //
@@ -401,4 +402,31 @@ class IRVisitor {
 
 	virtual void VisitLocalVariable(LocalVariable *var);
 	// TODO for other variables
+};
+
+class IRPrinter : private IRVisitor {
+  public:
+	IRPrinter();
+	~IRPrinter();
+
+	std::unique_ptr<std::stringstream> Extract();
+
+	void Process(IRNode *root);
+
+  private:
+	struct Tag {
+		std::string header;
+		std::vector<std::string> components;
+		bool isInline = false;
+	};
+
+	void Visit(IRNode *node) override;
+	void VisitVar(VarDecl *var) override;
+
+	void FullTag(const std::string &str);
+	void StartTag(const std::string &str, bool printInline);
+	void EndTag();
+
+	std::vector<Tag> m_tagStack;
+	std::unique_ptr<std::stringstream> m_stream;
 };
