@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <fmt/format.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unordered_map>
@@ -20,8 +19,6 @@
 #include "ConstantsPool.h"
 #include "IRNode.h"
 #include "Module.h"
-#include "ObjMap.h"
-#include "ObjString.h"
 #include "Scope.h"
 #include "SymbolTable.h"
 #include "common.h"
@@ -76,8 +73,6 @@
 // this limitation is hardcoded in other places in the VM, in particular, the
 // `CODE_CALL_XX` instructions assume a certain maximum number.
 #define MAX_PARAMETERS 16
-
-using IntBuffer = std::vector<int>;
 
 enum TokenType {
 	TOKEN_LEFT_PAREN,
@@ -320,12 +315,16 @@ class Compiler {
 };
 
 // Forward declarations
+
+// TODO re-enable for attribute support
+#if 0
 static void disallowAttributes(Compiler *compiler);
 static void addToAttributeGroup(Compiler *compiler, Value group, Value key, Value value);
 static void emitClassAttributes(Compiler *compiler, ClassInfo *classInfo);
 static void copyAttributes(Compiler *compiler, ObjMap *into);
 static void copyMethodAttributes(Compiler *compiler, bool isForeign, bool isStatic, const char *fullSignature,
                                  int32_t length);
+#endif
 
 static IRExpr *null(Compiler *compiler, bool canAssign = false);
 
@@ -2014,7 +2013,7 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 		variable = decl;
 	}
 
-	bareName(compiler, canAssign, variable);
+	return bareName(compiler, canAssign, variable);
 }
 
 static IRExpr *null(Compiler *compiler, bool canAssign) { return compiler->New<ExprConst>(CcValue::NULL_TYPE); }
@@ -3156,7 +3155,7 @@ static IRNode *variableDefinition(Compiler *compiler) {
 
 	// Now put it in scope.
 	VarDecl *decl = declareVariable(compiler, &nameToken);
-	defineVariable(compiler, decl, initialiser);
+	return defineVariable(compiler, decl, initialiser);
 }
 
 // Compiles a "definition". These are the statements that bind new variables.
@@ -3175,7 +3174,8 @@ IRNode *definition(Compiler *compiler) {
 		return classDefinition(compiler, true);
 	}
 
-	disallowAttributes(compiler);
+	// TODO enable for attributes
+	// disallowAttributes(compiler);
 
 	if (match(compiler, TOKEN_IMPORT)) {
 		return import(compiler);

@@ -27,6 +27,7 @@ class LocalVariable : public VarDecl {
 
 	std::string Name() const override;
 	ScopeType Scope() const override;
+	void Accept(IRVisitor *visitor) override;
 };
 
 class ScopeFrame {

@@ -21,3 +21,5 @@ int ScopeStack::VariableCount() {
 std::string LocalVariable::Name() const { return name; }
 
 VarDecl::ScopeType LocalVariable::Scope() const { return SCOPE_LOCAL; }
+
+void LocalVariable::Accept(IRVisitor *visitor) { visitor->VisitLocalVariable(this); }

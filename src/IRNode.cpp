@@ -5,11 +5,13 @@
 #include "IRNode.h"
 
 #include "ArenaAllocator.h"
+#include "ClassInfo.h"
 #include "Scope.h"
 
 // Ugly hack to get the allocator out of a compiler
 ArenaAllocator *getCompilerAlloc(Compiler *compiler);
 
+IRClass::~IRClass() = default;
 VarDecl::~VarDecl() = default;
 IRNode::~IRNode() = default;
 

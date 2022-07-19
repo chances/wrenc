@@ -80,6 +80,7 @@ class IRFn : public IRNode {
 
 class IRClass : public IRNode {
   public:
+	~IRClass();
 	void Accept(IRVisitor *visitor) override;
 
 	std::unique_ptr<ClassInfo> info;
