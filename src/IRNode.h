@@ -21,6 +21,7 @@ class Signature;     // From CompContext.h
 class Compiler;      // From wren_compiler.cpp
 class ClassInfo;     // From ClassInfo.h
 class StmtUpvalueImport;
+class IRVisitor;
 
 // //////////////////// //
 // //// INTERFACES //// //
@@ -43,6 +44,8 @@ class VarDecl {
 	virtual ~VarDecl();
 	virtual std::string Name() const = 0;
 	virtual ScopeType Scope() const = 0;
+
+	virtual void Accept(IRVisitor *visitor) = 0;
 };
 
 // //////////////////// //
@@ -52,10 +55,13 @@ class VarDecl {
 class IRNode {
   public:
 	virtual ~IRNode();
+	virtual void Accept(IRVisitor *visitor) = 0;
 };
 
 class IRFn : public IRNode {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	std::vector<LocalVariable *> locals; // Locals may have duplicate names from different scopes, hence vector not map
 	std::unordered_map<VarDecl *, StmtUpvalueImport *> upvalues;
 
@@ -74,12 +80,16 @@ class IRFn : public IRNode {
 
 class IRClass : public IRNode {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	std::unique_ptr<ClassInfo> info;
 };
 
 /// Global variable declaration
 class IRGlobalDecl : public IRNode, public VarDecl {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	std::string name;
 	std::string Name() const override;
 	ScopeType Scope() const override;
@@ -125,6 +135,8 @@ class IRGlobalDecl : public IRNode, public VarDecl {
 /// * We still have to follow import loop rules (though we can probably slack on those for now)
 class IRImport : public IRNode {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	std::string moduleName;
 };
 
@@ -143,6 +155,8 @@ class StmtAssign : public IRStmt {
 	StmtAssign() {}
 	StmtAssign(VarDecl *var, IRExpr *expr) : var(var), expr(expr) {}
 
+	void Accept(IRVisitor *visitor) override;
+
 	VarDecl *var = nullptr;
 	IRExpr *expr = nullptr;
 };
@@ -152,6 +166,8 @@ class StmtFieldAssign : public IRStmt {
   public:
 	StmtFieldAssign() {}
 	StmtFieldAssign(FieldVariable *var, IRExpr *object, IRExpr *value) : var(var), object(object), value(value) {}
+
+	void Accept(IRVisitor *visitor) override;
 
 	FieldVariable *var = nullptr;
 	IRExpr *object = nullptr;
@@ -175,6 +191,7 @@ class StmtUpvalueImport : public IRStmt, public VarDecl {
 
 	std::string Name() const override;
 	ScopeType Scope() const override;
+	void Accept(IRVisitor *visitor) override;
 
 	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
 	VarDecl *parent = nullptr;
@@ -184,6 +201,8 @@ class StmtUpvalueImport : public IRStmt, public VarDecl {
 class StmtEvalAndIgnore : public IRStmt {
   public:
 	StmtEvalAndIgnore(IRExpr *expr) : expr(expr) {}
+
+	void Accept(IRVisitor *visitor) override;
 
 	IRExpr *expr = nullptr;
 };
@@ -197,17 +216,24 @@ class StmtBlock : public IRStmt {
 	/// Wraps an expression in an StmtEvalAndIgnore, doing nothing if it's nullptr.
 	void Add(Compiler *forAlloc, IRExpr *expr);
 
+	void Accept(IRVisitor *visitor) override;
+
 	std::vector<IRStmt *> statements;
 };
 
 /// Not really a statement, this designates a point the jump instruction can jump to
-class StmtLabel : public IRStmt {};
+class StmtLabel : public IRStmt {
+  public:
+	void Accept(IRVisitor *visitor) override;
+};
 
 /// Jump to a label, possibly conditionally.
 class StmtJump : public IRStmt {
   public:
 	StmtJump(StmtLabel *target, IRExpr *condition) : target(target), condition(condition) {}
 	StmtJump() = default;
+
+	void Accept(IRVisitor *visitor) override;
 
 	StmtLabel *target = nullptr;
 	IRExpr *condition = nullptr; /// Unconditional if nullptr. Otherwise, if it evaluates to null or false, won't jump.
@@ -217,6 +243,8 @@ class StmtJump : public IRStmt {
 class StmtReturn : public IRStmt {
   public:
 	explicit StmtReturn(IRExpr *value) : value(value) {}
+
+	void Accept(IRVisitor *visitor) override;
 
 	IRExpr *value = nullptr;
 };
@@ -228,6 +256,8 @@ class StmtLoadModule : public IRStmt {
 		std::string name; // Name in the module we're importing from
 		VarDecl *bindTo = nullptr;
 	};
+
+	void Accept(IRVisitor *visitor) override;
 
 	// The import this load triggers
 	IRImport *import = nullptr;
@@ -247,6 +277,8 @@ class ExprConst : public IRExpr {
 	ExprConst();
 	ExprConst(CcValue value);
 
+	void Accept(IRVisitor *visitor) override;
+
 	CcValue value;
 };
 
@@ -254,6 +286,8 @@ class ExprLoad : public IRExpr {
   public:
 	ExprLoad() = default;
 	ExprLoad(VarDecl *var) : var(var) {}
+
+	void Accept(IRVisitor *visitor) override;
 
 	VarDecl *var;
 };
@@ -264,6 +298,8 @@ class ExprFieldLoad : public IRExpr {
 	ExprFieldLoad() {}
 	ExprFieldLoad(FieldVariable *var, IRExpr *object) : var(var), object(object) {}
 
+	void Accept(IRVisitor *visitor) override;
+
 	FieldVariable *var = nullptr;
 	IRExpr *object = nullptr;
 };
@@ -271,6 +307,8 @@ class ExprFieldLoad : public IRExpr {
 /// Either a function or a method call, depending on whether the receiver is null or not
 class ExprFuncCall : public IRExpr {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	Signature *signature = nullptr; /// The signature of the method to call. MUST be unique-ified by CompContext
 	std::vector<IRExpr *> args;     /// The list of arguments to pass, must match the function's arity at runtime
 	IRExpr *receiver = nullptr; /// Object the method will be called on. Null is valid and indicates a function call.
@@ -281,11 +319,16 @@ class ExprFuncCall : public IRExpr {
 /// if optimisations are performed on that it won't be during parsing.
 class ExprClosure : public IRExpr {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	IRFn *func = nullptr;
 };
 
 /// Returns the 'this' value.
-class ExprLoadReceiver : public IRExpr {};
+class ExprLoadReceiver : public IRExpr {
+  public:
+	void Accept(IRVisitor *visitor) override;
+};
 
 /// Run a collection of statements to initialise a temporary variable, which is then
 /// used as the result of this expression.
@@ -294,6 +337,8 @@ class ExprLoadReceiver : public IRExpr {};
 /// After parsing, these are all removed and placed directly ahead of the statement they're used in.
 class ExprRunStatements : public IRExpr {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	IRStmt *statement = nullptr;
 	LocalVariable *temporary = nullptr;
 };
@@ -302,6 +347,8 @@ class ExprRunStatements : public IRExpr {
 class ExprLogicalNot : public IRExpr {
   public:
 	ExprLogicalNot(IRExpr *input) : input(input) {}
+	void Accept(IRVisitor *visitor) override;
+
 	IRExpr *input = nullptr;
 };
 
@@ -309,5 +356,48 @@ class ExprLogicalNot : public IRExpr {
 /// is also called.
 class ExprAllocateInstanceMemory : public IRExpr {
   public:
+	void Accept(IRVisitor *visitor) override;
+
 	IRClass *target = nullptr;
+};
+
+// //////////////////// //
+// ////   VISITOR   /// //
+// //////////////////// //
+
+/// Visitor that walks the AST tree and sees every node. Extend it to make passes over the AST tree.
+/// Every node should only be walked once, and variables may be walked multiple times (as often as
+/// they're referenced.
+class IRVisitor {
+  public:
+	virtual ~IRVisitor();
+
+	virtual void Visit(IRNode *node);
+	virtual void VisitVar(VarDecl *var);
+
+	virtual void VisitFn(IRFn *node);
+	virtual void VisitClass(IRClass *node);
+	virtual void VisitGlobalDecl(IRGlobalDecl *node);
+	virtual void VisitImport(IRImport *node);
+	virtual void VisitStmtAssign(StmtAssign *node);
+	virtual void VisitStmtFieldAssign(StmtFieldAssign *node);
+	virtual void VisitStmtUpvalue(StmtUpvalueImport *node);
+	virtual void VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node);
+	virtual void VisitBlock(StmtBlock *node);
+	virtual void VisitStmtLabel(StmtLabel *node);
+	virtual void VisitStmtJump(StmtJump *node);
+	virtual void VisitStmtReturn(StmtReturn *node);
+	virtual void VisitStmtLoadModule(StmtLoadModule *node);
+	virtual void VisitExprConst(ExprConst *node);
+	virtual void VisitExprLoad(ExprLoad *node);
+	virtual void VisitExprFieldLoad(ExprFieldLoad *node);
+	virtual void VisitExprFuncCall(ExprFuncCall *node);
+	virtual void VisitExprClosure(ExprClosure *node);
+	virtual void VisitExprLoadReceiver(ExprLoadReceiver *node);
+	virtual void VisitExprRunStatements(ExprRunStatements *node);
+	virtual void VisitExprLogicalNot(ExprLogicalNot *node);
+	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
+
+	virtual void VisitLocalVariable(LocalVariable *var);
+	// TODO for other variables
 };
