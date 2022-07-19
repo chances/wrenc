@@ -164,6 +164,7 @@ class StmtJump : public IRStmt {
 
 	StmtLabel *target = nullptr;
 	IRExpr *condition = nullptr; /// Unconditional if nullptr. Otherwise, if it evaluates to null or false, won't jump.
+	bool looping = false; /// If this jump is part of a loop, this is true. Otherwise the jump MUST only go 'forwards'.
 };
 
 class StmtReturn : public IRStmt {
@@ -233,4 +234,11 @@ class ExprRunStatements : public IRExpr {
   public:
 	IRStmt *statement = nullptr;
 	LocalVariable *temporary = nullptr;
+};
+
+/// Logical inverse, yields ¬input
+class ExprLogicalNot : public IRExpr {
+  public:
+	ExprLogicalNot(IRExpr *input) : input(input) {}
+	IRExpr *input = nullptr;
 };

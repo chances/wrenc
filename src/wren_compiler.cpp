@@ -243,15 +243,15 @@ struct CompilerUpvalue {
 
 // Bookkeeping information for the current loop being compiled.
 struct Loop {
-	// Index of the instruction that the loop should jump back to.
-	int start;
+	// The label that the end of loop should jump back to.
+	StmtLabel *start = nullptr;
 
 	// Jumps that exit the loop. Once we're done building the loop, all these jumps
 	// will have their targets set to a label just after the end of the loop.
 	std::vector<StmtJump *> exitJumps;
 
 	// Index of the first instruction of the body of the loop.
-	int body;
+	StmtLabel *body = nullptr;
 
 	// Depth of the scope(s) that need to be exited if a break is hit inside the
 	// loop.
@@ -336,6 +336,14 @@ class Compiler {
 	template <typename T, typename... Args> T *New(Args &&...args) {
 		return parser->alloc.New<T, Args...>(std::forward<Args>(args)...);
 	}
+
+	/// Creates and adds a new statement
+	/// This is just shorthand for creating the statement with compiler->New and then adding it to the block.
+	template <typename T, typename... Args> T *AddNew(StmtBlock *block, Args &&...args) {
+		T *value = parser->alloc.New<T, Args...>(std::forward<Args>(args)...);
+		block->Add(value);
+		return value;
+	}
 };
 
 // Forward declarations
@@ -345,6 +353,8 @@ static void emitClassAttributes(Compiler *compiler, ClassInfo *classInfo);
 static void copyAttributes(Compiler *compiler, ObjMap *into);
 static void copyMethodAttributes(Compiler *compiler, bool isForeign, bool isStatic, const char *fullSignature,
                                  int32_t length);
+
+static IRExpr *null(Compiler *compiler, bool canAssign = false);
 
 // The stack effect of each opcode. The index in the array is the opcode, and
 // the value is the stack effect of that instruction.
@@ -372,10 +382,9 @@ static void printError(Parser *parser, int line, const char *label, const char *
 		return;
 
 	// Format the label and message.
-	char message[256];
-	int length = sprintf(message, "%s: ", label);
-	length += vsprintf(message + length, format, args);
-	ASSERT(length < sizeof(message), "Error should not exceed buffer.");
+	char buf[256];
+	vsnprintf(buf, sizeof(buf), format, args);
+	std::string message = std::string(label) + ": " + std::string(buf);
 
 	std::optional<std::string> module = parser->module->Name();
 	std::string moduleName = module ? module.value() : "<unknown>";
@@ -782,7 +791,7 @@ static void readRawString(Parser *parser) {
 	if (firstNewline != -1 && skipStart == firstNewline)
 		offset = firstNewline + 1;
 
-	if (offset > string.size()) {
+	if (offset > (int)string.size()) {
 		parser->next.value = "";
 	} else {
 		parser->next.value = string.substr(offset);
@@ -1434,12 +1443,13 @@ typedef enum {
 } Precedence;
 
 typedef IRExpr *(*GrammarFn)(Compiler *, bool canAssign);
+typedef IRExpr *(*GrammarInfixFn)(Compiler *, IRExpr *lhs, bool canAssign);
 
 typedef void (*SignatureFn)(Compiler *compiler, Signature *signature);
 
 typedef struct {
 	GrammarFn prefix;
-	GrammarFn infix;
+	GrammarInfixFn infix;
 	SignatureFn method;
 	Precedence precedence;
 	const char *name;
@@ -1517,7 +1527,7 @@ static IRStmt *finishBody(Compiler *compiler) {
 		returnValue = compiler->New<ExprLoadReceiver>();
 	} else if (!isExpressionBody) {
 		// Implicitly return null in statement bodies.
-		returnValue = compiler->New<ExprConst>(CcValue::NULL_TYPE);
+		returnValue = null(compiler);
 	}
 
 	StmtBlock *block = compiler->New<StmtBlock>();
@@ -1654,7 +1664,7 @@ static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExp
                                 StmtBlock *toAdd = nullptr) {
 	Signature *sig = compiler->parser->context->GetSignature(Signature::Parse(signature));
 
-	ASSERT(args.size() == sig->arity, "callMethod signature and args have different arities");
+	ASSERT((int)args.size() == sig->arity, "callMethod signature and args have different arities");
 
 	ExprFuncCall *call = compiler->New<ExprFuncCall>();
 	call->signature = sig;
@@ -1785,9 +1795,10 @@ static IRExpr *loadCoreVariable(Compiler *compiler, const char *name) {
 }
 
 // A parenthesized expression.
-static void grouping(Compiler *compiler, bool canAssign) {
-	expression(compiler);
+static IRExpr *grouping(Compiler *compiler, bool canAssign) {
+	IRExpr *expr = expression(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+	return expr;
 }
 
 // A list literal.
@@ -1974,7 +1985,7 @@ static IRExpr *staticField(Compiler *compiler, bool canAssign) {
 	Compiler *classCompiler = getEnclosingClassCompiler(compiler);
 	if (classCompiler == NULL) {
 		error(compiler, "Cannot use a static field outside of a class definition.");
-		return compiler->New<ExprConst>(CcValue::NULL_TYPE);
+		return null(compiler);
 	}
 
 	// Look up the name in the scope chain.
@@ -2034,7 +2045,7 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 	bareName(compiler, canAssign, variable);
 }
 
-static IRExpr *null(Compiler *compiler, bool canAssign = false) { return compiler->New<ExprConst>(CcValue::NULL_TYPE); }
+static IRExpr *null(Compiler *compiler, bool canAssign) { return compiler->New<ExprConst>(CcValue::NULL_TYPE); }
 
 // A number or string literal.
 static IRExpr *literal(Compiler *compiler, bool canAssign = false) {
@@ -2148,56 +2159,58 @@ static IRExpr *subscript(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 	return call;
 }
 
-static void call(Compiler *compiler, bool canAssign) {
+static IRExpr *call(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_NAME, "Expect method name after '.'.");
-	namedCall(compiler, canAssign, CODE_CALL_0);
+	return namedCall(compiler, lhs, canAssign, false);
 }
 
+/* TODO implement these
 static void and_(Compiler *compiler, bool canAssign) {
-	ignoreNewlines(compiler);
+    ignoreNewlines(compiler);
 
-	// Skip the right argument if the left is false.
-	int jump = emitJump(compiler, CODE_AND);
-	parsePrecedence(compiler, PREC_LOGICAL_AND);
-	patchJump(compiler, jump);
+    // Skip the right argument if the left is false.
+    int jump = emitJump(compiler, CODE_AND);
+    parsePrecedence(compiler, PREC_LOGICAL_AND);
+    patchJump(compiler, jump);
 }
 
 static void or_(Compiler *compiler, bool canAssign) {
-	ignoreNewlines(compiler);
+    ignoreNewlines(compiler);
 
-	// Skip the right argument if the left is true.
-	int jump = emitJump(compiler, CODE_OR);
-	parsePrecedence(compiler, PREC_LOGICAL_OR);
-	patchJump(compiler, jump);
+    // Skip the right argument if the left is true.
+    int jump = emitJump(compiler, CODE_OR);
+    parsePrecedence(compiler, PREC_LOGICAL_OR);
+    patchJump(compiler, jump);
 }
 
 static void conditional(Compiler *compiler, bool canAssign) {
-	// Ignore newline after '?'.
-	ignoreNewlines(compiler);
+    // Ignore newline after '?'.
+    ignoreNewlines(compiler);
 
-	// Jump to the else branch if the condition is false.
-	int ifJump = emitJump(compiler, CODE_JUMP_IF);
+    // Jump to the else branch if the condition is false.
+    int ifJump = emitJump(compiler, CODE_JUMP_IF);
 
-	// Compile the then branch.
-	parsePrecedence(compiler, PREC_CONDITIONAL);
+    // Compile the then branch.
+    parsePrecedence(compiler, PREC_CONDITIONAL);
 
-	consume(compiler, TOKEN_COLON, "Expect ':' after then branch of conditional operator.");
-	ignoreNewlines(compiler);
+    consume(compiler, TOKEN_COLON, "Expect ':' after then branch of conditional operator.");
+    ignoreNewlines(compiler);
 
-	// Jump over the else branch when the if branch is taken.
-	int elseJump = emitJump(compiler, CODE_JUMP);
+    // Jump over the else branch when the if branch is taken.
+    int elseJump = emitJump(compiler, CODE_JUMP);
 
-	// Compile the else branch.
-	patchJump(compiler, ifJump);
+    // Compile the else branch.
+    patchJump(compiler, ifJump);
 
-	parsePrecedence(compiler, PREC_ASSIGNMENT);
+    parsePrecedence(compiler, PREC_ASSIGNMENT);
 
-	// Patch the jump over the else.
-	patchJump(compiler, elseJump);
+    // Patch the jump over the else.
+    patchJump(compiler, elseJump);
 }
+*/
 
-static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign, bool super) {
+static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 	GrammarRule *rule = getRule(compiler->parser->previous.type);
 
 	// An infix operator cannot end an expression.
@@ -2213,7 +2226,7 @@ static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign, boo
 	call->receiver = receiver;
 	call->signature = compiler->parser->context->GetSignature(signature);
 	call->args.push_back(rhs);
-	call->super = super;
+	// TODO super handling - eg does "super * 5" do what you'd expect?
 	return call;
 }
 
@@ -2452,126 +2465,26 @@ IRExpr *parsePrecedence(Compiler *compiler, Precedence precedence) {
 	// we pass in whether or not it appears in a context loose enough to allow
 	// "=". If so, it will parse the "=" itself and handle it appropriately.
 	bool canAssign = precedence <= PREC_CONDITIONAL;
-	prefix(compiler, canAssign);
+	IRExpr *expr = prefix(compiler, canAssign);
 
 	while (precedence <= rules[compiler->parser->current.type].precedence) {
 		nextToken(compiler->parser);
-		GrammarFn infix = rules[compiler->parser->previous.type].infix;
-		infix(compiler, canAssign);
+		GrammarInfixFn infix = rules[compiler->parser->previous.type].infix;
+		expr = infix(compiler, expr, canAssign);
 	}
+
+	return expr;
 }
 
 // Parses an expression. Unlike statements, expressions leave a resulting value
 // on the stack.
 IRExpr *expression(Compiler *compiler) { return parsePrecedence(compiler, PREC_LOWEST); }
 
-// Returns the number of bytes for the arguments to the instruction
-// at [ip] in [fn]'s bytecode.
-static int getByteCountForArguments(const uint8_t *bytecode, const Value *constants, int ip) {
-	Code instruction = (Code)bytecode[ip];
-	switch (instruction) {
-	case CODE_NULL:
-	case CODE_FALSE:
-	case CODE_TRUE:
-	case CODE_POP:
-	case CODE_CLOSE_UPVALUE:
-	case CODE_RETURN:
-	case CODE_END:
-	case CODE_LOAD_LOCAL_0:
-	case CODE_LOAD_LOCAL_1:
-	case CODE_LOAD_LOCAL_2:
-	case CODE_LOAD_LOCAL_3:
-	case CODE_LOAD_LOCAL_4:
-	case CODE_LOAD_LOCAL_5:
-	case CODE_LOAD_LOCAL_6:
-	case CODE_LOAD_LOCAL_7:
-	case CODE_LOAD_LOCAL_8:
-	case CODE_CONSTRUCT:
-	case CODE_FOREIGN_CONSTRUCT:
-	case CODE_FOREIGN_CLASS:
-	case CODE_END_MODULE:
-	case CODE_END_CLASS:
-		return 0;
-
-	case CODE_LOAD_LOCAL:
-	case CODE_STORE_LOCAL:
-	case CODE_LOAD_UPVALUE:
-	case CODE_STORE_UPVALUE:
-	case CODE_LOAD_FIELD_THIS:
-	case CODE_STORE_FIELD_THIS:
-	case CODE_LOAD_FIELD:
-	case CODE_STORE_FIELD:
-	case CODE_CLASS:
-		return 1;
-
-	case CODE_CONSTANT:
-	case CODE_LOAD_MODULE_VAR:
-	case CODE_STORE_MODULE_VAR:
-	case CODE_CALL_0:
-	case CODE_CALL_1:
-	case CODE_CALL_2:
-	case CODE_CALL_3:
-	case CODE_CALL_4:
-	case CODE_CALL_5:
-	case CODE_CALL_6:
-	case CODE_CALL_7:
-	case CODE_CALL_8:
-	case CODE_CALL_9:
-	case CODE_CALL_10:
-	case CODE_CALL_11:
-	case CODE_CALL_12:
-	case CODE_CALL_13:
-	case CODE_CALL_14:
-	case CODE_CALL_15:
-	case CODE_CALL_16:
-	case CODE_JUMP:
-	case CODE_LOOP:
-	case CODE_JUMP_IF:
-	case CODE_AND:
-	case CODE_OR:
-	case CODE_METHOD_INSTANCE:
-	case CODE_METHOD_STATIC:
-	case CODE_IMPORT_MODULE:
-	case CODE_IMPORT_VARIABLE:
-		return 2;
-
-	case CODE_SUPER_0:
-	case CODE_SUPER_1:
-	case CODE_SUPER_2:
-	case CODE_SUPER_3:
-	case CODE_SUPER_4:
-	case CODE_SUPER_5:
-	case CODE_SUPER_6:
-	case CODE_SUPER_7:
-	case CODE_SUPER_8:
-	case CODE_SUPER_9:
-	case CODE_SUPER_10:
-	case CODE_SUPER_11:
-	case CODE_SUPER_12:
-	case CODE_SUPER_13:
-	case CODE_SUPER_14:
-	case CODE_SUPER_15:
-	case CODE_SUPER_16:
-		return 4;
-
-	case CODE_CLOSURE: {
-		int constant = (bytecode[ip + 1] << 8) | bytecode[ip + 2];
-		IRFn *loadedFn = AS_FN(constants[constant]);
-
-		// There are two bytes for the constant, then two for each upvalue.
-		return 2 + (loadedFn->numUpvalues * 2);
-	}
-	}
-
-	UNREACHABLE();
-	return 0;
-}
-
 // Marks the beginning of a loop. Keeps track of the current instruction so we
 // know what to loop back to at the end of the body.
-static void startLoop(Compiler *compiler, Loop *loop) {
+static void startLoop(Compiler *compiler, Loop *loop, StmtLabel *start) {
 	loop->enclosing = compiler->loop;
-	loop->start = compiler->fn->code.count - 1;
+	loop->start = start;
 	loop->scopeDepth = compiler->scopeDepth;
 	compiler->loop = loop;
 }
@@ -2587,36 +2500,36 @@ static StmtJump *exitLoop(Compiler *compiler, IRExpr *condition) {
 
 // Compiles the body of the loop and tracks its extent so that contained "break"
 // statements can be handled correctly.
-static void loopBody(Compiler *compiler) {
-	compiler->loop->body = compiler->fn->code.count;
-	statement(compiler);
+static IRStmt *loopBody(Compiler *compiler) {
+	StmtBlock *block = compiler->New<StmtBlock>();
+	StmtLabel *label = compiler->New<StmtLabel>();
+	block->Add(label);
+	block->Add(statement(compiler));
+	compiler->loop->body = label;
+	return block;
 }
 
 // Ends the current innermost loop. Patches up all jumps and breaks now that
 // we know where the end of the loop is.
-static void endLoop(Compiler *compiler) {
+static IRStmt *endLoop(Compiler *compiler) {
 	// We don't check for overflow here since the forward jump over the loop body
 	// will report an error for the same problem.
-	int loopOffset = compiler->fn->code.count - compiler->loop->start + 2;
-	emitShortArg(compiler, CODE_LOOP, loopOffset);
+	StmtBlock *block = compiler->New<StmtBlock>();
+	block->Add(compiler->New<StmtJump>(compiler->loop->start, nullptr));
 
-	patchJump(compiler, compiler->loop->exitJump);
+	// Make a label that all the break jumps go to
+	StmtLabel *breakToLabel = compiler->New<StmtLabel>();
+	block->Add(breakToLabel);
 
-	// Find any break placeholder instructions (which will be CODE_END in the
-	// bytecode) and replace them with real jumps.
-	int i = compiler->loop->body;
-	while (i < compiler->fn->code.count) {
-		if (compiler->fn->code.data[i] == CODE_END) {
-			compiler->fn->code.data[i] = CODE_JUMP;
-			patchJump(compiler, i + 1);
-			i += 3;
-		} else {
-			// Skip this instruction and its arguments.
-			i += 1 + getByteCountForArguments(compiler->fn->code.data, compiler->fn->constants.data, i);
-		}
+	// Find any break placeholder jumps, and set their jump target accordingly
+	for (StmtJump *jump : compiler->loop->exitJumps) {
+		jump->target = breakToLabel;
 	}
 
+	// Effectively pop the loop off our linked-list stack of loops
 	compiler->loop = compiler->loop->enclosing;
+
+	return block;
 }
 
 static IRStmt *forStatement(Compiler *compiler) {
@@ -2678,29 +2591,26 @@ static IRStmt *forStatement(Compiler *compiler) {
 
 	// Create another hidden local for the iterator object.
 	LocalVariable *iterSlot = addLocal(compiler, "iter ");
-	ExprConst *nullConst = compiler->New<ExprConst>(CcValue::NULL_TYPE);
-	block->Add(compiler->New<StmtAssign>(iterSlot, nullConst));
+	block->Add(compiler->New<StmtAssign>(iterSlot, null(compiler)));
 
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after loop expression.");
 
+	StmtLabel *startLabel = compiler->New<StmtLabel>();
+	block->Add(startLabel);
 	Loop loop;
-	startLoop(compiler, &loop);
+	startLoop(compiler, &loop, startLabel);
 
 	// Advance the iterator by calling the ".iterate" method on the sequence.
-	ExprFuncCall *iterateCall = compiler->New<ExprFuncCall>();
-	iterateCall->signature = "iterate(_)";
-	iterateCall->receiver = loadVariable(compiler, iterSlot);
-	iterateCall->args.push_back(loadVariable(compiler, seqSlot));
+	ExprFuncCall *iterateCall =
+	    callMethod(compiler, "iterate(_)", loadVariable(compiler, iterSlot), {loadVariable(compiler, seqSlot)});
 
 	// Update and test the iterator.
 	block->Add(compiler->New<StmtAssign>(iterSlot, iterateCall));
 	block->Add(exitLoop(compiler, loadVariable(compiler, iterSlot)));
 
 	// Get the current value in the sequence by calling ".iteratorValue".
-	ExprFuncCall *valueCall = compiler->New<ExprFuncCall>();
-	valueCall->signature = "iteratorValue(_)";
-	valueCall->receiver = loadVariable(compiler, seqSlot);
-	valueCall->args.push_back(loadVariable(compiler, iterSlot));
+	ExprFuncCall *valueCall =
+	    callMethod(compiler, "iteratorValue(_)", loadVariable(compiler, seqSlot), {loadVariable(compiler, iterSlot)});
 
 	// Bind the loop variable in its own scope. This ensures we get a fresh
 	// variable each iteration so that closures for it don't all see the same one.
@@ -2708,56 +2618,74 @@ static IRStmt *forStatement(Compiler *compiler) {
 	LocalVariable *valueVar = addLocal(compiler, name);
 	block->Add(compiler->New<StmtAssign>(valueVar, valueCall));
 
-	loopBody(compiler);
+	block->Add(loopBody(compiler));
 
 	// Loop variable.
 	popScope(compiler);
 
-	endLoop(compiler);
+	block->Add(endLoop(compiler));
 
 	// Hidden variables.
 	popScope(compiler);
+
+	return block;
 }
 
-static void ifStatement(Compiler *compiler) {
+static IRStmt *ifStatement(Compiler *compiler) {
+	StmtBlock *block = compiler->New<StmtBlock>();
+
 	// Compile the condition.
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
-	expression(compiler);
+	IRExpr *condition = expression(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after if condition.");
 
 	// Jump to the else branch if the condition is false.
-	int ifJump = emitJump(compiler, CODE_JUMP_IF);
+	StmtJump *ifJump = compiler->AddNew<StmtJump>(block, nullptr, compiler->New<ExprLogicalNot>(condition));
 
 	// Compile the then branch.
-	statement(compiler);
+	block->Add(statement(compiler));
 
 	// Compile the else branch if there is one.
 	if (match(compiler, TOKEN_ELSE)) {
 		// Jump over the else branch when the if branch is taken.
-		int elseJump = emitJump(compiler, CODE_JUMP);
-		patchJump(compiler, ifJump);
+		StmtJump *ifToEnd = compiler->AddNew<StmtJump>(block);
 
-		statement(compiler);
+		StmtLabel *elseTarget = compiler->AddNew<StmtLabel>(block);
+		ifJump->target = elseTarget;
+
+		block->Add(statement(compiler));
 
 		// Patch the jump over the else.
-		patchJump(compiler, elseJump);
+		StmtLabel *end = compiler->AddNew<StmtLabel>(block);
+		ifToEnd->target = end;
 	} else {
-		patchJump(compiler, ifJump);
+		StmtLabel *end = compiler->AddNew<StmtLabel>(block);
+		ifJump->target = end;
 	}
+
+	return block;
 }
 
-static void whileStatement(Compiler *compiler) {
+static IRStmt *whileStatement(Compiler *compiler) {
+	StmtBlock *block = compiler->New<StmtBlock>();
+	StmtLabel *startLabel = compiler->AddNew<StmtLabel>(block);
+
 	Loop loop;
-	startLoop(compiler, &loop);
+	startLoop(compiler, &loop, startLabel);
 
 	// Compile the condition.
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
-	expression(compiler);
+	IRExpr *condition = expression(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after while condition.");
 
-	testExitLoop(compiler);
-	loopBody(compiler);
-	endLoop(compiler);
+	StmtJump *jumpOut = compiler->AddNew<StmtJump>(block, nullptr, compiler->New<ExprLogicalNot>(condition));
+	loop.exitJumps.push_back(jumpOut);
+
+	block->Add(loopBody(compiler));
+
+	block->Add(endLoop(compiler));
+
+	return block;
 }
 
 // Compiles a simple statement. These can only appear at the top-level or
@@ -2766,27 +2694,28 @@ static void whileStatement(Compiler *compiler) {
 // branches of an "if" statement.
 //
 // Unlike expressions, statements do not leave a value on the stack.
-IRNode *statement(Compiler *compiler) {
+IRStmt *statement(Compiler *compiler) {
 	if (match(compiler, TOKEN_BREAK)) {
 		if (compiler->loop == NULL) {
 			error(compiler, "Cannot use 'break' outside of a loop.");
-			return;
+			return nullptr;
 		}
 
 		// Since we will be jumping out of the scope, make sure any locals in it
 		// are discarded first.
 		discardLocals(compiler, compiler->loop->scopeDepth + 1);
 
-		// Emit a placeholder instruction for the jump to the end of the body. When
-		// we're done compiling the loop body and know where the end is, we'll
-		// replace these with `CODE_JUMP` instructions with appropriate offsets.
-		// We use `CODE_END` here because that can't occur in the middle of
-		// bytecode.
-		emitJump(compiler, CODE_END);
-	} else if (match(compiler, TOKEN_CONTINUE)) {
+		// Add a placeholder jump. We don't yet know what the end-of-loop label is (it
+		// won't have been created yet), so make it jump to nullptr and add it to the
+		// list of jumps to be fixed up by endLoop.
+		StmtJump *jump = compiler->New<StmtJump>();
+		compiler->loop->exitJumps.push_back(jump);
+		return jump;
+	}
+	if (match(compiler, TOKEN_CONTINUE)) {
 		if (compiler->loop == NULL) {
 			error(compiler, "Cannot use 'continue' outside of a loop.");
-			return;
+			return nullptr;
 		}
 
 		// Since we will be jumping out of the scope, make sure any locals in it
@@ -2794,43 +2723,56 @@ IRNode *statement(Compiler *compiler) {
 		discardLocals(compiler, compiler->loop->scopeDepth + 1);
 
 		// emit a jump back to the top of the loop
-		int loopOffset = compiler->fn->code.count - compiler->loop->start + 2;
-		emitShortArg(compiler, CODE_LOOP, loopOffset);
-	} else if (match(compiler, TOKEN_FOR)) {
-		forStatement(compiler);
-	} else if (match(compiler, TOKEN_IF)) {
-		ifStatement(compiler);
-	} else if (match(compiler, TOKEN_RETURN)) {
+		return compiler->New<StmtJump>(compiler->loop->start, nullptr);
+	}
+	if (match(compiler, TOKEN_FOR)) {
+		return forStatement(compiler);
+	}
+	if (match(compiler, TOKEN_IF)) {
+		return ifStatement(compiler);
+	}
+	if (match(compiler, TOKEN_RETURN)) {
 		// Compile the return value.
 		if (peek(compiler) == TOKEN_LINE) {
 			// If there's no expression after return, initializers should
 			// return 'this' and regular methods should return null
-			Code result = compiler->isInitializer ? CODE_LOAD_LOCAL_0 : CODE_NULL;
-			emitOp(compiler, result);
-		} else {
-			if (compiler->isInitializer) {
-				error(compiler, "A constructor cannot return a value.");
-			}
-
-			expression(compiler);
+			IRExpr *returnValue = compiler->isInitializer ? loadThis(compiler) : null(compiler);
+			return compiler->New<StmtReturn>(returnValue);
 		}
 
-		emitOp(compiler, CODE_RETURN);
-	} else if (match(compiler, TOKEN_WHILE)) {
-		whileStatement(compiler);
-	} else if (match(compiler, TOKEN_LEFT_BRACE)) {
+		if (compiler->isInitializer) {
+			error(compiler, "A constructor cannot return a value.");
+		}
+
+		IRExpr *returnValue = expression(compiler);
+		return compiler->New<StmtReturn>(returnValue);
+	}
+	if (match(compiler, TOKEN_WHILE)) {
+		return whileStatement(compiler);
+	}
+	if (match(compiler, TOKEN_LEFT_BRACE)) {
 		// Block statement.
 		pushScope(compiler);
-		if (finishBlock(compiler)) {
+
+		IRNode *body = finishBlock(compiler);
+
+		IRStmt *stmt = dynamic_cast<IRStmt *>(body);
+
+		// Ignore nulls, they mean 'ignore this'
+		if (body && !stmt) {
 			// Block was an expression, so discard it.
-			emitOp(compiler, CODE_POP);
+			IRExpr *expr = dynamic_cast<IRExpr *>(body);
+			ASSERT(expr, "finishBlock returned neither a statement nor an expression");
+			stmt = compiler->New<StmtEvalAndIgnore>(expr);
 		}
 		popScope(compiler);
-	} else {
-		// Expression statement.
-		expression(compiler);
-		emitOp(compiler, CODE_POP);
+
+		return stmt;
 	}
+
+	// Expression statement.
+	IRExpr *expr = expression(compiler);
+	return compiler->New<StmtEvalAndIgnore>(expr);
 }
 
 // Creates a matching constructor method for an initializer with [signature]
@@ -3240,7 +3182,7 @@ static IRNode *variableDefinition(Compiler *compiler) {
 		initialiser = expression(compiler);
 	} else {
 		// Default initialize it to null.
-		initialiser = compiler->New<ExprConst>(CcValue::NULL_TYPE);
+		initialiser = null(compiler);
 	}
 
 	// Now put it in scope.
@@ -3352,6 +3294,8 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	return compiler.fn;
 }
 
+// Attribute handling, disabled for now - they're experimental upstream anyway, and can be added later
+#if 0
 // Helpers for Attributes
 
 // Throw an error if any attributes were found preceding,
@@ -3541,3 +3485,4 @@ static void copyMethodAttributes(Compiler *compiler, bool isForeign, bool isStat
 
 	wrenPopRoot(vm);
 }
+#endif
