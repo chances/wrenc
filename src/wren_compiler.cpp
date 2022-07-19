@@ -15,6 +15,7 @@
 
 #include "ArenaAllocator.h"
 #include "CcValue.h"
+#include "ClassInfo.h"
 #include "CompContext.h"
 #include "ConstantsPool.h"
 #include "IRNode.h"
@@ -259,34 +260,6 @@ struct Loop {
 
 	// The loop enclosing this one, or NULL if this is the outermost loop.
 	Loop *enclosing;
-};
-
-// Bookkeeping information for compiling a class definition.
-struct ClassInfo {
-	// The name of the class.
-	ObjString *name;
-
-	// Attributes for the class itself
-	ObjMap *classAttributes;
-	// Attributes for methods in this class
-	ObjMap *methodAttributes;
-
-	// Symbol table for the fields of the class.
-	SymbolTable fields;
-
-	// Symbols for the methods defined by the class. Used to detect duplicate
-	// method definitions.
-	IntBuffer methods;
-	IntBuffer staticMethods;
-
-	// True if the class being compiled is a foreign class.
-	bool isForeign;
-
-	// True if the current method being compiled is static.
-	bool inStatic;
-
-	// The signature of the method being compiled.
-	Signature *signature;
 };
 
 class Compiler {
@@ -1616,9 +1589,9 @@ std::string Signature::ToString() const {
 }
 
 // Gets the symbol for a method with [signature].
-static Signature *signatureSymbol(Compiler *compiler, Signature *signature) {
+static Signature *normaliseSignature(Compiler *compiler, const Signature &signature) {
 	// Only use one signature object, so if the pointers are different it means a different thing
-	return compiler->parser->context->GetSignature(*signature);
+	return compiler->parser->context->GetSignature(signature);
 }
 
 // Returns a signature with [type] whose name is from the last consumed token.
@@ -1662,7 +1635,7 @@ static std::vector<IRExpr *> finishArgumentList(Compiler *compiler, Signature *s
 // the expression twice). This is merely a convenience to avoid having to manually add the method to a block.
 static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExpr *receiver, std::vector<IRExpr *> args,
                                 StmtBlock *toAdd = nullptr) {
-	Signature *sig = compiler->parser->context->GetSignature(Signature::Parse(signature));
+	Signature *sig = normaliseSignature(compiler, Signature::Parse(signature));
 
 	ASSERT((int)args.size() == sig->arity, "callMethod signature and args have different arities");
 
@@ -1744,7 +1717,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 
 	ExprFuncCall *call = compiler->New<ExprFuncCall>();
 	call->receiver = receiver;
-	call->signature = compiler->parser->context->GetSignature(called);
+	call->signature = normaliseSignature(compiler, called);
 	call->args = std::move(args);
 	call->super = super;
 	return call;
@@ -1768,7 +1741,7 @@ static IRExpr *namedCall(Compiler *compiler, IRExpr *receiver, bool canAssign, b
 
 		ExprFuncCall *call = compiler->New<ExprFuncCall>();
 		call->receiver = receiver;
-		call->signature = compiler->parser->context->GetSignature(signature);
+		call->signature = normaliseSignature(compiler, signature);
 		call->super = super;
 		call->args.push_back(value);
 		return call;
@@ -1993,7 +1966,6 @@ static IRExpr *staticField(Compiler *compiler, bool canAssign) {
 
 	// If this is the first time we've seen this static field, implicitly
 	// define it as a variable in the scope surrounding the class definition.
-	// TODO might this be broken for two classes with the same static field name? In Wren the locals array is cleared.
 	VarDecl *local = compiler->locals.Lookup(token->contents);
 	if (local == nullptr) {
 		local = declareVariable(classCompiler, NULL);
@@ -2154,7 +2126,7 @@ static IRExpr *subscript(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 
 	ExprFuncCall *call = compiler->New<ExprFuncCall>();
 	call->receiver = receiver;
-	call->signature = compiler->parser->context->GetSignature(signature);
+	call->signature = normaliseSignature(compiler, signature);
 	call->args = args;
 	return call;
 }
@@ -2165,50 +2137,90 @@ static IRExpr *call(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	return namedCall(compiler, lhs, canAssign, false);
 }
 
-/* TODO implement these
-static void and_(Compiler *compiler, bool canAssign) {
-    ignoreNewlines(compiler);
+static IRExpr *and_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
+	ignoreNewlines(compiler);
 
-    // Skip the right argument if the left is false.
-    int jump = emitJump(compiler, CODE_AND);
-    parsePrecedence(compiler, PREC_LOGICAL_AND);
-    patchJump(compiler, jump);
+	// We have to run a series of statements including jumps to find
+	// the value.
+	StmtBlock *block = compiler->New<StmtBlock>();
+	LocalVariable *tmp = addTemporary(compiler, "and-value-tmp");
+	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
+	wrapper->statement = block;
+	wrapper->temporary = tmp;
+
+	// Put the LHS in the temporary
+	compiler->AddNew<StmtAssign>(block, tmp, lhs);
+
+	// Skip the right argument if the left is false.
+	StmtJump *jump = compiler->AddNew<StmtJump>(block);
+	jump->condition = compiler->New<ExprLogicalNot>(loadVariable(compiler, tmp));
+	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_AND);
+	compiler->AddNew<StmtAssign>(block, tmp, rhs);
+	jump->target = compiler->AddNew<StmtLabel>(block);
+
+	return wrapper;
 }
 
-static void or_(Compiler *compiler, bool canAssign) {
-    ignoreNewlines(compiler);
+static IRExpr *or_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
+	ignoreNewlines(compiler);
 
-    // Skip the right argument if the left is true.
-    int jump = emitJump(compiler, CODE_OR);
-    parsePrecedence(compiler, PREC_LOGICAL_OR);
-    patchJump(compiler, jump);
+	// We have to run a series of statements including jumps to find
+	// the value.
+	StmtBlock *block = compiler->New<StmtBlock>();
+	LocalVariable *tmp = addTemporary(compiler, "or-value-tmp");
+	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
+	wrapper->statement = block;
+	wrapper->temporary = tmp;
+
+	// Put the LHS in the temporary
+	compiler->AddNew<StmtAssign>(block, tmp, lhs);
+
+	// Skip the right argument if the left is true.
+	StmtJump *jump = compiler->AddNew<StmtJump>(block);
+	jump->condition = loadVariable(compiler, tmp);
+	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_OR);
+	compiler->AddNew<StmtAssign>(block, tmp, rhs);
+	jump->target = compiler->AddNew<StmtLabel>(block);
+
+	return wrapper;
 }
 
-static void conditional(Compiler *compiler, bool canAssign) {
-    // Ignore newline after '?'.
-    ignoreNewlines(compiler);
+static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign) {
+	// Ignore newline after '?'.
+	ignoreNewlines(compiler);
 
-    // Jump to the else branch if the condition is false.
-    int ifJump = emitJump(compiler, CODE_JUMP_IF);
+	// We have to run a series of statements including jumps to find
+	// the value.
+	StmtBlock *block = compiler->New<StmtBlock>();
+	LocalVariable *tmp = addTemporary(compiler, "conditional-value-tmp");
+	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
+	wrapper->statement = block;
+	wrapper->temporary = tmp;
 
-    // Compile the then branch.
-    parsePrecedence(compiler, PREC_CONDITIONAL);
+	// If the condition is false, jumpToFalse to the 2nd term
+	StmtJump *jumpToFalse = compiler->AddNew<StmtJump>(block);
+	jumpToFalse->condition = compiler->New<ExprLogicalNot>(loadVariable(compiler, tmp));
 
-    consume(compiler, TOKEN_COLON, "Expect ':' after then branch of conditional operator.");
-    ignoreNewlines(compiler);
+	// Compile the then branch.
+	IRExpr *trueValue = parsePrecedence(compiler, PREC_CONDITIONAL);
+	compiler->AddNew<StmtAssign>(block, tmp, trueValue);
 
-    // Jump over the else branch when the if branch is taken.
-    int elseJump = emitJump(compiler, CODE_JUMP);
+	consume(compiler, TOKEN_COLON, "Expect ':' after then branch of conditional operator.");
+	ignoreNewlines(compiler);
 
-    // Compile the else branch.
-    patchJump(compiler, ifJump);
+	// Jump over the else branch when the if branch is taken.
+	StmtJump *trueToEnd = compiler->AddNew<StmtJump>(block);
 
-    parsePrecedence(compiler, PREC_ASSIGNMENT);
+	// Compile the else branch.
+	jumpToFalse->target = compiler->AddNew<StmtLabel>(block);
 
-    // Patch the jump over the else.
-    patchJump(compiler, elseJump);
+	parsePrecedence(compiler, PREC_ASSIGNMENT);
+
+	// Patch the jump over the else.
+	trueToEnd->target = compiler->AddNew<StmtLabel>(block);
+
+	return wrapper;
 }
-*/
 
 static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 	GrammarRule *rule = getRule(compiler->parser->previous.type);
@@ -2224,7 +2236,7 @@ static IRExpr *infixOp(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 
 	ExprFuncCall *call = compiler->New<ExprFuncCall>();
 	call->receiver = receiver;
-	call->signature = compiler->parser->context->GetSignature(signature);
+	call->signature = normaliseSignature(compiler, signature);
 	call->args.push_back(rhs);
 	// TODO super handling - eg does "super * 5" do what you'd expect?
 	return call;
@@ -2775,79 +2787,37 @@ IRStmt *statement(Compiler *compiler) {
 	return compiler->New<StmtEvalAndIgnore>(expr);
 }
 
-// Creates a matching constructor method for an initializer with [signature]
-// and [initializerSymbol].
-//
-// Construction is a two-stage process in Wren that involves two separate
-// methods. There is a static method that allocates a new instance of the class.
-// It then invokes an initializer method on the new instance, forwarding all of
-// the constructor arguments to it.
-//
-// The allocator method always has a fixed implementation:
-//
-//     CODE_CONSTRUCT - Replace the class in slot 0 with a new instance of it.
-//     CODE_CALL      - Invoke the initializer on the new instance.
-//
-// This creates that method and calls the initializer with [initializerSymbol].
-static void createConstructor(Compiler *compiler, Signature *signature, int initializerSymbol) {
-	Compiler methodCompiler;
-	initCompiler(&methodCompiler, compiler->parser, compiler, true);
-
-	// Allocate the instance.
-	emitOp(&methodCompiler, compiler->enclosingClass->isForeign ? CODE_FOREIGN_CONSTRUCT : CODE_CONSTRUCT);
-
-	// Run its initializer.
-	emitShortArg(&methodCompiler, (Code)(CODE_CALL_0 + signature->arity), initializerSymbol);
-
-	// Return the instance.
-	emitOp(&methodCompiler, CODE_RETURN);
-
-	endCompiler(&methodCompiler, "");
-}
-
-// Loads the enclosing class onto the stack and then binds the function already
-// on the stack as a method on that class.
-static void defineMethod(Compiler *compiler, Variable classVariable, bool isStatic, int methodSymbol) {
-	// Load the class. We have to do this for each method because we can't
-	// keep the class on top of the stack. If there are static fields, they
-	// will be locals above the initial variable slot for the class on the
-	// stack. To skip past those, we just load the class each time right before
-	// defining a method.
-	loadVariable(compiler, classVariable);
-
-	// Define the method.
-	Code instruction = isStatic ? CODE_METHOD_STATIC : CODE_METHOD_INSTANCE;
-	emitShortArg(compiler, instruction, methodSymbol);
-}
-
 // Declares a method in the enclosing class with [signature].
 //
 // Reports an error if a method with that signature is already declared.
-// Returns the symbol for the method.
-static int declareMethod(Compiler *compiler, Signature *signature, const char *name, int length) {
-	int symbol = signatureSymbol(compiler, signature);
-
+static MethodInfo *declareMethod(Compiler *compiler, Signature *signature) {
 	// See if the class has already declared method with this signature.
 	ClassInfo *classInfo = compiler->enclosingClass;
-	IntBuffer *methods = classInfo->inStatic ? &classInfo->staticMethods : &classInfo->methods;
-	for (int i = 0; i < methods->count; i++) {
-		if (methods->data[i] == symbol) {
-			const char *staticPrefix = classInfo->inStatic ? "static " : "";
-			error(compiler, "Class %s already defines a %smethod '%s'.", &compiler->enclosingClass->name->value,
-			      staticPrefix, name);
-			break;
-		}
+	auto &methods = classInfo->inStatic ? classInfo->staticMethods : classInfo->methods;
+
+	// Check for duplicate methods
+	auto existing = methods.find(signature);
+	if (existing != methods.end()) {
+		const char *staticPrefix = classInfo->inStatic ? "static " : "";
+		std::string sigStr = signature->ToString();
+		error(compiler, "Class %s already defines a %smethod '%s' at line %d.", compiler->enclosingClass->name.c_str(),
+		      staticPrefix, sigStr.c_str(), existing->second->lineNum);
 	}
 
-	wrenIntBufferWrite(compiler->parser->context, methods, symbol);
-	return symbol;
+	methods[signature] = std::make_unique<MethodInfo>();
+	MethodInfo *method = methods.at(signature).get();
+
+	method->lineNum = compiler->parser->previous.line;
+	method->signature = signature;
+
+	return method;
 }
 
-static Value consumeLiteral(Compiler *compiler, const char *message) {
+static CcValue consumeLiteral(Compiler *compiler, const char *message) {
 	if (match(compiler, TOKEN_FALSE))
-		return FALSE_VAL;
+		return CcValue(false);
 	if (match(compiler, TOKEN_TRUE))
-		return TRUE_VAL;
+		return CcValue(true);
 	if (match(compiler, TOKEN_NUMBER))
 		return compiler->parser->previous.value;
 	if (match(compiler, TOKEN_STRING))
@@ -2857,20 +2827,22 @@ static Value consumeLiteral(Compiler *compiler, const char *message) {
 
 	error(compiler, message);
 	nextToken(compiler->parser);
-	return NULL_VAL;
+	return CcValue::NULL_TYPE;
 }
 
 static bool matchAttribute(Compiler *compiler) {
+	// For now, attributes aren't implemented
+#if 0
 
 	if (match(compiler, TOKEN_HASH)) {
 		compiler->numAttributes++;
 		bool runtimeAccess = match(compiler, TOKEN_BANG);
 		if (match(compiler, TOKEN_NAME)) {
-			Value group = compiler->parser->previous.value;
+			CcValue group = compiler->parser->previous.value;
 			TokenType ahead = peek(compiler);
 			if (ahead == TOKEN_EQ || ahead == TOKEN_LINE) {
-				Value key = group;
-				Value value = NULL_VAL;
+				CcValue key = group;
+				CcValue value = NULL_VAL;
 				if (match(compiler, TOKEN_EQ)) {
 					value = consumeLiteral(compiler,
 					                       "Expect a Bool, Num, String or Identifier literal for an attribute value.");
@@ -2884,8 +2856,8 @@ static bool matchAttribute(Compiler *compiler) {
 				} else {
 					while (peek(compiler) != TOKEN_RIGHT_PAREN) {
 						consume(compiler, TOKEN_NAME, "Expect name for attribute key.");
-						Value key = compiler->parser->previous.value;
-						Value value = NULL_VAL;
+						CcValue key = compiler->parser->previous.value;
+						CcValue value = NULL_VAL;
 						if (match(compiler, TOKEN_EQ)) {
 							value = consumeLiteral(
 							    compiler, "Expect a Bool, Num, String or Identifier literal for an attribute value.");
@@ -2911,6 +2883,7 @@ static bool matchAttribute(Compiler *compiler) {
 		consumeLine(compiler, "Expect newline after attribute.");
 		return true;
 	}
+#endif
 
 	return false;
 }
@@ -2919,10 +2892,10 @@ static bool matchAttribute(Compiler *compiler) {
 //
 // Returns `true` if it compiled successfully, or `false` if the method couldn't
 // be parsed.
-static bool method(Compiler *compiler, Variable classVariable) {
+static bool method(Compiler *compiler, IRClass *classNode) {
 	// Parse any attributes before the method and store them
 	if (matchAttribute(compiler)) {
-		return method(compiler, classVariable);
+		return method(compiler, classNode);
 	}
 
 	// TODO: What about foreign constructors?
@@ -2939,58 +2912,84 @@ static bool method(Compiler *compiler, Variable classVariable) {
 	}
 
 	// Build the method signature.
-	Signature signature = signatureFromToken(compiler, SIG_GETTER);
-	compiler->enclosingClass->signature = &signature;
+	Signature *signature = normaliseSignature(compiler, signatureFromToken(compiler, SIG_GETTER));
+	compiler->enclosingClass->signature = signature;
 
 	Compiler methodCompiler;
 	initCompiler(&methodCompiler, compiler->parser, compiler, true);
 
 	// Compile the method signature.
-	signatureFn(&methodCompiler, &signature);
+	signatureFn(&methodCompiler, signature);
 
-	methodCompiler.isInitializer = signature.type == SIG_INITIALIZER;
+	methodCompiler.isInitializer = signature->type == SIG_INITIALIZER;
 
-	if (isStatic && signature.type == SIG_INITIALIZER) {
+	if (isStatic && signature->type == SIG_INITIALIZER) {
 		error(compiler, "A constructor cannot be static.");
 	}
 
-	// Include the full signature in debug messages in stack traces.
-	char fullSignature[MAX_METHOD_SIGNATURE];
-	int length;
-	signatureToString(&signature, fullSignature, &length);
-
 	// Copy any attributes the compiler collected into the enclosing class
-	copyMethodAttributes(compiler, isForeign, isStatic, fullSignature, length);
+	// TODO re-enable when signatures are implemented
+	// copyMethodAttributes(compiler, isForeign, isStatic, fullSignature, length);
 
 	// Check for duplicate methods. Doesn't matter that it's already been
 	// defined, error will discard bytecode anyway.
 	// Check if the method table already contains this symbol
-	int methodSymbol = declareMethod(compiler, &signature, fullSignature, length);
+	MethodInfo *method = declareMethod(compiler, signature);
+	method->isForeign = isForeign;
+	method->isStatic = isStatic;
 
 	if (isForeign) {
-		// Define a constant for the signature.
-		emitConstant(compiler, wrenNewStringLength(compiler->parser->context, fullSignature, length));
-
 		// We don't need the function we started compiling in the parameter list
-		// any more.
+		// any more. This is normally done by endCompiler, but we don't need to call that.
 		methodCompiler.parser->context->compiler = methodCompiler.parent;
 	} else {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
-		finishBody(&methodCompiler);
-		endCompiler(&methodCompiler, fullSignature);
+		methodCompiler.fn->body = finishBody(&methodCompiler);
+		method->fn = methodCompiler.fn;
+		endCompiler(&methodCompiler, signature->ToString());
 	}
 
-	// Define the method. For a constructor, this defines the instance
-	// initializer method.
-	defineMethod(compiler, classVariable, isStatic, methodSymbol);
-
-	if (signature.type == SIG_INITIALIZER) {
+	if (signature->type == SIG_INITIALIZER) {
 		// Also define a matching constructor method on the metaclass.
-		signature.type = SIG_METHOD;
-		int constructorSymbol = signatureSymbol(compiler, &signature);
+		// Constructors have to parts, kinda like C++'s destructors: one initialises the
+		// memory and runs the user's code, and that's of type SIG_INITIALISER.
+		// There's a regular static method with (aside from being SIG_METHOD) the same signature,
+		// which first allocates the memory to store the object then calls the initialiser.
+		Signature allocSignatureValue = *signature;
+		allocSignatureValue.type = SIG_METHOD;
+		MethodInfo *alloc = declareMethod(compiler, normaliseSignature(compiler, allocSignatureValue));
 
-		createConstructor(compiler, &signature, methodSymbol);
-		defineMethod(compiler, classVariable, true, constructorSymbol);
+		alloc->isStatic = true;
+		alloc->isForeign = false; // For foreign classes, the allocate memory node handles the FFI stuff.
+
+		IRFn *fn = compiler->New<IRFn>();
+		fn->arity = signature->arity;
+		alloc->fn = fn;
+
+		StmtBlock *block = compiler->New<StmtBlock>();
+		fn->body = block;
+
+		LocalVariable *objLocal = compiler->New<LocalVariable>();
+		objLocal->name = "alloc-temp-special";
+		objLocal->depth = 0;
+		objLocal->isUpvalue = false;
+		fn->locals.push_back(objLocal);
+
+		// First, allocate the memory of the new instance
+		ExprAllocateInstanceMemory *allocExpr = compiler->New<ExprAllocateInstanceMemory>();
+		allocExpr->target = classNode;
+
+		block->Add(compiler->New<StmtAssign>(objLocal, allocExpr));
+
+		// Now run the initialiser
+		ExprFuncCall *call = compiler->New<ExprFuncCall>();
+		call->signature = signature;
+		call->receiver = compiler->New<ExprLoad>(objLocal);
+		// TODO arguments
+		block->Add(compiler, call);
+
+		// Finally, return it
+		block->Add(compiler->New<StmtReturn>(compiler->New<ExprLoad>(objLocal)));
 	}
 
 	return true;
@@ -2999,20 +2998,11 @@ static bool method(Compiler *compiler, Variable classVariable) {
 // Compiles a class definition. Assumes the "class" token has already been
 // consumed (along with a possibly preceding "foreign" token).
 static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
-	// Create a variable to store the class in.
-	Variable classVariable;
-	classVariable.locals = compiler->scopeDepth == -1 ? SCOPE_MODULE : SCOPE_LOCAL;
-	classVariable.index = declareNamedVariable(compiler);
+	IRClass *classNode = compiler->New<IRClass>();
+	classNode->info = std::make_unique<ClassInfo>();
 
-	// Create shared class name value
-	Value classNameString = wrenNewStringLength(compiler->parser->context, compiler->parser->previous.start,
-	                                            compiler->parser->previous.length);
-
-	// Create class name string to track method duplicates
-	ObjString *className = AS_STRING(classNameString);
-
-	// Make a string constant for the name.
-	emitConstant(compiler, classNameString);
+	// Find the class's name
+	std::string className = compiler->parser->previous.contents;
 
 	// Load the superclass (if there is one).
 	if (match(compiler, TOKEN_IS)) {
@@ -3022,51 +3012,28 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 		loadCoreVariable(compiler, "Object");
 	}
 
-	// Store a placeholder for the number of fields argument. We don't know the
-	// count until we've compiled all the methods to see which fields are used.
-	int numFieldsInstruction = -1;
-	if (isForeign) {
-		emitOp(compiler, CODE_FOREIGN_CLASS);
-	} else {
-		numFieldsInstruction = emitByteArg(compiler, CODE_CLASS, 255);
-	}
-
-	// Store it in its name.
-	defineVariable(compiler, classVariable.index);
-
 	// Push a local variable scope. Static fields in a class body are hoisted out
 	// into local variables declared in this scope. Methods that use them will
 	// have upvalues referencing them.
 	pushScope(compiler);
 
-	ClassInfo classInfo;
+	ClassInfo &classInfo = *classNode->info;
 	classInfo.isForeign = isForeign;
 	classInfo.name = className;
 
-	// Allocate attribute maps if necessary.
-	// A method will allocate the methods one if needed
-	classInfo.classAttributes = compiler->attributes->count > 0 ? wrenNewMap(compiler->parser->context) : NULL;
-	classInfo.methodAttributes = NULL;
 	// Copy any existing attributes into the class
-	copyAttributes(compiler, classInfo.classAttributes);
-
-	// Set up a symbol table for the class's fields. We'll initially compile
-	// them to slots starting at zero. When the method is bound to the class, the
-	// bytecode will be adjusted by [wrenBindMethod] to take inherited fields
-	// into account.
-	wrenSymbolTableInit(&classInfo.fields);
+	// TODO enable this when attributes are implemented
+	// copyAttributes(compiler, classInfo.classAttributes);
 
 	// Set up symbol buffers to track duplicate static and instance methods.
-	wrenIntBufferInit(&classInfo.methods);
-	wrenIntBufferInit(&classInfo.staticMethods);
-	compiler->enclosingClass = &classInfo;
+	compiler->enclosingClass = classNode->info.get();
 
 	// Compile the method definitions.
 	consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' after class declaration.");
 	matchLine(compiler);
 
 	while (!match(compiler, TOKEN_RIGHT_BRACE)) {
-		if (!method(compiler, classVariable))
+		if (!method(compiler, classNode))
 			break;
 
 		// Don't require a newline after the last definition.
@@ -3079,6 +3046,8 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	// If any attributes are present,
 	// instantiate a ClassAttributes instance for the class
 	// and send it over to CODE_END_CLASS
+	// TODO re-enable for attribute support
+#if 0
 	bool hasAttr = classInfo.classAttributes != NULL || classInfo.methodAttributes != NULL;
 	if (hasAttr) {
 		emitClassAttributes(compiler, &classInfo);
@@ -3088,18 +3057,15 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 		// emit it and use it as needed.
 		emitOp(compiler, CODE_END_CLASS);
 	}
+#endif
 
-	// Update the class with the number of fields.
-	if (!isForeign) {
-		compiler->fn->code.data[numFieldsInstruction] = (uint8_t)classInfo.fields.count;
-	}
-
-	// Clear symbol tables for tracking field and method names.
-	wrenSymbolTableClear(compiler->parser->context, &classInfo.fields);
-	wrenIntBufferClear(compiler->parser->context, &classInfo.methods);
-	wrenIntBufferClear(compiler->parser->context, &classInfo.staticMethods);
 	compiler->enclosingClass = NULL;
 	popScope(compiler);
+
+	classInfo.inStatic = false;
+	classInfo.signature = nullptr;
+
+	return classNode;
 }
 
 // Compiles an "import" statement.
@@ -3119,17 +3085,23 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 static IRNode *import(Compiler *compiler) {
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_STRING, "Expect a string after 'import'.");
-	int moduleConstant = addConstant(compiler, compiler->parser->previous.value);
+	std::string moduleName = compiler->parser->previous.contents;
 
-	// Load the module.
-	emitShortArg(compiler, CODE_IMPORT_MODULE, moduleConstant);
+	// Add a node to say that we need the module. This is kinda just put anywhere inside the
+	// file, with no concerns for ordering or matching up with if statements or anything like that.
+	IRImport *import = compiler->New<IRImport>();
+	import->moduleName = moduleName;
+	compiler->parser->module->AddNode(import);
 
-	// Discard the unused result value from calling the module body's closure.
-	emitOp(compiler, CODE_POP);
+	// At this point in the execution, require that the module is loaded if it wasn't already
+	// This makes stuff like requiring modules inside if statements work properly. If you have
+	// a debug module that throws an error when imported in release builds and all the imports
+	// of it check if you're in release mode or not, then this is what makes that work properly.
+	StmtLoadModule *load = compiler->New<StmtLoadModule>();
 
 	// The for clause is optional.
 	if (!match(compiler, TOKEN_FOR))
-		return;
+		return load;
 
 	// Compile the comma-separated list of variables to import.
 	do {
@@ -3141,13 +3113,8 @@ static IRNode *import(Compiler *compiler) {
 		// in order to reference it in the import later
 		Token sourceVariableToken = compiler->parser->previous;
 
-		// Define a string constant for the original variable name.
-		int sourceVariableConstant =
-		    addConstant(compiler, wrenNewStringLength(compiler->parser->context, sourceVariableToken.start,
-		                                              sourceVariableToken.length));
-
 		// Store the symbol we care about for the variable
-		int slot = -1;
+		VarDecl *slot;
 		if (match(compiler, TOKEN_AS)) {
 			// import "module" for Source as Dest
 			// Use 'Dest' as the name by declaring a new variable for it.
@@ -3159,12 +3126,14 @@ static IRNode *import(Compiler *compiler) {
 			slot = declareVariable(compiler, &sourceVariableToken);
 		}
 
-		// Load the variable from the other module.
-		emitShortArg(compiler, CODE_IMPORT_VARIABLE, sourceVariableConstant);
-
-		// Store the result in the variable here.
-		defineVariable(compiler, slot);
+		// When the module gets imported, make sure it sets up this slot
+		load->variables.emplace_back(StmtLoadModule::VarImport{
+		    .name = sourceVariableToken.contents,
+		    .bindTo = slot,
+		});
 	} while (match(compiler, TOKEN_COMMA));
+
+	return load;
 }
 
 // Compiles a "var" variable definition statement.
@@ -3237,8 +3206,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	// Zero-init the current token. This will get copied to previous when
 	// nextToken() is called below.
 	parser.next.type = TOKEN_ERROR;
-	parser.next.start = source;
-	parser.next.length = 0;
+	parser.next.contents = "";
 	parser.next.line = 0;
 	parser.next.value = CcValue::UNDEFINED;
 
@@ -3250,30 +3218,35 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	// Copy next -> current
 	nextToken(&parser);
 
-	int numExistingVariables = module->variables.count;
-
 	Compiler compiler;
 	initCompiler(&compiler, &parser, NULL, false);
 	ignoreNewlines(&compiler);
 
 	if (isExpression) {
-		expression(&compiler);
+		IRExpr *expr = expression(&compiler);
 		consume(&compiler, TOKEN_EOF, "Expect end of expression.");
+		compiler.fn->body = compiler.New<StmtReturn>(expr);
 	} else {
+		StmtBlock *block = compiler.New<StmtBlock>();
 		while (!match(&compiler, TOKEN_EOF)) {
-			definition(&compiler);
+			IRNode *node = definition(&compiler);
 
 			// If there is no newline, it must be the end of file on the same line.
 			if (!matchLine(&compiler)) {
 				consume(&compiler, TOKEN_EOF, "Expect end of file.");
 				break;
 			}
+
+			// Put statements into the main function body, put everything else into the main module
+			IRStmt *stmt = dynamic_cast<IRStmt *>(node);
+			if (stmt)
+				block->Add(stmt);
+			else
+				module->AddNode(node);
 		}
-
-		emitOp(&compiler, CODE_END_MODULE);
+		compiler.AddNew<StmtReturn>(block, compiler.New<ExprConst>(CcValue::NULL_TYPE));
+		compiler.fn->body = block;
 	}
-
-	emitOp(&compiler, CODE_RETURN);
 
 	// See if there are any implicitly declared module-level variables that never
 	// got an explicit definition. They will have values that are numbers

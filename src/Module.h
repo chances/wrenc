@@ -11,6 +11,8 @@
 #include <string>
 #include <unordered_map>
 
+class ClassInfo;
+
 class Module {
   public:
 	const std::optional<std::string> &Name() const { return m_name; }
@@ -27,4 +29,5 @@ class Module {
   private:
 	std::optional<std::string> m_name;
 	std::unordered_map<std::string, std::unique_ptr<IRGlobalDecl>> m_globals;
+	std::vector<std::unique_ptr<ClassInfo>> m_classes;
 };

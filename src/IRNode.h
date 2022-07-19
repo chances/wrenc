@@ -6,6 +6,7 @@
 
 #include "CcValue.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -13,10 +14,12 @@
 
 // Declarations
 class IRExpr;
+class IRStmt;
 class LocalVariable; // From Scope.h
 class FieldVariable; // From SymbolTable.h
 class Signature;     // From CompContext.h
 class Compiler;      // From wren_compiler.cpp
+class ClassInfo;     // From ClassInfo.h
 class StmtUpvalueImport;
 
 // //////////////////// //
@@ -63,10 +66,16 @@ class IRFn : public IRNode {
 	std::vector<LocalVariable *> temporaries;
 
 	// The arity, or number of arguments, of the function/method (not including the receiver)
-	int arity;
+	int arity = 0;
+
+	// The thing that gets run when this function is called
+	IRStmt *body = nullptr;
 };
 
-class IRClass : public IRNode {};
+class IRClass : public IRNode {
+  public:
+	std::unique_ptr<ClassInfo> info;
+};
 
 /// Global variable declaration
 class IRGlobalDecl : public IRNode, public VarDecl {
@@ -79,6 +88,44 @@ class IRGlobalDecl : public IRNode, public VarDecl {
 	/// be declared later in the file in the global scope) then this is set to the line number of the first
 	/// line where it was used.
 	std::optional<int> undeclaredLineUsed;
+};
+
+/// Represents importing a given module. This forces the given module to be parsed and compiled.
+/// Variables we import are bound to 'proxies': module-level variables are created, and when the
+/// import is evaluated the proxies are set to the appropriate value from the imported module.
+/// Note that it's legal to observe an imported variable before the import occurs:
+///   class Foo {
+///     static thing() {
+///       System.print(Bar)
+///     }
+///   }
+///   Foo.thing()
+///   import "test2.wren" for Bar
+/// In this case, the programme will print "null" since Bar hasn't been imported yet, and proxies
+/// easily let us mirror that behaviour. When the "import" directive is actually executed it produces
+/// a StmtLoadModule node which runs the module, if it hasn't already been loaded, and then sets
+/// up the proxies.
+///
+/// There are also be cases where it's possible to (during our Wren 'linking' step, not the system
+/// linker) recognise that a variable always has a specific value and optimise based on that, eg:
+///  module1.wren:
+///   var PI = 3.14
+///   class A {
+///     static fancyPrint(value) {
+///       print(value)
+///     }
+///   }
+///  module2.wren:
+///   import "module1" for PI, A
+///   A.fancyPrint(PI)
+/// In this case it should be possible to compile down to a single print(3.14) call. For a variable
+/// to be optimised like this, the following must be true:
+/// * The variable is defined in module1 and never modified
+/// * The variable must be imported to module2 before it's used
+/// * We still have to follow import loop rules (though we can probably slack on those for now)
+class IRImport : public IRNode {
+  public:
+	std::string moduleName;
 };
 
 // //////////////////// //
@@ -174,6 +221,21 @@ class StmtReturn : public IRStmt {
 	IRExpr *value = nullptr;
 };
 
+/// Forces a module's main function to be run. See [IRImport].
+class StmtLoadModule : public IRStmt {
+  public:
+	struct VarImport {
+		std::string name; // Name in the module we're importing from
+		VarDecl *bindTo = nullptr;
+	};
+
+	// The import this load triggers
+	IRImport *import = nullptr;
+
+	// The variables to import by name
+	std::vector<VarImport> variables;
+};
+
 // //////////////////// //
 // //// EXPRESSIONS /// //
 // //////////////////// //
@@ -241,4 +303,11 @@ class ExprLogicalNot : public IRExpr {
   public:
 	ExprLogicalNot(IRExpr *input) : input(input) {}
 	IRExpr *input = nullptr;
+};
+
+/// Allocates the memory for a new object. If this is a foreign object, the foreign allocation method
+/// is also called.
+class ExprAllocateInstanceMemory : public IRExpr {
+  public:
+	IRClass *target = nullptr;
 };

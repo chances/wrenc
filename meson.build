@@ -49,6 +49,7 @@ executable('wrencc',
   'src/ArenaAllocator.cpp',
   'src/CcValue.cpp',
   'src/Scope.cpp',
+  'src/ClassInfo.cpp',
   antlr_src,
 
   dependencies: [
