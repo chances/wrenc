@@ -226,7 +226,11 @@ class StmtBlock : public IRStmt {
 /// Not really a statement, this designates a point the jump instruction can jump to
 class StmtLabel : public IRStmt {
   public:
+	StmtLabel(std::string debugName) : debugName(std::move(debugName)) {}
+
 	void Accept(IRVisitor *visitor) override;
+
+	std::string debugName;
 };
 
 /// Jump to a label, possibly conditionally.
@@ -363,6 +367,15 @@ class ExprAllocateInstanceMemory : public IRExpr {
 	IRClass *target = nullptr;
 };
 
+/// Get a built-in variable, for example the Object class.
+class ExprSystemVar : public IRExpr {
+  public:
+	ExprSystemVar(std::string name) : name(name) {}
+	void Accept(IRVisitor *visitor) override;
+
+	std::string name;
+};
+
 // //////////////////// //
 // ////   VISITOR   /// //
 // //////////////////// //
@@ -399,6 +412,7 @@ class IRVisitor {
 	virtual void VisitExprRunStatements(ExprRunStatements *node);
 	virtual void VisitExprLogicalNot(ExprLogicalNot *node);
 	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
+	virtual void VisitExprSystemVar(ExprSystemVar *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
 	// TODO for other variables
@@ -427,6 +441,15 @@ class IRPrinter : private IRVisitor {
 	void StartTag(const std::string &str, bool printInline);
 	void EndTag();
 
+	void VisitExprConst(ExprConst *node) override;
+	void VisitExprFuncCall(ExprFuncCall *node) override;
+	void VisitStmtLabel(StmtLabel *node) override;
+	void VisitStmtJump(StmtJump *node) override;
+
+	std::string GetLabelId(StmtLabel *label);
+
 	std::vector<Tag> m_tagStack;
 	std::unique_ptr<std::stringstream> m_stream;
+
+	std::unordered_map<StmtLabel *, int> m_labelIds;
 };

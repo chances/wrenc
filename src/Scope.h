@@ -38,16 +38,24 @@ class ScopeFrame {
 
 class ScopeStack {
   public:
+	ScopeStack();
+	~ScopeStack();
+
 	// Find a local variable by name, returning nullptr if it doesn't exist
 	LocalVariable *Lookup(const std::string &name);
 
 	// Add a local variable to the deepest scope. Returns true if the variable was added, or
-	// nullptr if a variable with the same name already existed in the deepest scope.
+	// false if a variable with the same name already existed in the deepest scope.
 	bool Add(LocalVariable *var);
 
 	// Get the total number of variables, including shadowed ones.
 	int VariableCount();
 
+	void PopFrame();
+
+	void PushFrame();
+
   private:
-	std::unique_ptr<ScopeFrame> m_top;
+	ScopeFrame *m_top = nullptr;
+	std::vector<std::unique_ptr<ScopeFrame>> m_frames;
 };

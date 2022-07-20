@@ -1179,7 +1179,6 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 			return nullptr;
 		}
 
-		global->name = token->contents;
 		compiler->parser->module->AddNode(global);
 
 		// } else if (symbol == -3) {
@@ -1227,7 +1226,10 @@ static IRNode *defineVariable(Compiler *compiler, VarDecl *var, IRExpr *value) {
 }
 
 // Starts a new local block scope.
-static void pushScope(Compiler *compiler) { compiler->scopeDepth++; }
+static void pushScope(Compiler *compiler) {
+	compiler->scopeDepth++;
+	compiler->locals.PushFrame();
+}
 
 // Generates code to discard local variables at [depth] or greater. Does *not*
 // actually undeclare variables or pop any scopes, though. This is called
@@ -1263,6 +1265,7 @@ static void discardLocals(Compiler *compiler, int depth) {
 static void popScope(Compiler *compiler) {
 	discardLocals(compiler, compiler->scopeDepth);
 	compiler->scopeDepth--;
+	compiler->locals.PopFrame();
 }
 
 // Adds an upvalue to [compiler]'s function with the given properties. Does not
@@ -1336,7 +1339,7 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 static VarDecl *resolveNonmodule(Compiler *compiler, const std::string &name) {
 	// Look it up in the local scopes.
 	VarDecl *variable = compiler->locals.Lookup(name);
-	if (!variable || variable->Scope() != VarDecl::SCOPE_LOCAL)
+	if (variable) // && variable->Scope() == VarDecl::SCOPE_LOCAL)
 		return variable;
 
 	// Tt's not a local, so guess that it's an upvalue.
@@ -1757,12 +1760,7 @@ static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) { return comp
 static IRExpr *loadThis(Compiler *compiler) { return loadVariable(compiler, resolveNonmodule(compiler, "this")); }
 
 // Pushes the value for a module-level variable implicitly imported from core.
-static IRExpr *loadCoreVariable(Compiler *compiler, const char *name) {
-	// int symbol = wrenSymbolTableFind(&compiler->parser->module->variableNames, name, strlen(name));
-	// ASSERT(symbol != -1, "Should have already defined core name.");
-	// emitShortArg(compiler, CODE_LOAD_MODULE_VAR, symbol);
-	abort(); // TODO implement
-}
+static IRExpr *loadCoreVariable(Compiler *compiler, std::string name) { return compiler->New<ExprSystemVar>(name); }
 
 // A parenthesized expression.
 static IRExpr *grouping(Compiler *compiler, bool canAssign) {
@@ -2153,7 +2151,7 @@ static IRExpr *and_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	jump->condition = compiler->New<ExprLogicalNot>(loadVariable(compiler, tmp));
 	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_AND);
 	compiler->AddNew<StmtAssign>(block, tmp, rhs);
-	jump->target = compiler->AddNew<StmtLabel>(block);
+	jump->target = compiler->AddNew<StmtLabel>(block, "and-target");
 
 	return wrapper;
 }
@@ -2177,7 +2175,7 @@ static IRExpr *or_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	jump->condition = loadVariable(compiler, tmp);
 	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_OR);
 	compiler->AddNew<StmtAssign>(block, tmp, rhs);
-	jump->target = compiler->AddNew<StmtLabel>(block);
+	jump->target = compiler->AddNew<StmtLabel>(block, "or-target");
 
 	return wrapper;
 }
@@ -2209,12 +2207,12 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 	StmtJump *trueToEnd = compiler->AddNew<StmtJump>(block);
 
 	// Compile the else branch.
-	jumpToFalse->target = compiler->AddNew<StmtLabel>(block);
+	jumpToFalse->target = compiler->AddNew<StmtLabel>(block, "condition-start-to-else");
 
 	parsePrecedence(compiler, PREC_ASSIGNMENT);
 
 	// Patch the jump over the else.
-	trueToEnd->target = compiler->AddNew<StmtLabel>(block);
+	trueToEnd->target = compiler->AddNew<StmtLabel>(block, "condition-true-to-end");
 
 	return wrapper;
 }
@@ -2511,7 +2509,7 @@ static StmtJump *exitLoop(Compiler *compiler, IRExpr *condition) {
 // statements can be handled correctly.
 static IRStmt *loopBody(Compiler *compiler) {
 	StmtBlock *block = compiler->New<StmtBlock>();
-	StmtLabel *label = compiler->New<StmtLabel>();
+	StmtLabel *label = compiler->New<StmtLabel>("loop-body");
 	block->Add(label);
 	block->Add(statement(compiler));
 	compiler->loop->body = label;
@@ -2527,7 +2525,7 @@ static IRStmt *endLoop(Compiler *compiler) {
 	block->Add(compiler->New<StmtJump>(compiler->loop->start, nullptr));
 
 	// Make a label that all the break jumps go to
-	StmtLabel *breakToLabel = compiler->New<StmtLabel>();
+	StmtLabel *breakToLabel = compiler->New<StmtLabel>("loop-end");
 	block->Add(breakToLabel);
 
 	// Find any break placeholder jumps, and set their jump target accordingly
@@ -2604,7 +2602,7 @@ static IRStmt *forStatement(Compiler *compiler) {
 
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after loop expression.");
 
-	StmtLabel *startLabel = compiler->New<StmtLabel>();
+	StmtLabel *startLabel = compiler->New<StmtLabel>("for-start");
 	block->Add(startLabel);
 	Loop loop;
 	startLoop(compiler, &loop, startLabel);
@@ -2659,16 +2657,16 @@ static IRStmt *ifStatement(Compiler *compiler) {
 		// Jump over the else branch when the if branch is taken.
 		StmtJump *ifToEnd = compiler->AddNew<StmtJump>(block);
 
-		StmtLabel *elseTarget = compiler->AddNew<StmtLabel>(block);
+		StmtLabel *elseTarget = compiler->AddNew<StmtLabel>(block, "if-start-to-else");
 		ifJump->target = elseTarget;
 
 		block->Add(statement(compiler));
 
 		// Patch the jump over the else.
-		StmtLabel *end = compiler->AddNew<StmtLabel>(block);
+		StmtLabel *end = compiler->AddNew<StmtLabel>(block, "if-then-to-end");
 		ifToEnd->target = end;
 	} else {
-		StmtLabel *end = compiler->AddNew<StmtLabel>(block);
+		StmtLabel *end = compiler->AddNew<StmtLabel>(block, "if-false-skip");
 		ifJump->target = end;
 	}
 
@@ -2677,7 +2675,7 @@ static IRStmt *ifStatement(Compiler *compiler) {
 
 static IRStmt *whileStatement(Compiler *compiler) {
 	StmtBlock *block = compiler->New<StmtBlock>();
-	StmtLabel *startLabel = compiler->AddNew<StmtLabel>(block);
+	StmtLabel *startLabel = compiler->AddNew<StmtLabel>(block, "while-start");
 
 	Loop loop;
 	startLoop(compiler, &loop, startLabel);
@@ -2999,6 +2997,7 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	classNode->info = std::make_unique<ClassInfo>();
 
 	// Find the class's name
+	consume(compiler, TOKEN_NAME, "Expect class name.");
 	std::string className = compiler->parser->previous.contents;
 
 	// Load the superclass (if there is one).

@@ -50,6 +50,7 @@ executable('wrencc',
   'src/CcValue.cpp',
   'src/Scope.cpp',
   'src/ClassInfo.cpp',
+  'src/passes/IRCleanup.cpp',
   antlr_src,
 
   dependencies: [

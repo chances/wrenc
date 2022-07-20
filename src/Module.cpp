@@ -16,6 +16,7 @@ IRGlobalDecl *Module::AddVariable(const std::string &name) {
 		return nullptr; // Return null if the global already exists
 
 	IRGlobalDecl *ptr = new IRGlobalDecl();
+	ptr->name = name;
 	m_globals[name] = std::unique_ptr<IRGlobalDecl>(ptr);
 
 	return ptr;

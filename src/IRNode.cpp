@@ -6,10 +6,21 @@
 
 #include "ArenaAllocator.h"
 #include "ClassInfo.h"
+#include "CompContext.h"
 #include "Scope.h"
 
 #include <fmt/format.h>
+#include <set>
 #include <sstream>
+
+// Nodes to display inline in the IR dump
+const std::set<std::string> INLINE_NODES = {
+    typeid(StmtReturn).name(),
+    typeid(StmtJump).name(),
+    typeid(ExprLoad).name(),
+    typeid(ExprLogicalNot).name(),
+};
+const bool PRINT_ADDR = false;
 
 // Ugly hack to get the allocator out of a compiler
 ArenaAllocator *getCompilerAlloc(Compiler *compiler);
@@ -68,6 +79,7 @@ void ExprLoadReceiver::Accept(IRVisitor *visitor) { visitor->VisitExprLoadReceiv
 void ExprRunStatements::Accept(IRVisitor *visitor) { visitor->VisitExprRunStatements(this); }
 void ExprLogicalNot::Accept(IRVisitor *visitor) { visitor->VisitExprLogicalNot(this); }
 void ExprAllocateInstanceMemory::Accept(IRVisitor *visitor) { visitor->VisitExprAllocateInstanceMemory(this); }
+void ExprSystemVar::Accept(IRVisitor *visitor) { visitor->VisitExprSystemVar(this); }
 
 // IRVisitor
 
@@ -141,6 +153,7 @@ void IRVisitor::VisitExprLogicalNot(ExprLogicalNot *node) { Visit(node->input); 
 void IRVisitor::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
 	// Our IRClass nodes are already in the tree, don't visit them
 }
+void IRVisitor::VisitExprSystemVar(ExprSystemVar *node) {}
 
 void IRVisitor::VisitLocalVariable(LocalVariable *var) {}
 
@@ -203,8 +216,15 @@ void IRPrinter::EndTag() {
 std::unique_ptr<std::stringstream> IRPrinter::Extract() { return std::move(m_stream); }
 
 void IRPrinter::Visit(IRNode *node) {
+	if (!node)
+		return;
+
 	// Default to our typename
-	StartTag(typeid(*node).name(), false);
+	std::string name = typeid(*node).name();
+	std::string header = name;
+	if (PRINT_ADDR)
+		header += fmt::format(" {}", (void *)node);
+	StartTag(header, INLINE_NODES.contains(name));
 	IRVisitor::Visit(node);
 	EndTag();
 }
@@ -212,3 +232,64 @@ void IRPrinter::Visit(IRNode *node) {
 void IRPrinter::Process(IRNode *root) { Visit(root); }
 
 void IRPrinter::VisitVar(VarDecl *var) { FullTag(std::string(typeid(*var).name()) + ":" + var->Name()); }
+
+void IRPrinter::VisitExprConst(ExprConst *node) {
+	std::string value = "INVALID_TYPE";
+	switch (node->value.type) {
+	case CcValue::UNDEFINED:
+		value = "undefined";
+		break;
+	case CcValue::NULL_TYPE:
+		value = "null";
+		break;
+	case CcValue::STRING:
+		value = "'" + node->value.s + "'";
+		break;
+	case CcValue::BOOL:
+		value = "bool " + std::to_string(node->value.b);
+		break;
+	case CcValue::INT:
+		value = "int " + std::to_string(node->value.i);
+		break;
+	case CcValue::NUM:
+		value = "num " + std::to_string(node->value.n);
+		break;
+	}
+	m_tagStack.back().header += " " + value;
+}
+
+void IRPrinter::VisitExprFuncCall(ExprFuncCall *node) {
+	m_tagStack.back().header += " " + node->signature->ToString();
+	IRVisitor::VisitExprFuncCall(node);
+}
+void IRPrinter::VisitStmtLabel(StmtLabel *node) {
+	m_tagStack.back().header += " id:" + GetLabelId(node);
+	IRVisitor::VisitStmtLabel(node);
+}
+void IRPrinter::VisitStmtJump(StmtJump *node) {
+	std::string &header = m_tagStack.back().header;
+	if (node->looping)
+		header += " LOOPING";
+	header += " target:" + GetLabelId(node->target);
+	IRVisitor::VisitStmtJump(node);
+}
+
+std::string IRPrinter::GetLabelId(StmtLabel *label) {
+	if (label == nullptr)
+		return "null";
+
+	int id = 0;
+	auto iter = m_labelIds.find(label);
+	if (iter != m_labelIds.end()) {
+		id = iter->second;
+	} else {
+		id = m_labelIds.size() + 1;
+		m_labelIds[label] = id;
+	}
+
+	std::string str;
+	if (!label->debugName.empty())
+		str += label->debugName + " ";
+	str += std::to_string(id);
+	return str;
+}
