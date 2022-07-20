@@ -36,7 +36,8 @@ class ArenaAllocator {
 		int effectiveSize = (int)size + wastage;
 
 		if (!m_currentPage || m_currentPageRemaining < effectiveSize) {
-			return AllocateSlowPath(size);
+			AllocateSlowPath(size);
+			return AllocateMem(size, alignment);
 		}
 
 		void *result = (void *)((intptr_t)m_currentPage + (intptr_t)m_currentPageOffset + (intptr_t)wastage);
