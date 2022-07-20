@@ -50,6 +50,16 @@ ExprConst::ExprConst(CcValue value) : value(value) {}
 std::string StmtUpvalueImport::Name() const { return parent->Name() + "/UPVALUE"; }
 VarDecl::ScopeType StmtUpvalueImport::Scope() const { return SCOPE_UPVALUE; }
 
+ExprSystemVar::ExprSystemVar(std::string name) : name(name) {
+	if (!SYSTEM_VAR_NAMES.contains(name)) {
+		fmt::print(stderr, "Illegal system variable name '{}'\n", name);
+		abort();
+	}
+}
+const std::unordered_set<std::string> ExprSystemVar::SYSTEM_VAR_NAMES = {
+    "Bool", "Class", "Fiber", "Fn", "List", "Map", "Null", "Num", "Object", "Range", "Sequence", "String", "System",
+};
+
 IRVisitor::~IRVisitor() {}
 
 // Top-level-node accept functions

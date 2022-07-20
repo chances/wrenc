@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Declarations
@@ -370,10 +371,12 @@ class ExprAllocateInstanceMemory : public IRExpr {
 /// Get a built-in variable, for example the Object class.
 class ExprSystemVar : public IRExpr {
   public:
-	ExprSystemVar(std::string name) : name(name) {}
+	ExprSystemVar(std::string name);
 	void Accept(IRVisitor *visitor) override;
 
 	std::string name;
+
+	static const std::unordered_set<std::string> SYSTEM_VAR_NAMES;
 };
 
 // //////////////////// //

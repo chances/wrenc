@@ -1999,6 +1999,10 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 		return namedCall(compiler, loadThis(compiler), canAssign, false);
 	}
 
+	// Check if a system variable with the same name exists (eg, for Object)
+	if (ExprSystemVar::SYSTEM_VAR_NAMES.contains(token->contents))
+		return compiler->New<ExprSystemVar>(token->contents);
+
 	// Otherwise, look for a module-level variable with the name.
 	variable = compiler->parser->module->FindVariable(token->contents);
 	if (variable == nullptr) {
