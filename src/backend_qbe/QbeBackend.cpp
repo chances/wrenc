@@ -26,8 +26,41 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
-void QbeBackend::Generate(IRFn *fn) {
-	VisitFn(fn);
+void QbeBackend::Generate(Module *module) {
+	for (IRFn *func : module->GetFunctions()) {
+		VisitFn(func);
+	}
+
+	// Add the global variables
+	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
+		Print("section \".data\" data {} = {{ {} {} }}", MangleGlobalName(var), PTR_TYPE,
+		      (uint64_t)NanSingletons::NULL_VAL);
+	}
+
+	// Add the strings
+	for (const auto &[literal, name] : m_strings) {
+		std::string escaped = literal;
+		for (int i = 0; i < escaped.size(); i++) {
+			char c = escaped.at(i);
+			if (c != '"' && c != '\\')
+				continue;
+
+			// Insert an escape string
+			escaped.insert(escaped.begin() + i, '\\');
+
+			// Skip the character, otherwise we'll keep escaping it in an infinite loop
+			i++;
+		}
+		Print("section \".rodata\" data {} = {{b \"{}\", b 0}}", name, escaped);
+	}
+
+	// TODO only for main module:
+	// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
+	// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
+	// make a working executable, and it'll load this pointer when we link this object to it.
+	std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName);
+	Print("section \".rodata\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
+
 	fmt::print("Generated QBE IR:\n{}\n", m_output.str());
 
 	std::ofstream output;
@@ -67,51 +100,48 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 // Visitor functions //
 
 QbeBackend::Snippet *QbeBackend::VisitExpr(IRExpr *expr) {
-#define DISPATCH_FUNC(type, func)                                                                                      \
+#define DISPATCH(func, type)                                                                                           \
 	do {                                                                                                               \
 		if (typeid(*expr) == typeid(type))                                                                             \
 			return func(dynamic_cast<type *>(expr));                                                                   \
 	} while (0)
-#define DISPATCH(type) DISPATCH_FUNC(type, Visit##type)
 
-	DISPATCH(ExprConst);
-	DISPATCH(ExprLoad);
-	DISPATCH(ExprFieldLoad);
-	DISPATCH(ExprFuncCall);
-	DISPATCH(ExprClosure);
-	DISPATCH(ExprLoadReceiver);
-	DISPATCH(ExprRunStatements);
-	DISPATCH(ExprLogicalNot);
-	DISPATCH(ExprAllocateInstanceMemory);
-	DISPATCH(ExprSystemVar);
+	// Use both the function name and type for ease of searching and IDE indexing
+	DISPATCH(VisitExprConst, ExprConst);
+	DISPATCH(VisitExprLoad, ExprLoad);
+	DISPATCH(VisitExprFieldLoad, ExprFieldLoad);
+	DISPATCH(VisitExprFuncCall, ExprFuncCall);
+	DISPATCH(VisitExprClosure, ExprClosure);
+	DISPATCH(VisitExprLoadReceiver, ExprLoadReceiver);
+	DISPATCH(VisitExprRunStatements, ExprRunStatements);
+	DISPATCH(VisitExprLogicalNot, ExprLogicalNot);
+	DISPATCH(VisitExprAllocateInstanceMemory, ExprAllocateInstanceMemory);
+	DISPATCH(VisitExprSystemVar, ExprSystemVar);
 
 #undef DISPATCH
-#undef DISPATCH_FUNC
 
 	fmt::print("Unknown expr node {}\n", typeid(*expr).name());
 	return nullptr;
 }
 
 QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
-#define DISPATCH_FUNC(type, func)                                                                                      \
+#define DISPATCH(func, type)                                                                                           \
 	do {                                                                                                               \
 		if (typeid(*expr) == typeid(type))                                                                             \
 			return func(dynamic_cast<type *>(expr));                                                                   \
 	} while (0)
-#define DISPATCH(type) DISPATCH_FUNC(type, Visit##type)
 
-	DISPATCH(StmtAssign);
-	DISPATCH(StmtFieldAssign);
-	DISPATCH_FUNC(StmtUpvalueImport, VisitStmtUpvalue);
-	DISPATCH(StmtEvalAndIgnore);
-	DISPATCH_FUNC(StmtBlock, VisitBlock);
-	DISPATCH(StmtLabel);
-	DISPATCH(StmtJump);
-	DISPATCH(StmtReturn);
-	DISPATCH(StmtLoadModule);
+	DISPATCH(VisitStmtAssign, StmtAssign);
+	DISPATCH(VisitStmtFieldAssign, StmtFieldAssign);
+	DISPATCH(VisitStmtUpvalue, StmtUpvalueImport);
+	DISPATCH(VisitStmtEvalAndIgnore, StmtEvalAndIgnore);
+	DISPATCH(VisitBlock, StmtBlock);
+	DISPATCH(VisitStmtLabel, StmtLabel);
+	DISPATCH(VisitStmtJump, StmtJump);
+	DISPATCH(VisitStmtReturn, StmtReturn);
+	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
 
 #undef DISPATCH
-#undef DISPATCH_FUNC
 
 	fmt::print("Unknown expr node {}\n", typeid(*expr).name());
 	return nullptr;
@@ -183,9 +213,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 QbeBackend::Snippet *QbeBackend::VisitExprSystemVar(ExprSystemVar *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	snip->result = AddTemporary("sys_var_" + node->name);
-	// Pass IDs instead of strings
-	int id = ExprSystemVar::SYSTEM_VAR_NAMES.at(node->name);
-	snip->Add("%{} ={} call $wren_get_sys_var({} {})", snip->result->name, PTR_TYPE, PTR_TYPE, id);
+	snip->Add("%{} ={} load{} $wren_sys_var_{}", snip->result->name, PTR_TYPE, PTR_TYPE, node->name);
 	return snip;
 }
 
@@ -217,9 +245,12 @@ std::string QbeBackend::GetStringPtr(const std::string &value) {
 
 	// TODO make this a valid and unique symbol
 	std::string symbolName = "$str_" + std::to_string(m_strings.size()) + "_" + MangleRawName(value, true);
-	const int MAX_SIZE = 30;
-	if (symbolName.size() > MAX_SIZE)
-		symbolName.resize(MAX_SIZE);
+	const int MAX_SIZE = 35;
+	const std::string TRUNCATION_SUFFIX = "_TRUNC";
+	if (symbolName.size() > MAX_SIZE) {
+		symbolName.resize(MAX_SIZE - TRUNCATION_SUFFIX.size());
+		symbolName.insert(symbolName.end(), TRUNCATION_SUFFIX.begin(), TRUNCATION_SUFFIX.end());
+	}
 	m_strings[value] = symbolName;
 	return symbolName;
 }

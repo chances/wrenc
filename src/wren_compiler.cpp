@@ -3229,6 +3229,8 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	ignoreNewlines(&compiler);
 
 	compiler.fn->debugName = moduleName(&parser) + "::__root_func";
+	module->AddNode(compiler.fn);
+	ASSERT(module->GetFunctions().front() == compiler.fn, "Module init function is not the module's first function!");
 
 	if (isExpression) {
 		IRExpr *expr = expression(&compiler);

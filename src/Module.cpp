@@ -38,4 +38,16 @@ std::vector<IRGlobalDecl *> Module::GetGlobalVariables() {
 	return vars;
 }
 
-void Module::AddNode(IRNode *node) {}
+const std::vector<IRFn *> &Module::GetFunctions() const { return m_functions; }
+
+const IRFn *Module::GetMainFunction() const { return m_functions.front(); }
+
+void Module::AddNode(IRNode *node) {
+	IRFn *func = dynamic_cast<IRFn *>(node);
+	if (func) {
+		m_functions.push_back(func);
+		return;
+	}
+
+	// TODO error when an unsupported node is added
+}

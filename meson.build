@@ -28,14 +28,33 @@ antlr_src = custom_target('gen_antlr',
 
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/common.cpp',
+  'rtsrc/GenEntry.cpp',
   'rtsrc/Obj.cpp',
   'rtsrc/ObjString.cpp',
   'rtsrc/ObjMap.cpp',
+  'rtsrc/ObjClass.cpp',
+  'rtsrc/ObjSystem.cpp',
+  'rtsrc/CoreClasses.cpp',
   include_directories: ['rtsrc'],
 )
 rtlib = declare_dependency(
   link_with: [rtlib_lib],
   include_directories: ['rtsrc'],
+)
+
+# Make the main programme library almost runnable, so we can link it in to make a standalone Wren programme
+# To do this, declare it as an executable then mess around with the linker flags
+rtlib_main_stub = executable('wren-rtlib-stub',
+  'rtsrc/standalone_main_stub.cpp',
+
+  # TODO make something similar work on Windows
+  # Important flags here:
+  # - Build relocatable output: the output of the command is an object file we can link into a bigger programme later
+  # - Disable position-independent executable mode: that conflicts with relocatable, we have to turn it on in the
+  #   final linking step.
+  # - Disable the default libraries. Since ld won't search for shared objects in relocatable mode (at least I think
+  #   that's what's happening), it can't find libgcc_s.so. We'll put those libraries back in at the end.
+  link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
 )
 
 executable('wrencc',

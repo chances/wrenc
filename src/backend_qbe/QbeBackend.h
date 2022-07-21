@@ -6,6 +6,7 @@
 
 #include "ArenaAllocator.h"
 #include "IRNode.h"
+#include "Module.h"
 
 #include <fmt/core.h>
 #include <memory>
@@ -16,7 +17,7 @@ class QbeBackend {
 	QbeBackend();
 	~QbeBackend();
 
-	void Generate(IRFn *fn);
+	void Generate(Module *module);
 
   private:
 	/// Information about a local variable
@@ -89,6 +90,7 @@ class QbeBackend {
 	std::vector<std::unique_ptr<VLocal>> m_temporaries;
 
 	// String constants
+	// Keys are the string literals, values are the associated symbol names
 	std::unordered_map<std::string, std::string> m_strings;
 
 	// Mapping of names that [MangleUniqueName] has encoded

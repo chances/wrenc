@@ -45,5 +45,5 @@ while (!adjectives.isDone) System.print(adjectives.call())
 	fmt::print("AST/IR:\n{}\n", dbg->str());
 
 	QbeBackend backend;
-	backend.Generate(fn);
+	backend.Generate(&mod);
 }
