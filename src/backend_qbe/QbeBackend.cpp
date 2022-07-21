@@ -156,7 +156,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtAssign(StmtAssign *node) {
 
 QbeBackend::Snippet *QbeBackend::VisitExprConst(ExprConst *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
-	VLocal *tmp = AddTemporary("const-value");
+	VLocal *tmp = AddTemporary("const_value");
 	snip->Add("%{} ={} copy {}", tmp->name, PTR_TYPE, node->value.ToRuntimeValue());
 	snip->result = tmp;
 	return snip;
@@ -170,7 +170,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node)
 QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	VLocal *receiver = snip->Add(VisitExpr(node->receiver));
-	snip->result = AddTemporary("func-call-result");
+	snip->result = AddTemporary("func_call_result");
 	// TODO we can optimise this a lot
 	// TODO arguments
 	// TODO use signature ID rather than stringifying it
@@ -182,7 +182,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 
 QbeBackend::Snippet *QbeBackend::VisitExprSystemVar(ExprSystemVar *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
-	snip->result = AddTemporary("sys-var-" + node->name);
+	snip->result = AddTemporary("sys_var_" + node->name);
 	// Pass IDs instead of strings
 	int id = ExprSystemVar::SYSTEM_VAR_NAMES.at(node->name);
 	snip->Add("%{} ={} call $wren_get_sys_var({} {})", snip->result->name, PTR_TYPE, PTR_TYPE, id);
