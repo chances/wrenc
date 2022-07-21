@@ -28,6 +28,7 @@ antlr_src = custom_target('gen_antlr',
 
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/common.cpp',
+  'rtsrc/hash.cpp',
   'rtsrc/GenEntry.cpp',
   'rtsrc/Obj.cpp',
   'rtsrc/ObjString.cpp',

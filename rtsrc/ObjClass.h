@@ -38,10 +38,38 @@
 
 #include <string>
 
+struct SignatureId {
+	uint64_t id;
+};
+
+/// Basically this forms a hashmap for all the function signatures.
+class FunctionTable {
+  public:
+	struct Entry {
+		void *func;
+		SignatureId signature;
+	};
+
+	/// 256 entries sounds like a reasonable number, though we might need to add a way to tweak it later.
+	/// Collisions should be reasonably unlikely, though as the number of entries goes above maybe 200 the lookup
+	/// times will start to get extremely long.
+	/// The way this works is that given a signatureId, to find it's corresponding entry or prove it doesn't exist:
+	/// 1. Lookup the entry at index signatureId % size(entries), call it entry
+	/// 2. Check if entry->func is null, if so the function doesn't exist
+	/// 3. Check if entry->signatureId == signatureId, if so we've found the entry
+	/// 4. Advance to the next entry in the array (wrapping around) and go to step 2.
+	Entry entries[256];
+};
+
 /// Instances of this represent either the top-level Class, metaclasses or
 /// object classes in Wren / (see the diagram in the file header for more information)
 class ObjClass : public Obj {
   public:
+	/// The method dispatch table. This is put up front to make it's offset easily predictable
+	/// without knowing the length of std::string, since this will be used by the generated
+	/// code for EVERY METHOD CALL (hence why it has to be inlined).
+	FunctionTable functions;
+
 	/// The name of the class. For metaclasses, this is the same as the class's name, but
 	/// the [isMetaClass] flag is set to indicate this.
 	std::string name;
@@ -54,10 +82,24 @@ class ObjClass : public Obj {
 	/// For metaclasses, this always points to the root 'Class' class.
 	ObjClass *parentClass = nullptr;
 
-	/// This class's metaclass. This is represented by double arrows in the diagram in the
-	/// file header. This is only nullptr for the 'Class' class.
-	/// For metaclasses, this always points to the root 'Class' class.
-	ObjClass *metaClass = nullptr;
+	/// Setting p=1e-6 (one-in-a-million) gives us about six million signatures. This means that
+	/// in a programme with six million signatures there's about a one-in-a-million chance of a
+	/// collision. And for the collision to do anything, the colliding signatures
+	/// Find the hash of the signature, to get an ID to be used for identifying functions.
+	/// To avoid having to build a global table of function-to-ID mappings (which would make
+	/// compiling modules independently harder, or involve a special linking step) we hash the
+	/// function name to get a unique ID. This means that if we get unlucky, we could get a
+	/// collision where two different function signatures result in the same signature ID.
+	/// The IDs are 64-bit numbers. Using the birthday paradox approximation, we can find
+	/// the number of signatures we'd need to have before the probability of a collision becomes
+	/// the value p:
+	/// sqrt(-2 * 2^64 * log(1-p))
+	/// Setting p=1e-6 (one-in-a-million) gives us about six million signatures. This means that
+	/// in a programme with six million signatures there's about a one-in-a-million chance of a
+	/// collision. And for the collision to do anything, the colliding signatures have to be
+	/// used in a way where the runtime could confuse them. Two functions from very different
+	/// objects colliding won't matter since they'll never be called on each other.
+	static SignatureId FindSignatureId(const std::string &name);
 };
 
 /// Class used to define types in C++

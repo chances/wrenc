@@ -13,18 +13,18 @@ CoreClasses::CoreClasses() {
 	// There's a diagram in ObjClass.h
 	m_object.name = "Object";
 	m_object.parentClass = nullptr;
-	m_object.metaClass = &m_objectMeta;
+	m_object.type = &m_objectMeta;
 
 	// Normally we wouldn't make the metaclass ourselves, but for Object it's a bit special.
 	m_objectMeta.name = m_object.name;
 	m_objectMeta.isMetaClass = true;
 	m_objectMeta.parentClass = &m_rootClass;
-	m_objectMeta.metaClass = &m_rootClass;
+	m_objectMeta.type = &m_rootClass;
 
 	m_rootClass.name = "Class";
 	m_rootClass.isMetaClass = true;
 	m_rootClass.parentClass = &m_object;
-	m_rootClass.metaClass = nullptr;
+	m_rootClass.type = nullptr;
 }
 
 CoreClasses *CoreClasses::Instance() {

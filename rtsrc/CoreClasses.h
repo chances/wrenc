@@ -12,6 +12,7 @@
 /// Singleton containing pointers to all the core classes (the classes that are treated as intrinsics).
 class CoreClasses {
   public:
+	~CoreClasses();
 	static CoreClasses *Instance();
 
 	CoreClasses(const CoreClasses &) = delete;
@@ -27,7 +28,6 @@ class CoreClasses {
 
   private:
 	CoreClasses();
-	~CoreClasses();
 
 	ObjClass m_object;
 	ObjClass m_objectMeta;

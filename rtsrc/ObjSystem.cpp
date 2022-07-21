@@ -5,7 +5,20 @@
 #include "ObjSystem.h"
 #include "CoreClasses.h"
 
+// Metaclass for ObjSystem
+class ObjSystemMeta : public ObjNativeClass {
+  public:
+	ObjSystemMeta() {
+		name = "System";
+		isMetaClass = true;
+		parentClass = type = &CoreClasses::Instance()->RootClass();
+	}
+};
+
 ObjSystem::ObjSystem() {
-	isMetaClass = true;
-	parentClass = metaClass = &CoreClasses::Instance()->RootClass();
+	static ObjSystemMeta meta;
+
+	parentClass = &CoreClasses::Instance()->Object();
+	name = meta.name;
+	type = &meta;
 }

@@ -7,11 +7,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "Obj.h"
+class Obj;
 
 #define NAN_MASK 0x7ff8000000000000 // Includes the mantissa MSB to make it a quiet NaN
 #define CONTENT_MASK 0x0007ffffffffffff
-#define SIGN_MASK 0x7000000000000000
+#define SIGN_MASK 0x8000000000000000
 
 // Use NaN-tagged values
 // Here's a comment I pinched from wren_value.h that nicely explains how this works. Our NaN tagging scheme is the
@@ -116,11 +116,11 @@ inline Value encode_number(double num) {
 
 inline Value encode_object(Obj *obj) {
 	// If this pointer would be cut into by the NaN bits, fail
-	if (((uint64_t)obj) & (SIGN_MASK | CONTENT_MASK)) {
+	if (((uint64_t)obj) & (SIGN_MASK | NAN_MASK)) {
 		rt_throw_error(RtErrorType::INVALID_PTR);
 	}
 
-	return SIGN_MASK | CONTENT_MASK | (uint64_t)obj;
+	return SIGN_MASK | NAN_MASK | (uint64_t)obj;
 }
 
 enum NanSingletons : Value {
