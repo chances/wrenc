@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "common.h"
+
 /**
  * A representation of a value that can be represented in the compiler.
  */
@@ -26,6 +28,8 @@ class CcValue {
 	CcValue(std::string str) : type(STRING), s(std::move(str)) {}
 	CcValue(int value) : type(INT), i(value), n(value) {}
 	CcValue(double value) : type(NUM), i(value), n(value) {}
+
+	Value ToRuntimeValue() const;
 
 	Type type = NULL_TYPE;
 

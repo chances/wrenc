@@ -2,7 +2,6 @@
 
 qbe_lib = shared_library('qbe',
   # Platform-independant
-  'main.c',
   'util.c',
   'parse.c',
   'cfg.c',
@@ -36,10 +35,15 @@ qbe_lib = shared_library('qbe',
   'rv64/emit.c',
 
   include_directories: ['.'],
-  override_options: ['c_std=c99'],
+  override_options: ['c_std=c99', 'b_lundef=false'],
 )
 
 qbe = declare_dependency(
   link_with: [qbe_lib],
   include_directories: ['.'],
+)
+
+executable('qbe_bin',
+  'main.c',
+  dependencies: [qbe],
 )

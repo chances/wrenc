@@ -56,9 +56,18 @@ ExprSystemVar::ExprSystemVar(std::string name) : name(name) {
 		abort();
 	}
 }
-const std::unordered_set<std::string> ExprSystemVar::SYSTEM_VAR_NAMES = {
-    "Bool", "Class", "Fiber", "Fn", "List", "Map", "Null", "Num", "Object", "Range", "Sequence", "String", "System",
-};
+
+static std::unordered_map<std::string, int> buildSysVarNames() {
+	std::vector<const char *> names = {
+	    "Bool", "Class", "Fiber", "Fn", "List", "Map", "Null", "Num", "Object", "Range", "Sequence", "String", "System",
+	};
+	std::unordered_map<std::string, int> result;
+	for (const char *value : names) {
+		result[value] = result.size();
+	}
+	return result;
+}
+const std::unordered_map<std::string, int> ExprSystemVar::SYSTEM_VAR_NAMES = buildSysVarNames();
 
 IRVisitor::~IRVisitor() {}
 
@@ -302,4 +311,9 @@ std::string IRPrinter::GetLabelId(StmtLabel *label) {
 		str += label->debugName + " ";
 	str += std::to_string(id);
 	return str;
+}
+
+void IRPrinter::VisitExprSystemVar(ExprSystemVar *node) {
+	m_tagStack.back().header += " " + node->name;
+	IRVisitor::VisitExprSystemVar(node);
 }

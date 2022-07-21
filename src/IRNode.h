@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 // Declarations
@@ -78,6 +77,9 @@ class IRFn : public IRNode {
 
 	// The thing that gets run when this function is called
 	IRStmt *body = nullptr;
+
+	// The name of this node, as it's used for debugging
+	std::string debugName = "<unknown_func>";
 };
 
 class IRClass : public IRNode {
@@ -376,7 +378,8 @@ class ExprSystemVar : public IRExpr {
 
 	std::string name;
 
-	static const std::unordered_set<std::string> SYSTEM_VAR_NAMES;
+	// The variable names and their IDs
+	static const std::unordered_map<std::string, int> SYSTEM_VAR_NAMES;
 };
 
 // //////////////////// //
@@ -448,6 +451,7 @@ class IRPrinter : private IRVisitor {
 	void VisitExprFuncCall(ExprFuncCall *node) override;
 	void VisitStmtLabel(StmtLabel *node) override;
 	void VisitStmtJump(StmtJump *node) override;
+	void VisitExprSystemVar(ExprSystemVar *node) override;
 
 	std::string GetLabelId(StmtLabel *label);
 

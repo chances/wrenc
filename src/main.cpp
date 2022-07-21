@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 
 #include "IRNode.h"
+#include "backend_qbe/QbeBackend.h"
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
 
@@ -10,7 +11,11 @@ int main(int argc, char **argv) {
 	fmt::print("hello world\n");
 
 	const char *test = R"(
-// var hi = "abc"
+var hi = 123 // "abc"
+System.print(hi)
+// System.print("Hello, %(hi)!")
+
+/*
 System.print("Hello, world!")
 
 class Wren {
@@ -24,6 +29,7 @@ var adjectives = Fiber.new {
 }
 
 while (!adjectives.isDone) System.print(adjectives.call())
+*/
 )";
 
 	CompContext ctx;
@@ -37,4 +43,7 @@ while (!adjectives.isDone) System.print(adjectives.call())
 	printer.Process(fn);
 	std::unique_ptr<std::stringstream> dbg = printer.Extract();
 	fmt::print("AST/IR:\n{}\n", dbg->str());
+
+	QbeBackend backend;
+	backend.Generate(fn);
 }

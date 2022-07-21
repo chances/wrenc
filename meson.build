@@ -51,6 +51,7 @@ executable('wrencc',
   'src/Scope.cpp',
   'src/ClassInfo.cpp',
   'src/passes/IRCleanup.cpp',
+  'src/backend_qbe/QbeBackend.cpp',
   antlr_src,
 
   dependencies: [

@@ -346,6 +346,11 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 	abort();
 }
 
+static std::string moduleName(Parser *parser) {
+	std::optional<std::string> module = parser->module->Name();
+	return module ? module.value() : "<unknown>";
+}
+
 static void printError(Parser *parser, int line, const char *label, const char *format, va_list args) {
 	parser->hasError = true;
 	if (!parser->printErrors)
@@ -356,10 +361,7 @@ static void printError(Parser *parser, int line, const char *label, const char *
 	vsnprintf(buf, sizeof(buf), format, args);
 	std::string message = std::string(label) + ": " + std::string(buf);
 
-	std::optional<std::string> module = parser->module->Name();
-	std::string moduleName = module ? module.value() : "<unknown>";
-
-	fmt::print("WrenCC at {}:{} - {}\n", moduleName, line, message);
+	fmt::print("WrenCC at {}:{} - {}\n", moduleName(parser), line, message);
 }
 
 // Outputs a lexical error.
@@ -1682,6 +1684,8 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 
 		Compiler fnCompiler;
 		initCompiler(&fnCompiler, compiler->parser, compiler, false);
+		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
+		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
 
 		// Make a dummy signature to track the arity.
 		Signature fnSignature = {"", SIG_METHOD, 0};
@@ -2916,6 +2920,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 
 	Compiler methodCompiler;
 	initCompiler(&methodCompiler, compiler->parser, compiler, true);
+	methodCompiler.fn->debugName = classNode->info->name + "::" + signature->ToString();
 
 	// Compile the method signature.
 	signatureFn(&methodCompiler, signature);
@@ -3222,6 +3227,8 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	Compiler compiler;
 	initCompiler(&compiler, &parser, NULL, false);
 	ignoreNewlines(&compiler);
+
+	compiler.fn->debugName = moduleName(&parser) + "::__root_func";
 
 	if (isExpression) {
 		IRExpr *expr = expression(&compiler);

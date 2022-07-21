@@ -82,9 +82,9 @@ enum class RtErrorType {
 void rt_throw_error(RtErrorType type);
 
 inline bool is_value_float(Value value) {
-	// Make sure the upper bits indicate a NAN. This requires it's a quiet NaN, with the MSB set and thus
+	// Make sure the upper bits don't indicate a NAN. This requires it's a quiet NaN, with the MSB set and thus
 	// ensures this is not infinity.
-	return (value & NAN_MASK) == NAN_MASK;
+	return (value & NAN_MASK) != NAN_MASK;
 }
 
 inline bool is_singleton(Value value) {
