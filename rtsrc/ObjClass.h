@@ -37,6 +37,7 @@
 #include "Obj.h"
 
 #include <string>
+#include <vector>
 
 // A macro read by the bindings generator to mark a method as being accessible from Wren.
 #define WREN_METHOD()
@@ -81,6 +82,9 @@ class ObjClass : public Obj {
 	/// code for EVERY METHOD CALL (hence why it has to be inlined).
 	FunctionTable functions;
 
+	/// An iterable array of functions that are actually defined on the class
+	std::vector<FunctionTable::Entry *> definedFunctions;
+
 	/// The name of the class. For metaclasses, this is the same as the class's name, but
 	/// the [isMetaClass] flag is set to indicate this.
 	std::string name;
@@ -119,9 +123,10 @@ class ObjClass : public Obj {
 	static SignatureId FindSignatureId(const std::string &name);
 
 	/// Given a signature ID, find the name it's associated with.
-	/// The value from this should be used ONLY for diagnostics, because if we've never seen the
-	/// signature before and don't know what it's name is, it'll be returned as a hex value.
-	static std::string LookupSignatureFromId(SignatureId id);
+	/// If allowUnknown is set, then the value from this should be used ONLY for diagnostics, because
+	/// if we've never seen the / signature before and don't know what it's name is, it'll
+	/// be returned as a hex value. With allowUnknown not set, we'll crash if we don't know what it is.
+	static std::string LookupSignatureFromId(SignatureId id, bool allowUnknown);
 };
 
 /// Class used to define types in C++

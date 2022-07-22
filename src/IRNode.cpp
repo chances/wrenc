@@ -99,6 +99,7 @@ void ExprRunStatements::Accept(IRVisitor *visitor) { visitor->VisitExprRunStatem
 void ExprLogicalNot::Accept(IRVisitor *visitor) { visitor->VisitExprLogicalNot(this); }
 void ExprAllocateInstanceMemory::Accept(IRVisitor *visitor) { visitor->VisitExprAllocateInstanceMemory(this); }
 void ExprSystemVar::Accept(IRVisitor *visitor) { visitor->VisitExprSystemVar(this); }
+void ExprGetClassVar::Accept(IRVisitor *visitor) { visitor->VisitExprGetClassVar(this); }
 
 // IRVisitor
 
@@ -173,6 +174,7 @@ void IRVisitor::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node
 	// Our IRClass nodes are already in the tree, don't visit them
 }
 void IRVisitor::VisitExprSystemVar(ExprSystemVar *node) {}
+void IRVisitor::VisitExprGetClassVar(ExprGetClassVar *node) {}
 
 void IRVisitor::VisitLocalVariable(LocalVariable *var) {}
 
@@ -316,4 +318,14 @@ std::string IRPrinter::GetLabelId(StmtLabel *label) {
 void IRPrinter::VisitExprSystemVar(ExprSystemVar *node) {
 	m_tagStack.back().header += " " + node->name;
 	IRVisitor::VisitExprSystemVar(node);
+}
+
+void IRPrinter::VisitExprGetClassVar(ExprGetClassVar *node) {
+	m_tagStack.back().header += " " + node->name;
+	IRVisitor::VisitExprGetClassVar(node);
+}
+
+void IRPrinter::VisitFn(IRFn *node) {
+	m_tagStack.back().header += " " + node->debugName;
+	IRVisitor::VisitFn(node);
 }

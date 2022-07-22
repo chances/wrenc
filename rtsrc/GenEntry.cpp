@@ -6,12 +6,15 @@
 //
 
 #include "GenEntry.h"
+#include "ClassDescription.h"
 #include "CoreClasses.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjList.h"
+#include "ObjManaged.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
+#include "WrenRuntime.h"
 #include "common.h"
 
 #include <vector>
@@ -31,23 +34,30 @@ Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature); // NOLINT(readability-identifier-naming)
 Value wren_init_string_literal(const char *literal, int length);      // NOLINT(readability-identifier-naming)
 void wren_register_signatures_table(const char *signatures);          // NOLINT(readability-identifier-naming)
+Value wren_init_class(const char *name, uint8_t *dataBlock);          // NOLINT(readability-identifier-naming)
+Value wren_alloc_obj(Value classVar);                                 // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	if (!is_object(receiver)) {
 		// This does have to be implemented, look up the appropriate Num or Bool or whatever class
-		printf("TODO - call on non-object with signature %lx\n", signature);
+		fprintf(stderr, "TODO - call on non-object with signature %lx\n", signature);
 		abort();
 	}
 
 	Obj *object = (Obj *)get_object_value(receiver);
+	if (!object) {
+		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
+		fprintf(stderr, "Cannot call method '%s' on null receiver\n", name.c_str());
+		abort();
+	}
+
 	ObjClass *type = object->type;
 	FunctionTable::Entry *func = type->LookupMethod(SignatureId{signature});
 
 	if (!func) {
-		// TODO some table to un-hash the signatures for error messages
-		std::string name = ObjClass::LookupSignatureFromId({signature});
-		printf("On receiver of type %s, could not find method %s\n", object->type->name.c_str(), name.c_str());
+		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
+		fprintf(stderr, "On receiver of type %s, could not find method %s\n", object->type->name.c_str(), name.c_str());
 		abort();
 	}
 
@@ -57,8 +67,7 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 }
 
 Value wren_init_string_literal(const char *literal, int length) {
-	// TODO figure out how we'll handle allocation for this
-	ObjString *str = new ObjString();
+	ObjString *str = WrenRuntime::Instance().New<ObjString>();
 	str->m_value = std::string(literal, length);
 	return encode_object(str);
 }
@@ -76,6 +85,36 @@ void wren_register_signatures_table(const char *signatures) {
 		// Looking up a signature is enough to register it
 		ObjClass::FindSignatureId(signature);
 	}
+}
+
+Value wren_init_class(const char *name, uint8_t *dataBlock) {
+	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name);
+
+	ClassDescription desc;
+	desc.Parse(dataBlock);
+
+	for (const ClassDescription::MethodDecl &method : desc.methods) {
+		ObjClass *target = method.isStatic ? cls->type : cls;
+		target->AddFunction(method.name, method.func);
+	}
+
+	return encode_object(cls);
+}
+
+Value wren_alloc_obj(Value classVar) {
+	if (!is_object(classVar)) {
+		fprintf(stderr, "Cannot call wren_alloc_object with number argument\n");
+		abort();
+	}
+
+	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
+	if (!cls) {
+		fprintf(stderr, "Cannot call wren_alloc_object with null or non-ObjManagedClass type\n");
+		abort();
+	}
+
+	ObjManaged *obj = WrenRuntime::Instance().New<ObjManaged>(cls);
+	return encode_object(obj);
 }
 
 void setupGenEntry() {

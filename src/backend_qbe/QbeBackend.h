@@ -52,7 +52,7 @@ class QbeBackend {
 
 	VLocal *AddTemporary(std::string debugName);
 
-	void GenerateInitFunction(const std::string &moduleName);
+	void GenerateInitFunction(const std::string &moduleName, Module *module);
 
 	// Create a string constant if it doesn't already exist, and return it's name, ready for use in QBE IR.
 	std::string GetStringPtr(const std::string &value);
@@ -89,6 +89,7 @@ class QbeBackend {
 	Snippet *VisitExprLogicalNot(ExprLogicalNot *node);
 	Snippet *VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	Snippet *VisitExprSystemVar(ExprSystemVar *node);
+	Snippet *VisitExprGetClassVar(ExprGetClassVar *node);
 
 	bool m_inFunction = false;
 	int m_exprIndentation = 0;
@@ -98,6 +99,9 @@ class QbeBackend {
 
 	// All the function signatures we've used, so we can put them in an array for debug messages
 	std::unordered_set<std::string> m_signatures;
+
+	// The name each function is defined as, used when generating the class data block
+	std::unordered_map<IRFn *, std::string> m_functionNames;
 
 	// String constants
 	// Keys are the string literals, values are the associated symbol names

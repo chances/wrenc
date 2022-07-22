@@ -66,6 +66,9 @@ class IRFn : public IRNode {
 	std::vector<LocalVariable *> locals; // Locals may have duplicate names from different scopes, hence vector not map
 	std::unordered_map<VarDecl *, StmtUpvalueImport *> upvalues;
 
+	// Function parameters. These also appear in [locals].
+	std::vector<LocalVariable *> parameters;
+
 	// A list of all the upvalue imports that haven't been placed in the AST tree, and will be placed later.
 	std::vector<StmtUpvalueImport *> unInsertedImports;
 
@@ -77,6 +80,9 @@ class IRFn : public IRNode {
 
 	// The thing that gets run when this function is called
 	IRStmt *body = nullptr;
+
+	// Is this a method or a closure?
+	bool isMethod = false;
 
 	// The name of this node, as it's used for debugging
 	std::string debugName = "<unknown_func>";
@@ -381,6 +387,13 @@ class ExprSystemVar : public IRExpr {
 	static const std::unordered_map<std::string, int> SYSTEM_VAR_NAMES;
 };
 
+/// Get an ObjClass object declared in the current module by name
+class ExprGetClassVar : public IRExpr {
+  public:
+	void Accept(IRVisitor *visitor) override;
+	std::string name;
+};
+
 // //////////////////// //
 // ////   VISITOR   /// //
 // //////////////////// //
@@ -418,6 +431,7 @@ class IRVisitor {
 	virtual void VisitExprLogicalNot(ExprLogicalNot *node);
 	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	virtual void VisitExprSystemVar(ExprSystemVar *node);
+	virtual void VisitExprGetClassVar(ExprGetClassVar *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
 	// TODO for other variables
@@ -451,6 +465,8 @@ class IRPrinter : private IRVisitor {
 	void VisitStmtLabel(StmtLabel *node) override;
 	void VisitStmtJump(StmtJump *node) override;
 	void VisitExprSystemVar(ExprSystemVar *node) override;
+	void VisitExprGetClassVar(ExprGetClassVar *node) override;
+	void VisitFn(IRFn *node) override;
 
 	std::string GetLabelId(StmtLabel *label);
 

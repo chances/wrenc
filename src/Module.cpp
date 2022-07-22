@@ -42,10 +42,18 @@ const std::vector<IRFn *> &Module::GetFunctions() const { return m_functions; }
 
 const IRFn *Module::GetMainFunction() const { return m_functions.front(); }
 
+const std::vector<IRClass *> &Module::GetClasses() const { return m_classes; }
+
 void Module::AddNode(IRNode *node) {
 	IRFn *func = dynamic_cast<IRFn *>(node);
 	if (func) {
 		m_functions.push_back(func);
+		return;
+	}
+
+	IRClass *cls = dynamic_cast<IRClass *>(node);
+	if (cls) {
+		m_classes.push_back(cls);
 		return;
 	}
 

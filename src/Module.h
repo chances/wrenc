@@ -33,12 +33,14 @@ class Module {
 	/// Get the module's initialisation function. Same as GetFunctions.at(0);
 	const IRFn *GetMainFunction() const;
 
+	const std::vector<IRClass *> &GetClasses() const;
+
 	/// Add a top-level node.
 	void AddNode(IRNode *node);
 
   private:
 	std::optional<std::string> m_name;
 	std::unordered_map<std::string, std::unique_ptr<IRGlobalDecl>> m_globals;
-	std::vector<std::unique_ptr<ClassInfo>> m_classes;
+	std::vector<IRClass *> m_classes;
 	std::vector<IRFn *> m_functions;
 };

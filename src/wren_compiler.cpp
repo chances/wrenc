@@ -1508,21 +1508,25 @@ static IRStmt *finishBody(Compiler *compiler) {
 	ASSERT(expr || stmt, "The contents of a block must either be a statement or an expression");
 
 	IRExpr *returnValue = nullptr;
+	StmtBlock *block = compiler->New<StmtBlock>();
 
 	if (compiler->isInitializer) {
 		// If the initializer body evaluates to a value, discard it.
 		if (expr) {
 			stmt = compiler->New<StmtEvalAndIgnore>(expr);
 		}
+		block->Add(stmt);
 
 		// The receiver is always stored in the first local slot.
 		returnValue = compiler->New<ExprLoadReceiver>();
 	} else if (!isExpressionBody) {
 		// Implicitly return null in statement bodies.
+		block->Add(stmt);
 		returnValue = null(compiler);
+	} else {
+		returnValue = expr;
 	}
 
-	StmtBlock *block = compiler->New<StmtBlock>();
 	block->Add(compiler->New<StmtReturn>(returnValue));
 	return block;
 }
@@ -1545,7 +1549,18 @@ static void finishParameterList(Compiler *compiler, Signature *signature) {
 		validateNumParameters(compiler, ++signature->arity);
 
 		// Define a local variable in the method for the parameter.
-		declareNamedVariable(compiler);
+		VarDecl *var = declareNamedVariable(compiler);
+
+		// Mark it as function argument, to indicate this variable actually comes
+		// from the parameter list (in regular Wren this is implicit from the stack position).
+		LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+		if (!local) {
+			std::string name = var->Name();
+			error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
+			continue;
+		}
+
+		compiler->fn->parameters.push_back(local);
 	} while (match(compiler, TOKEN_COMMA));
 }
 
@@ -2810,14 +2825,16 @@ IRStmt *statement(Compiler *compiler) {
 // Declares a method in the enclosing class with [signature].
 //
 // Reports an error if a method with that signature is already declared.
-static MethodInfo *declareMethod(Compiler *compiler, Signature *signature) {
+static MethodInfo *declareMethod(Compiler *compiler, Signature *signature, bool forceStatic) {
 	// See if the class has already declared method with this signature.
 	ClassInfo *classInfo = compiler->enclosingClass;
-	auto &methods = classInfo->inStatic ? classInfo->staticMethods : classInfo->methods;
+	bool isStatic = classInfo->inStatic || forceStatic;
+	auto &methods = isStatic ? classInfo->staticMethods : classInfo->methods;
 
 	// Check for duplicate methods
 	auto existing = methods.find(signature);
 	if (existing != methods.end()) {
+		// Don't use isStatic b/c that's for constructors, which would be weird to include the static keyword for
 		const char *staticPrefix = classInfo->inStatic ? "static " : "";
 		std::string sigStr = signature->ToString();
 		error(compiler, "Class %s already defines a %smethod '%s' at line %d.", compiler->enclosingClass->name.c_str(),
@@ -2829,6 +2846,7 @@ static MethodInfo *declareMethod(Compiler *compiler, Signature *signature) {
 
 	method->lineNum = compiler->parser->previous.line;
 	method->signature = signature;
+	method->isStatic = isStatic;
 
 	return method;
 }
@@ -2955,9 +2973,8 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 	// Check for duplicate methods. Doesn't matter that it's already been
 	// defined, error will discard bytecode anyway.
 	// Check if the method table already contains this symbol
-	MethodInfo *method = declareMethod(compiler, signature);
+	MethodInfo *method = declareMethod(compiler, signature, false);
 	method->isForeign = isForeign;
-	method->isStatic = isStatic;
 
 	if (isForeign) {
 		// We don't need the function we started compiling in the parameter list
@@ -2967,7 +2984,9 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
 		methodCompiler.fn->body = finishBody(&methodCompiler);
 		method->fn = methodCompiler.fn;
+		method->fn->isMethod = true;
 		endCompiler(&methodCompiler, signature->ToString());
+		compiler->parser->module->AddNode(method->fn);
 	}
 
 	if (signature->type == SIG_INITIALIZER) {
@@ -2978,13 +2997,14 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		// which first allocates the memory to store the object then calls the initialiser.
 		Signature allocSignatureValue = *signature;
 		allocSignatureValue.type = SIG_METHOD;
-		MethodInfo *alloc = declareMethod(compiler, normaliseSignature(compiler, allocSignatureValue));
+		MethodInfo *alloc = declareMethod(compiler, normaliseSignature(compiler, allocSignatureValue), true);
 
-		alloc->isStatic = true;
 		alloc->isForeign = false; // For foreign classes, the allocate memory node handles the FFI stuff.
 
 		IRFn *fn = compiler->New<IRFn>();
+		compiler->parser->module->AddNode(fn);
 		fn->arity = signature->arity;
+		fn->isMethod = true;
 		alloc->fn = fn;
 
 		StmtBlock *block = compiler->New<StmtBlock>();
@@ -3270,6 +3290,25 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 				block->Add(stmt);
 			else
 				module->AddNode(node);
+
+			// In the case of classes, bind a new global variable to them. Eventually this should
+			// be seldom used and we can use static dispatch to make static functions "just as fast as C"
+			// (including all the usual caveats that apply there) and this will only be used to
+			// maintain the illusion of classes being regular objects, eg for putting them in lists.
+			IRClass *classDecl = dynamic_cast<IRClass *>(node);
+			if (classDecl) {
+				IRGlobalDecl *global = module->AddVariable(classDecl->info->name);
+				if (!global) {
+					error(&compiler, "Module-level variable for class '%s' is already defined",
+					      classDecl->info->name.c_str());
+					continue;
+				}
+
+				ExprGetClassVar *classVar = compiler.New<ExprGetClassVar>();
+				classVar->name = classDecl->info->name;
+
+				block->Add(compiler.New<StmtAssign>(global, classVar));
+			}
 		}
 		compiler.AddNew<StmtReturn>(block, compiler.New<ExprConst>(CcValue::NULL_TYPE));
 		compiler.fn->body = block;

@@ -3,8 +3,9 @@
 //
 
 #include "QbeBackend.h"
+#include "ClassDescription.h"
+#include "ClassInfo.h"
 #include "CompContext.h"
-
 #include "ObjClass.h"
 
 #include <Scope.h>
@@ -40,11 +41,41 @@ void QbeBackend::Generate(Module *module) {
 	}
 
 	// Generate the initialisation function
-	GenerateInitFunction(moduleName);
+	GenerateInitFunction(moduleName, module);
 
 	// Add the global variables
 	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
 		Print("section \".data\" data {} = {{ {} {} }}", MangleGlobalName(var), PTR_TYPE, (uint64_t)NULL_VAL);
+	}
+
+	// Add a table of data describing each class, what their methods are etc
+	// This works as a series of commands with flags
+	// Note we create new strings here, so this has to be done before writing the strings
+	for (IRClass *cls : module->GetClasses()) {
+		using CD = ClassDescription;
+		using Cmd = ClassDescription::Command;
+
+		Print("section \".data\" data $class_desc_{} = {{", cls->info->name);
+
+		// Emit a block for each method
+		auto writeMethods = [this](const ClassInfo::MethodMap &methods, bool isStatic) {
+			for (const auto &[sig, method] : methods) {
+				int flags = 0;
+				if (isStatic)
+					flags |= CD::FLAG_STATIC;
+				Print("w {} {},", (int)Cmd::ADD_METHOD, flags);
+
+				std::string sigSym = GetStringPtr(sig->ToString());
+				Print("{} {},", PTR_TYPE, sigSym);
+				Print("{} ${},", PTR_TYPE, m_functionNames.at(method->fn));
+			}
+		};
+
+		writeMethods(cls->info->methods, false);
+		writeMethods(cls->info->staticMethods, true);
+
+		Print("w {} 0,", (int)Cmd::END, CD::FLAG_NONE); // Signal the end of the class description
+		Print("}}");
 	}
 
 	// Add the strings
@@ -57,6 +88,11 @@ void QbeBackend::Generate(Module *module) {
 	// module is first loaded.
 	for (const auto &[_, name] : m_stringObjs) {
 		Print("section \".data\" data {} = {{ l {} }}", name, NULL_VAL);
+	}
+
+	// Add pointers to the ObjClass instances for all the classes we've declared
+	for (IRClass *cls : module->GetClasses()) {
+		Print("section \".data\" data $class_var_{} = {{ l {} }}", cls->info->name, NULL_VAL);
 	}
 
 	// Write the signature table - it's used for error messages, when the runtime only knows the
@@ -111,7 +147,7 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 	return other->result;
 }
 
-void QbeBackend::GenerateInitFunction(const std::string &moduleName) {
+void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *module) {
 	Print("function $module_init_func_{}() {{", moduleName);
 	m_inFunction = true;
 	Print("@start");
@@ -124,6 +160,15 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName) {
 		storageName.erase(1, 4); // Remove the obj_ prefix
 		Print("%{} =l call $wren_init_string_literal({} {}, w {})", varName, PTR_TYPE, storageName, literal.size());
 		Print("storel %{}, {}", varName, name);
+	}
+
+	Print("# Register classes");
+	for (IRClass *cls : module->GetClasses()) {
+		std::string varName = fmt::format("tmp_class_{}", cls->info->name);
+		std::string classNameSym = GetStringPtr(cls->info->name);
+		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{})", varName, PTR_TYPE, classNameSym, PTR_TYPE,
+		      cls->info->name);
+		Print("storel %{}, $class_var_{}", varName, cls->info->name);
 	}
 
 	Print("# Register signatures table");
@@ -154,6 +199,7 @@ QbeBackend::Snippet *QbeBackend::VisitExpr(IRExpr *expr) {
 	DISPATCH(VisitExprLogicalNot, ExprLogicalNot);
 	DISPATCH(VisitExprAllocateInstanceMemory, ExprAllocateInstanceMemory);
 	DISPATCH(VisitExprSystemVar, ExprSystemVar);
+	DISPATCH(VisitExprGetClassVar, ExprGetClassVar);
 
 #undef DISPATCH
 
@@ -180,16 +226,28 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 
 #undef DISPATCH
 
-	fmt::print("Unknown expr node {}\n", typeid(*expr).name());
+	fmt::print("Unknown stmt node {}\n", typeid(*expr).name());
 	return nullptr;
 }
 
 void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
-	// TODO argument handling
-	Print("function {} ${}() {{", PTR_TYPE, MangleUniqueName(node->debugName, false));
+	std::string funcName = MangleUniqueName(node->debugName, false);
+
+	std::string args;
+	if (node->isMethod) {
+		// Add the receiver
+		args += "l %this, ";
+	}
+	for (LocalVariable *arg : node->parameters) {
+		VLocal *var = LookupVariable(arg);
+		args += fmt::format("l %{}, ", var->name);
+	}
+
+	Print("function {} ${}({}) {{", PTR_TYPE, funcName, args);
 	Print("@start");
 	m_inFunction = true;
 	m_exprIndentation = 0;
+	m_functionNames[node] = funcName;
 
 	if (initFunction) {
 		Print("call ${}() # Module initialisation routine", initFunction.value());
@@ -310,6 +368,13 @@ QbeBackend::Snippet *QbeBackend::VisitExprSystemVar(ExprSystemVar *node) {
 	return snip;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitExprGetClassVar(ExprGetClassVar *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+	snip->result = AddTemporary("class_" + node->name);
+	snip->Add("%{} =l loadl $class_var_{}", snip->result->name, node->name);
+	return snip;
+}
+
 QbeBackend::Snippet *QbeBackend::VisitStmtReturn(StmtReturn *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	VLocal *result = snip->Add(VisitExpr(node->value));
@@ -352,6 +417,23 @@ QbeBackend::Snippet *QbeBackend::VisitExprRunStatements(ExprRunStatements *node)
 		line.insert(line.begin(), '\t');
 	}
 
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitExprLoadReceiver(ExprLoadReceiver *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+	snip->result = m_alloc.New<VLocal>();
+	snip->result->name = "this"; // See VisitFn, it's hardcoded in the function arguments
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+	std::string name = node->target->info->name;
+	snip->result = AddTemporary("new_instance_" + name);
+	VLocal *classValue = AddTemporary("new_instance_" + name);
+	snip->Add("%{} =l loadl $class_var_{}", classValue->name, name);
+	snip->Add("%{} =l call $wren_alloc_obj(l %{})", snip->result->name, classValue->name);
 	return snip;
 }
 
@@ -489,8 +571,4 @@ QbeBackend::Snippet *QbeBackend::VisitStmtJump(StmtJump *node) { return HandleUn
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprLoadReceiver(ExprLoadReceiver *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprLogicalNot(ExprLogicalNot *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
-	return HandleUnimplemented(node);
-}

@@ -20,7 +20,7 @@ SignatureId ObjClass::FindSignatureId(const std::string &name) {
 	return SignatureId{value};
 }
 
-std::string ObjClass::LookupSignatureFromId(SignatureId id) {
+std::string ObjClass::LookupSignatureFromId(SignatureId id, bool allowUnknown) {
 	auto iter = signatureNames.find(id);
 	if (iter != signatureNames.end())
 		return iter->second;
@@ -80,6 +80,8 @@ void ObjClass::AddFunction(const std::string &signature, void *funcPtr) {
 	FunctionTable::Entry &entry = functions.entries[idx];
 	entry.func = funcPtr;
 	entry.signature = id;
+
+	definedFunctions.push_back(&entry);
 }
 
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {

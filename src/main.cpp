@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 
 	const char *test = R"(
 var hi = "abc"
-System.print("Hello, %(hi)!")
+// System.print("Hello, %(hi)!")
 
 System.print("Hello, world!")
 
@@ -21,10 +21,15 @@ class Wren {
   flyTo(city) {
     System.print("Flying to %(city) ")
   }
+
+  static testStatic() {
+    System.print("static test")
+  }
 }
 
+Wren.testStatic()
 var temp = Wren.new()
-//temp.flyTo("Köln") // Test unicode
+temp.flyTo("Köln") // Test unicode
 
 /*
 var adjectives = Fiber.new {
@@ -37,16 +42,18 @@ while (!adjectives.isDone) System.print(adjectives.call())
 
 	CompContext ctx;
 	Module mod;
-	IRFn *fn = wrenCompile(&ctx, &mod, test, false);
+	IRFn *rootFn = wrenCompile(&ctx, &mod, test, false);
 
-	if (!fn)
+	if (!rootFn)
 		return 1;
 
 	IRCleanup cleanup;
-	cleanup.Process(fn);
+	for (IRFn *fn : mod.GetFunctions())
+		cleanup.Process(fn);
 
 	IRPrinter printer;
-	printer.Process(fn);
+	for (IRFn *fn : mod.GetFunctions())
+		printer.Process(fn);
 	std::unique_ptr<std::stringstream> dbg = printer.Extract();
 	fmt::print("AST/IR:\n{}\n", dbg->str());
 
