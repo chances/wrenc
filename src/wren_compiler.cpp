@@ -1176,6 +1176,25 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 		// Top-level module scope.
 		IRGlobalDecl *global = compiler->parser->module->AddVariable(token->contents);
 
+		// If the variable was already defined, check if it was implicitly defined
+		if (global == nullptr) {
+			IRGlobalDecl *current = compiler->parser->module->FindVariable(token->contents);
+			if (current->undeclaredLineUsed.has_value()) {
+				// If this was a localname we want to error if it was referenced before this definition.
+				// This covers cases like this in the global scope:
+				//   System.print(b)
+				//   var b = 1
+				if (wrenIsLocalName(token->contents)) {
+					error(compiler, "Variable '%s' referenced before this definition (first use at line %d).",
+					      token->contents.c_str(), current->undeclaredLineUsed.value());
+				}
+
+				current->undeclaredLineUsed = std::optional<int>();
+				global = current;
+			}
+		}
+
+		// If it was already explicitly defined, throw an error
 		if (global == nullptr) {
 			error(compiler, "Module variable is already defined.");
 			return nullptr;
@@ -1184,8 +1203,6 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 		compiler->parser->module->AddNode(global);
 
 		// } else if (symbol == -3) {
-		// 	error(compiler, "Variable '%.*s' referenced before this definition (first use at line %d).", token->length,
-		// 	      token->start, line);
 		// }
 
 		return global;
@@ -3272,6 +3289,9 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	}
 
 	endCompiler(&compiler, "(script)");
+
+	if (parser.hasError)
+		return nullptr;
 
 	return compiler.fn;
 }

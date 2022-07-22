@@ -6,7 +6,8 @@
 #include "CompContext.h"
 
 // Compiles [source], a string of Wren source code located in [module], to an
-// [ObjFn] that contains any top-level (not in function or method) code.
+// [IRFn] that contains any top-level (not in function or method) code, or nullptr
+// if there is an error in the source code.
 //
 // If [isExpression] is `true`, [source] should be a single expression, and
 // this compiles it to a function that evaluates and returns that expression.
