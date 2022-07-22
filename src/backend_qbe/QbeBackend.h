@@ -86,13 +86,14 @@ class QbeBackend {
 	Snippet *VisitExprSystemVar(ExprSystemVar *node);
 
 	bool m_inFunction = false;
+	int m_exprIndentation = 0;
 	std::stringstream m_output;
 	std::unordered_map<LocalVariable *, std::unique_ptr<VLocal>> m_locals;
 	std::vector<std::unique_ptr<VLocal>> m_temporaries;
 
 	// String constants
 	// Keys are the string literals, values are the associated symbol names
-	std::unordered_map<std::string, std::string> m_strings; // Raw C strings
+	std::unordered_map<std::string, std::string> m_strings;    // Raw C strings
 	std::unordered_map<std::string, std::string> m_stringObjs; // Wren ObjString objects
 
 	// Mapping of names that [MangleUniqueName] has encoded

@@ -189,6 +189,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	Print("function {} ${}() {{", PTR_TYPE, MangleUniqueName(node->debugName));
 	Print("@start");
 	m_inFunction = true;
+	m_exprIndentation = 0;
 
 	if (initFunction) {
 		Print("call ${}() # Module initialisation routine", initFunction.value());
@@ -263,6 +264,13 @@ QbeBackend::Snippet *QbeBackend::VisitExprConst(ExprConst *node) {
 }
 
 QbeBackend::Snippet *QbeBackend::VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node) {
+	// Make sure we don't have a statement needlessly hidden inside here, though
+	if (dynamic_cast<ExprRunStatements *>(node->expr)) {
+		fmt::print(
+		    stderr,
+		    "ExprRunStatements must not appear directly inside a StmtEvalAndIgnore, it should have been cleaned up!");
+	}
+
 	// Ignore the result, how much simpler could it get :)
 	return VisitExpr(node->expr);
 }
@@ -323,6 +331,29 @@ QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
 	return snip;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitExprRunStatements(ExprRunStatements *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	// Instead of implementing StmtBlock, we're handling it explicitly where it's used
+	// to avoid any surprises.
+	StmtBlock *block = dynamic_cast<StmtBlock *>(node->statement);
+	if (block) {
+		for (IRStmt *stmt : block->statements)
+			snip->Add(VisitStmt(stmt));
+	} else {
+		snip->Add(VisitStmt(node->statement));
+	}
+	snip->result = LookupVariable(node->temporary);
+
+	// Add a layer of indentation to make the assembly easier to read, to make it obvious this is just computing
+	// something for later use.
+	for (std::string &line : snip->lines) {
+		line.insert(line.begin(), '\t');
+	}
+
+	return snip;
+}
+
 // Utility functions //
 
 QbeBackend::Snippet *QbeBackend::HandleUnimplemented(IRNode *node) {
@@ -371,8 +402,7 @@ QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 
 	m_locals[decl] = std::make_unique<VLocal>();
 	VLocal *local = m_locals.at(decl).get();
-	local->name = decl->name;
-	// TODO unique-ify
+	local->name = MangleUniqueName(decl->name);
 	return local;
 }
 
@@ -441,7 +471,6 @@ QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { ret
 QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprLoadReceiver(ExprLoadReceiver *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprRunStatements(ExprRunStatements *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprLogicalNot(ExprLogicalNot *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
 	return HandleUnimplemented(node);

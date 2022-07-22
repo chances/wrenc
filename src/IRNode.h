@@ -343,7 +343,6 @@ class ExprLoadReceiver : public IRExpr {
 /// used as the result of this expression.
 /// This is to be used for things like list initialisers and as such MUST NOT return, break
 /// or jump outside of itself (jumps between points inside the block are fine though, eg if statements).
-/// After parsing, these are all removed and placed directly ahead of the statement they're used in.
 class ExprRunStatements : public IRExpr {
   public:
 	void Accept(IRVisitor *visitor) override;

@@ -9,6 +9,7 @@
 #include "CoreClasses.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
+#include "ObjList.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
 #include "common.h"
@@ -17,15 +18,15 @@
 
 // These are the functions in question
 extern "C" {
+Value wren_sys_var_Bool = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
+Value wren_sys_var_List = NULL_VAL;   // NOLINT(readability-identifier-naming)
+Value wren_sys_var_String = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_System = NULL_VAL; // NOLINT(readability-identifier-naming)
 
 Value wren_sys_bool_false = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
-
-// wren_sys_class_string can be found in ObjString.h as a one-off
-ObjClass *wren_sys_class_string = nullptr; // NOLINT(readability-identifier-naming)
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature); // NOLINT(readability-identifier-naming)
 Value wren_init_string_literal(const char *literal, int length);      // NOLINT(readability-identifier-naming)
@@ -61,8 +62,11 @@ Value wren_init_string_literal(const char *literal, int length) {
 }
 
 void setupGenEntry() {
+	wren_sys_var_Bool = ObjBool::Class()->ToValue();
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
+	wren_sys_var_List = ObjList::Class()->ToValue();
+	wren_sys_var_String = ObjString::Class()->ToValue();
 	wren_sys_var_System = CoreClasses::Instance()->System()->ToValue();
 
 	wren_sys_bool_true = ObjBool::Get(true)->ToValue();

@@ -8,7 +8,7 @@
 
 #include <unordered_map>
 
-/// Do some basic single-pass IR simplifications, such as flattening nested blocks and ExprRunStatements.
+/// Do some basic single-pass IR simplifications, namely flattening nested blocks.
 class IRCleanup : private IRVisitor {
   public:
 	void Process(IRNode *root);

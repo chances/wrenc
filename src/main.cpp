@@ -12,8 +12,7 @@ int main(int argc, char **argv) {
 
 	const char *test = R"(
 var hi = "abc"
-System.print(hi)
-// System.print("Hello, %(hi)!")
+System.print("Hello, %(hi)!")
 
 /*
 System.print("Hello, world!")
