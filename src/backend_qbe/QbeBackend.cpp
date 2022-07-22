@@ -29,18 +29,18 @@ QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
 void QbeBackend::Generate(Module *module) {
-	std::string moduleInitFuncName = "module_init_func_" + MangleUniqueName(module->Name().value_or("unknown"));
+	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"));
 
 	for (IRFn *func : module->GetFunctions()) {
 		std::optional<std::string> initFunc;
 		if (func == module->GetMainFunction()) {
-			initFunc = moduleInitFuncName;
+			initFunc = "module_init_func_" + moduleName;
 		}
 		VisitFn(func, initFunc);
 	}
 
 	// Generate the initialisation function
-	GenerateInitFunction(moduleInitFuncName);
+	GenerateInitFunction(moduleName);
 
 	// Add the global variables
 	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
@@ -49,18 +49,7 @@ void QbeBackend::Generate(Module *module) {
 
 	// Add the strings
 	for (const auto &[literal, name] : m_strings) {
-		std::string escaped = literal;
-		for (int i = 0; i < escaped.size(); i++) {
-			char c = escaped.at(i);
-			if (c != '"' && c != '\\')
-				continue;
-
-			// Insert an escape string
-			escaped.insert(escaped.begin() + i, '\\');
-
-			// Skip the character, otherwise we'll keep escaping it in an infinite loop
-			i++;
-		}
+		std::string escaped = EscapeString(literal);
 		Print("section \".rodata\" data {} = {{b \"{}\", b 0}}", name, escaped);
 	}
 
@@ -69,6 +58,14 @@ void QbeBackend::Generate(Module *module) {
 	for (const auto &[_, name] : m_stringObjs) {
 		Print("section \".data\" data {} = {{ l {} }}", name, NULL_VAL);
 	}
+
+	// Write the signature table - it's used for error messages, when the runtime only knows the
+	// hash of a given signature.
+	Print("section \".rodata\" data $signatures_table_{} = {{", moduleName);
+	for (const std::string &signature : m_signatures) {
+		Print("\tb \"{}\", b 0,", EscapeString(signature));
+	}
+	Print("b 0 }} # End with repeated zero");
 
 	// TODO only for main module:
 	// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
@@ -114,8 +111,8 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 	return other->result;
 }
 
-void QbeBackend::GenerateInitFunction(const std::string &initFuncName) {
-	Print("function ${}() {{", initFuncName);
+void QbeBackend::GenerateInitFunction(const std::string &moduleName) {
+	Print("function $module_init_func_{}() {{", moduleName);
 	m_inFunction = true;
 	Print("@start");
 
@@ -128,6 +125,9 @@ void QbeBackend::GenerateInitFunction(const std::string &initFuncName) {
 		Print("%{} =l call $wren_init_string_literal({} {}, w {})", varName, PTR_TYPE, storageName, literal.size());
 		Print("storel %{}, {}", varName, name);
 	}
+
+	Print("# Register signatures table");
+	Print("call $wren_register_signatures_table({} $signatures_table_{})", PTR_TYPE, moduleName);
 
 	Print("ret");
 	m_inFunction = false;
@@ -285,6 +285,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 	VLocal *funcPtr = AddTemporary("vfunc_ptr");
 	// TODO we can optimise this a lot
 	std::string signatureStr = node->signature->ToString();
+	m_signatures.insert(signatureStr);
 	uint64_t signature = ObjClass::FindSignatureId(signatureStr);
 	// Print the signature string as a comment to aid manually reading IR
 	snip->Add("%{} ={} call $wren_virtual_method_lookup({} %{}, l {}) # {}", funcPtr->name, PTR_TYPE, PTR_TYPE,
@@ -395,6 +396,21 @@ std::string QbeBackend::GetStringObjPtr(const std::string &value) {
 	return symbol;
 }
 
+std::string QbeBackend::EscapeString(std::string value) {
+	for (int i = 0; i < value.size(); i++) {
+		char c = value.at(i);
+		if (c != '"' && c != '\\')
+			continue;
+
+		// Insert an escape string
+		value.insert(value.begin() + i, '\\');
+
+		// Skip the character, otherwise we'll keep escaping it in an infinite loop
+		i++;
+	}
+	return value;
+}
+
 QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 	auto iter = m_locals.find(decl);
 	if (iter != m_locals.end())
@@ -402,13 +418,13 @@ QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 
 	m_locals[decl] = std::make_unique<VLocal>();
 	VLocal *local = m_locals.at(decl).get();
-	local->name = MangleUniqueName(decl->name);
+	local->name = "lv_" + MangleUniqueName(decl->name); // lv for local variable
 	return local;
 }
 
 std::string QbeBackend::MangleGlobalName(IRGlobalDecl *var) {
 	// TODO add module name etc
-	return "$" + MangleRawName(var->name, false);
+	return "$global_var_" + MangleRawName(var->name, false);
 }
 
 std::string QbeBackend::MangleUniqueName(const std::string &name) {

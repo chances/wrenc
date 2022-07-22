@@ -117,6 +117,11 @@ class ObjClass : public Obj {
 	/// used in a way where the runtime could confuse them. Two functions from very different
 	/// objects colliding won't matter since they'll never be called on each other.
 	static SignatureId FindSignatureId(const std::string &name);
+
+	/// Given a signature ID, find the name it's associated with.
+	/// The value from this should be used ONLY for diagnostics, because if we've never seen the
+	/// signature before and don't know what it's name is, it'll be returned as a hex value.
+	static std::string LookupSignatureFromId(SignatureId id);
 };
 
 /// Class used to define types in C++

@@ -6,12 +6,29 @@
 #include "CoreClasses.h"
 #include "hash.h"
 
+#include <inttypes.h>
+#include <unordered_map>
+
+static std::unordered_map<uint64_t, std::string> signatureNames;
+
 ObjClass::ObjClass() : Obj(nullptr) {}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {
 	static const uint64_t SIG_SEED = hashString("signature id", 0);
 	uint64_t value = hashString(name, SIG_SEED);
+	signatureNames[value] = name;
 	return SignatureId{value};
+}
+
+std::string ObjClass::LookupSignatureFromId(SignatureId id) {
+	auto iter = signatureNames.find(id);
+	if (iter != signatureNames.end())
+		return iter->second;
+
+	// Return the signature as a hex value
+	char buff[32];
+	snprintf(buff, sizeof(buff), "!UKN-0x%016" PRIx64, id.id);
+	return buff;
 }
 
 FunctionTable::Entry *ObjClass::LookupMethod(SignatureId signature) {

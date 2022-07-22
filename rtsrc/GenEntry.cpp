@@ -30,6 +30,7 @@ Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature); // NOLINT(readability-identifier-naming)
 Value wren_init_string_literal(const char *literal, int length);      // NOLINT(readability-identifier-naming)
+void wren_register_signatures_table(const char *signatures);          // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -45,7 +46,8 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 	if (!func) {
 		// TODO some table to un-hash the signatures for error messages
-		printf("On receiver of type %s, could not find method %lx\n", object->type->name.c_str(), signature);
+		std::string name = ObjClass::LookupSignatureFromId({signature});
+		printf("On receiver of type %s, could not find method %s\n", object->type->name.c_str(), name.c_str());
 		abort();
 	}
 
@@ -59,6 +61,21 @@ Value wren_init_string_literal(const char *literal, int length) {
 	ObjString *str = new ObjString();
 	str->m_value = std::string(literal, length);
 	return encode_object(str);
+}
+
+void wren_register_signatures_table(const char *signatures) {
+	while (true) {
+		// If there's an empty string, that signifies the end of the table
+		if (*signatures == 0)
+			break;
+
+		// Find and process this string
+		std::string signature = signatures;
+		signatures += signature.size() + 1; // +1 for trailing null
+
+		// Looking up a signature is enough to register it
+		ObjClass::FindSignatureId(signature);
+	}
 }
 
 void setupGenEntry() {

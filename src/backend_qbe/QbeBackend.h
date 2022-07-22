@@ -11,6 +11,8 @@
 #include <fmt/core.h>
 #include <memory>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 
 class QbeBackend {
   public:
@@ -50,9 +52,12 @@ class QbeBackend {
 
 	VLocal *AddTemporary(std::string debugName);
 
+	void GenerateInitFunction(const std::string &moduleName);
+
 	// Create a string constant if it doesn't already exist, and return it's name, ready for use in QBE IR.
 	std::string GetStringPtr(const std::string &value);
 	std::string GetStringObjPtr(const std::string &value);
+	static std::string EscapeString(std::string value);
 
 	Snippet *VisitExpr(IRExpr *expr);
 	Snippet *VisitStmt(IRStmt *expr);
@@ -91,6 +96,9 @@ class QbeBackend {
 	std::unordered_map<LocalVariable *, std::unique_ptr<VLocal>> m_locals;
 	std::vector<std::unique_ptr<VLocal>> m_temporaries;
 
+	// All the function signatures we've used, so we can put them in an array for debug messages
+	std::unordered_set<std::string> m_signatures;
+
 	// String constants
 	// Keys are the string literals, values are the associated symbol names
 	std::unordered_map<std::string, std::string> m_strings;    // Raw C strings
@@ -103,5 +111,4 @@ class QbeBackend {
 	ArenaAllocator m_alloc;
 
 	static constexpr char PTR_TYPE = 'l';
-	void GenerateInitFunction(const std::string &initFuncName);
 };
