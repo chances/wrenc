@@ -20,6 +20,10 @@ class ObjString;
 class Obj {
   public:
 	virtual ~Obj();
+	Obj();
+
+	Obj(const Obj &) = delete;
+	Obj &operator=(const Obj &) = delete;
 
 	/// This class's metaclass. This is represented by double arrows in the diagram in
 	/// ObjClass's file header.
@@ -31,4 +35,5 @@ class Obj {
 
 	/// Helper method to make a virtual call to the toString function
 	std::string ToString();
+	static std::string ToString(Value value);
 };

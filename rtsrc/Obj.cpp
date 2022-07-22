@@ -10,6 +10,7 @@
 #include <string>
 
 Obj::~Obj() = default;
+Obj::Obj() = default;
 
 std::string Obj::ToString() {
 	static SignatureId SIG = ObjClass::FindSignatureId("toString");
@@ -37,4 +38,12 @@ std::string Obj::ToString() {
 	}
 
 	return nullptr;
+}
+
+std::string Obj::ToString(Value value) {
+	if (value == NULL_VAL)
+		return "null";
+	if (is_object(value))
+		return get_object_value(value)->ToString();
+	return std::to_string(get_number_value(value));
 }

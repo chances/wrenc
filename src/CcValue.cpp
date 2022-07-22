@@ -13,13 +13,15 @@ Value CcValue::ToRuntimeValue() const {
 		abort();
 		break;
 	case NULL_TYPE:
-		return NanSingletons::NULL_VAL;
+		return encode_object(nullptr);
 	case STRING:
 		fmt::print(stderr, "TODO string globals\n");
 		abort(); // TODO
 		break;
 	case BOOL:
-		return b ? NanSingletons::TRUE_VAL : NanSingletons::FALSE_VAL;
+		fmt::print(stderr, "TODO bool globals\n");
+		abort(); // TODO
+		break;
 	case INT:
 		return encode_number(i);
 	case NUM:

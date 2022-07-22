@@ -35,8 +35,7 @@ void QbeBackend::Generate(Module *module) {
 
 	// Add the global variables
 	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
-		Print("section \".data\" data {} = {{ {} {} }}", MangleGlobalName(var), PTR_TYPE,
-		      (uint64_t)NanSingletons::NULL_VAL);
+		Print("section \".data\" data {} = {{ {} {} }}", MangleGlobalName(var), PTR_TYPE, (uint64_t)NULL_VAL);
 	}
 
 	// Add the strings

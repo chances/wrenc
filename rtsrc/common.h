@@ -49,30 +49,23 @@ class Obj;
 // -[NaN      ]1---------------------------------------------------
 //
 // If all of the NaN bits are set, it's not a number. Otherwise, it is.
-// That leaves all of the remaining bits as available for us to play with. We
-// stuff a few different kinds of things here: special singleton values like
-// "true", "false", and "null", and pointers to objects allocated on the heap.
-// We'll use the sign bit to distinguish singleton values from pointers. If
-// it's set, it's a pointer.
+// That leaves all of the remaining bits as available for us to play with.
+// In regular Wren, we'd use the sign bit to distinguish them, but here it's
+// always set to zero, as null and boolean values are just pointers (to avoid
+// special cases in the ultra-performance-sensitive virtual dispatch code).
 //
-// v--Pointer or singleton?
+// v--Always zero
 // S[NaN      ]1---------------------------------------------------
-//
-// For singleton values, we just enumerate the different values. We'll use the
-// low bits of the mantissa for that, and only need a few:
-//
-//                                                 3 Type bits--v
-// 0[NaN      ]1------------------------------------------------[T]
 //
 // For pointers, we are left with 51 bits of mantissa to store an address.
 // That's more than enough room for a 32-bit address. Even 64-bit machines
 // only actually use 48 bits for addresses, so we've got plenty. We just stuff
 // the address right into the mantissa.
 //
-// Ta-da, double precision numbers, pointers, and a bunch of singleton values,
+// Ta-da, double precision numbers and pointers,
 // all stuffed into a single 64-bit sequence. Even better, we don't have to
 // do any masking or work to extract number values: they are unmodified. This
-// means math on numbers is fast.
+// means maths on numbers is fast.
 typedef uint64_t Value;
 
 enum class RtErrorType {
@@ -87,18 +80,21 @@ inline bool is_value_float(Value value) {
 	return (value & NAN_MASK) != NAN_MASK;
 }
 
-inline bool is_singleton(Value value) {
-	// Check that the sign bit is not set and the NaN mask is all ones
-	return (value & (SIGN_MASK | NAN_MASK)) == NAN_MASK;
-}
-
 inline bool is_object(Value value) {
 	// Check that both the sign bit and NaN mask are all ones
-	return (value & (SIGN_MASK | NAN_MASK)) == (SIGN_MASK | NAN_MASK);
+	return (value & NAN_MASK) == NAN_MASK;
 }
 
-// Works on singletons too, to get their type value
-inline uint64_t get_object_value(Value value) { return value & CONTENT_MASK; }
+inline Obj *get_object_value(Value value) { return (Obj *)(value & CONTENT_MASK); }
+
+inline double get_number_value(Value value) {
+	union {
+		Value v;
+		double n;
+	} tmp;
+	tmp.v = value;
+	return tmp.n;
+}
 
 inline Value encode_number(double num) {
 	union {
@@ -116,32 +112,13 @@ inline Value encode_number(double num) {
 
 inline Value encode_object(Obj *obj) {
 	// If this pointer would be cut into by the NaN bits, fail
-	if (((uint64_t)obj) & (SIGN_MASK | NAN_MASK)) {
+	if (((uint64_t)obj) & NAN_MASK) {
 		rt_throw_error(RtErrorType::INVALID_PTR);
 	}
 
-	return SIGN_MASK | NAN_MASK | (uint64_t)obj;
+	return NAN_MASK | (uint64_t)obj;
 }
 
-enum NanSingletons : Value {
-	NULL_VAL = NAN_MASK,
-	FALSE_VAL,
-	TRUE_VAL,
-	UNDEFINED_VAL,
-};
-
-// Helpers to make porting code from Wren easier:
-
-// If the NaN bits are set, it's not a number.
-#define IS_NUM(value) is_value_float(value)
-
-// An object pointer is a NaN with a set sign bit.
-#define IS_OBJ(value) is_object(value)
-
-#define IS_FALSE(value) ((value) == FALSE_VAL)
-#define IS_NULL(value) ((value) == NULL_VAL)
-#define IS_UNDEFINED(value) ((value) == UNDEFINED_VAL)
-
-#define BOOL_VAL(boolean) ((boolean) ? TRUE_VAL : FALSE_VAL) // boolean
-#define NUM_VAL(num) (encode_number(num))                    // double
-#define OBJ_VAL(obj) (encode_object(obj))                    // Any Obj*
+// Null is just nullptr encoded with our NaN masking scheme, which
+// simplifies down to just the mask.
+#define NULL_VAL NAN_MASK

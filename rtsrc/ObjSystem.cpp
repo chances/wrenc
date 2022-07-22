@@ -26,10 +26,6 @@ ObjSystem::ObjSystem() {
 }
 
 void ObjSystem::Print(Value value) {
-	if (!is_object(value))
-		abort(); // TODO
-
-	Obj *obj = (Obj *)get_object_value(value);
-	std::string str = obj->ToString();
+	std::string str = Obj::ToString(value);
 	printf("System print: %s\n", str.c_str());
 }
