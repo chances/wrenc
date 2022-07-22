@@ -6,7 +6,7 @@ from typing import TextIO, List
 from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
-    r"^WREN_METHOD\(\)\s+(?P<static>static\s+)?(?P<return>\w+)\s+(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
+    r"^\s*WREN_METHOD\(\)\s+(?P<static>static\s+)?(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w+)\s+:")
 
 
@@ -73,13 +73,17 @@ def parse_file(fi: TextIO) -> List[Class]:
         if not method_match:
             continue
 
-        return_type = method_match.group("return")
+        return_type = method_match.group("return").replace(' ', '')  # May have spaces from pointers
         name = method_match.group("name")
         args_str = method_match.group("args")
-        static = method_match.group("static") != ""
+        static = method_match.group("static") is not None
 
         args = []
         for arg_str in args_str.split(","):
+            # If there are no arguments, don't try and parse the empty string
+            if args_str == "":
+                continue
+
             arg_str = arg_str.strip()
             parts = arg_str.split(" ")
             assert len(parts) == 2
@@ -112,19 +116,23 @@ def generate(output: TextIO, files: List[str]):
         output.write(f"\n// For class {cls.name}:\n")
         for method in cls.methods:
             args_str = ",".join([f"Value {arg.raw_name()}" for arg in method.args])
+            if args_str:
+                args_str = ", " + args_str  # Add a comma to go the receiver
             debug_sig = cls.name + "." + method.signature()
-            output.write(f"static Value {method.method_name(cls)}(Value receiver, {args_str}) {'{'}\n")
+            output.write(f"static Value {method.method_name(cls)}(Value receiver{args_str}) {'{'}\n")
 
             # Convert the receiver (if not static)
             if not method.static:
                 output.write(f"\t{cls.name} *obj = checkReceiver<{cls.name}>(\"{debug_sig}\", receiver);\n")
 
-            for arg in method.args:
+            for i, arg in enumerate(method.args):
                 cast_expr: str
                 if arg.type == "Value":
                     cast_expr = arg.raw_name()
                 elif arg.type.startswith("Obj"):
-                    cast_expr = f"checkArg<{arg.type}>(\"{debug_sig}\", {arg.raw_name()})"
+                    cast_expr = f"checkArg<{arg.type}>(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                elif arg.type == "std::string":
+                    cast_expr = f"checkString(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
                 else:
                     raise Exception(f"Unknown arg type '{arg.type}' for method '{debug_sig}'")
 
@@ -141,16 +149,18 @@ def generate(output: TextIO, files: List[str]):
             if method.static:
                 output.write(f"{cls.name}::{method.name}({typed_args});\n")
             else:
-                output.write(f"receiver->{method.name}({typed_args});\n")
+                output.write(f"obj->{method.name}({typed_args});\n")
 
             # Convert the return value, or return null
             return_value: str
-            if method.static:
+            if method.return_type == "void":
                 return_value = "NULL_VAL"
             elif method.return_type == "Value":
                 return_value = "ret"
+            elif method.return_type == "std::string":
+                return_value = "encode_object(ObjString::New(ret))"
             elif method.return_type.startswith("Obj"):
-                return_value = "ret ? encode_object(ret) : NULL_VAL"
+                return_value = "encode_object(ret)"
             else:
                 raise Exception(f"Invalid return type {method.return_type} for method {debug_sig}")
 

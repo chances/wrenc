@@ -1796,7 +1796,7 @@ static IRExpr *list(Compiler *compiler, bool canAssign) {
 
 		// The element.
 		IRExpr *toAdd = expression(compiler);
-		callMethod(compiler, "addCore_(_)", loadVariable(compiler, list), {toAdd}, block);
+		callMethod(compiler, "add(_)", loadVariable(compiler, list), {toAdd}, block);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow newlines before the closing ']'.
@@ -1835,7 +1835,7 @@ static IRExpr *map(Compiler *compiler, bool canAssign) {
 
 		// The value.
 		IRExpr *toAdd = expression(compiler);
-		callMethod(compiler, "addCore_(_,_)", loadVariable(compiler, map), {toAdd}, block);
+		callMethod(compiler, "[_]=(_)", loadVariable(compiler, map), {toAdd}, block);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow newlines before the closing '}'.
@@ -2053,12 +2053,12 @@ static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
 	do {
 		// The opening string part.
 		IRExpr *lit = literal(compiler);
-		callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {lit}, block);
+		callMethod(compiler, "add(_)", loadVariable(compiler, parts), {lit}, block);
 
 		// The interpolated expression.
 		ignoreNewlines(compiler);
 		IRExpr *interpolatedExpr = expression(compiler);
-		callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {interpolatedExpr}, block);
+		callMethod(compiler, "add(_)", loadVariable(compiler, parts), {interpolatedExpr}, block);
 
 		ignoreNewlines(compiler);
 	} while (match(compiler, TOKEN_INTERPOLATION));
@@ -2066,7 +2066,7 @@ static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
 	// The trailing string part.
 	consume(compiler, TOKEN_STRING, "Expect end of string interpolation.");
 	IRExpr *trailing = literal(compiler);
-	callMethod(compiler, "addCore_(_)", loadVariable(compiler, parts), {trailing}, block);
+	callMethod(compiler, "add(_)", loadVariable(compiler, parts), {trailing}, block);
 
 	// The list of interpolated parts. Join them all together and store them in the result variable, as that's set
 	// as the output of the ExprRunStatements.

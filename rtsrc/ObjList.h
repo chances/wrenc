@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "Obj.h"
+#include "ObjClass.h"
 
 #include <vector>
 
@@ -14,6 +14,13 @@ class ObjList : public Obj {
 	virtual ~ObjList();
 
 	static ObjClass *Class();
+
+	WREN_METHOD() static ObjList *New();
+
+	WREN_METHOD() Value Add(Value toAdd);
+
+	WREN_METHOD() std::string Join();
+	WREN_METHOD() std::string Join(std::string joiner);
 
 	std::vector<Value> items;
 };

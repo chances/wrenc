@@ -31,6 +31,8 @@ class Obj {
 	/// For non-ObjClass objects, this points to the object's ObjClass.
 	ObjClass *type = nullptr;
 
+	// TODO reference counting
+
 	inline Value ToValue() { return encode_object(this); }
 
 	/// Helper method to make a virtual call to the toString function

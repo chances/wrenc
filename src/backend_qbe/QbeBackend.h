@@ -45,7 +45,7 @@ class QbeBackend {
 
 	VLocal *LookupVariable(LocalVariable *decl);
 	std::string MangleGlobalName(IRGlobalDecl *var);
-	std::string MangleUniqueName(const std::string &name);
+	std::string MangleUniqueName(const std::string &name, bool excludeIdentical);
 	std::string MangleRawName(const std::string &str, bool permitAmbiguity);
 
 	Snippet *HandleUnimplemented(IRNode *node);
@@ -106,6 +106,7 @@ class QbeBackend {
 
 	// Mapping of names that [MangleUniqueName] has encoded
 	std::unordered_map<std::string, std::string> m_uniqueNames;
+	std::unordered_set<std::string> m_uniqueNamesInv; // Inverse of m_uniqueNames
 
 	// Place to allocate all our snippets
 	ArenaAllocator m_alloc;

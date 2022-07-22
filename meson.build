@@ -55,6 +55,7 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjBool.cpp',
   'rtsrc/ObjList.cpp',
   'rtsrc/CoreClasses.cpp',
+  'rtsrc/WrenRuntime.cpp',
   rtlib_bindings,
   include_directories: ['rtsrc'],
 )

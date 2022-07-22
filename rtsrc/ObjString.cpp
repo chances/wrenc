@@ -3,6 +3,7 @@
 //
 
 #include "ObjString.h"
+#include "WrenRuntime.h"
 
 class ObjStringClass : public ObjNativeClass {
   public:
@@ -15,3 +16,15 @@ ObjNativeClass *ObjString::Class() {
 }
 
 ObjString::ObjString() : Obj(Class()) {}
+
+ObjString *ObjString::New(const std::string &value) {
+	ObjString *obj = WrenRuntime::Instance().New<ObjString>();
+	obj->m_value = value;
+	return obj;
+}
+
+ObjString *ObjString::New(std::string &&value) {
+	ObjString *obj = WrenRuntime::Instance().New<ObjString>();
+	obj->m_value = std::move(value);
+	return obj;
+}

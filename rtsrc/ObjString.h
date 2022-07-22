@@ -15,5 +15,8 @@ class ObjString : public Obj {
 
 	ObjString();
 
+	static ObjString *New(const std::string &value);
+	static ObjString *New(std::string &&value);
+
 	std::string m_value;
 };

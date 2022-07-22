@@ -29,7 +29,7 @@ QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
 void QbeBackend::Generate(Module *module) {
-	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"));
+	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"), false);
 
 	for (IRFn *func : module->GetFunctions()) {
 		std::optional<std::string> initFunc;
@@ -71,7 +71,7 @@ void QbeBackend::Generate(Module *module) {
 	// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
 	// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 	// make a working executable, and it'll load this pointer when we link this object to it.
-	std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName);
+	std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName, false);
 	Print("section \".rodata\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
 
 	fmt::print("Generated QBE IR:\n{}\n", m_output.str());
@@ -186,7 +186,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 
 void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	// TODO argument handling
-	Print("function {} ${}() {{", PTR_TYPE, MangleUniqueName(node->debugName));
+	Print("function {} ${}() {{", PTR_TYPE, MangleUniqueName(node->debugName, false));
 	Print("@start");
 	m_inFunction = true;
 	m_exprIndentation = 0;
@@ -321,7 +321,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
 	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
 	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
 	Snippet *snip = m_alloc.New<Snippet>();
-	snip->result = AddTemporary("var_load_" + MangleUniqueName(node->var->Name()));
+	snip->result = AddTemporary("var_load_" + node->var->Name());
 	if (local) {
 		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
 	} else if (global) {
@@ -365,7 +365,7 @@ QbeBackend::Snippet *QbeBackend::HandleUnimplemented(IRNode *node) {
 QbeBackend::VLocal *QbeBackend::AddTemporary(std::string debugName) {
 	m_temporaries.push_back(std::make_unique<VLocal>());
 	VLocal *local = m_temporaries.back().get();
-	local->name = MangleUniqueName(debugName);
+	local->name = MangleUniqueName(debugName, true);
 	return local;
 }
 
@@ -418,7 +418,7 @@ QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 
 	m_locals[decl] = std::make_unique<VLocal>();
 	VLocal *local = m_locals.at(decl).get();
-	local->name = "lv_" + MangleUniqueName(decl->name); // lv for local variable
+	local->name = "lv_" + MangleUniqueName(decl->name, false); // lv for local variable
 	return local;
 }
 
@@ -427,21 +427,24 @@ std::string QbeBackend::MangleGlobalName(IRGlobalDecl *var) {
 	return "$global_var_" + MangleRawName(var->name, false);
 }
 
-std::string QbeBackend::MangleUniqueName(const std::string &name) {
-	auto iter = m_uniqueNames.find(name);
-	if (iter != m_uniqueNames.end())
-		return iter->second;
+std::string QbeBackend::MangleUniqueName(const std::string &name, bool excludeIdentical) {
+	if (!excludeIdentical) {
+		auto iter = m_uniqueNames.find(name);
+		if (iter != m_uniqueNames.end())
+			return iter->second;
+	}
 
 	std::string base = MangleRawName(name, true);
 
 	// If required, put on a numerical suffix
 	std::string mangled = base;
 	int i = 1;
-	while (m_uniqueNames.contains(mangled)) {
+	while (m_uniqueNamesInv.contains(mangled)) {
 		mangled = base + "_" + std::to_string(i++);
 	}
 
 	m_uniqueNames[name] = mangled;
+	m_uniqueNamesInv.insert(mangled);
 	return mangled;
 }
 
