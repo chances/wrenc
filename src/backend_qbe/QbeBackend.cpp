@@ -5,6 +5,8 @@
 #include "QbeBackend.h"
 #include "CompContext.h"
 
+#include "ObjClass.h"
+
 #include <Scope.h>
 #include <SymbolTable.h>
 #include <fmt/format.h>
@@ -201,12 +203,26 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	VLocal *receiver = snip->Add(VisitExpr(node->receiver));
 	snip->result = AddTemporary("func_call_result");
+
+	// First, lookup the address of the function
+	// TODO inline the fast-case lookup code (check one entry slot)
+	VLocal *funcPtr = AddTemporary("vfunc_ptr");
 	// TODO we can optimise this a lot
-	// TODO arguments
-	// TODO use signature ID rather than stringifying it
-	std::string signature = GetStringPtr(node->signature->ToString());
-	snip->Add("%{} ={} call $wren_virtual_dispatch({} %{}, {} {})", snip->result->name, PTR_TYPE, PTR_TYPE,
-	          receiver->name, PTR_TYPE, signature);
+	std::string signatureStr = node->signature->ToString();
+	uint64_t signature = ObjClass::FindSignatureId(signatureStr);
+	// Print the signature string as a comment to aid manually reading IR
+	snip->Add("%{} ={} call $wren_virtual_method_lookup({} %{}, l {}) # {}", funcPtr->name, PTR_TYPE, PTR_TYPE,
+	          receiver->name, signature, signatureStr);
+
+	// Emit all the arguments
+	std::string argStr = fmt::format("{} %{}, ", PTR_TYPE, receiver->name);
+	for (IRExpr *argExpr : node->args) {
+		VLocal *result = snip->Add(VisitExpr(argExpr));
+		argStr += fmt::format("{} %{}, ", PTR_TYPE, result->name);
+	}
+
+	// Produce the actual method call
+	snip->Add("%{} ={} call %{}({})", snip->result->name, PTR_TYPE, funcPtr->name, argStr);
 	return snip;
 }
 
@@ -221,6 +237,21 @@ QbeBackend::Snippet *QbeBackend::VisitStmtReturn(StmtReturn *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	VLocal *result = snip->Add(VisitExpr(node->value));
 	snip->Add("ret %{}", result->name);
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
+	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
+	Snippet *snip = m_alloc.New<Snippet>();
+	snip->result = AddTemporary("var_load_" + MangleUniqueName(node->var->Name()));
+	if (local) {
+		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
+	} else if (global) {
+		snip->Add("%{} ={} load{} {}", snip->result->name, PTR_TYPE, PTR_TYPE, MangleGlobalName(global));
+	} else {
+		fmt::print(stderr, "Unknown variable type in load: {}\n", typeid(*node->var).name());
+	}
 	return snip;
 }
 
@@ -329,7 +360,6 @@ QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnim
 QbeBackend::Snippet *QbeBackend::VisitStmtLabel(StmtLabel *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtJump(StmtJump *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprLoadReceiver(ExprLoadReceiver *node) { return HandleUnimplemented(node); }

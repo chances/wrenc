@@ -9,4 +9,6 @@
 class ObjSystem : public ObjNativeClass {
   public:
 	ObjSystem();
+
+	WREN_METHOD() static void Print(Value value);
 };

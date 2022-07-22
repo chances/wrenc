@@ -4,4 +4,11 @@
 
 #pragma once
 
-class ObjString {};
+#include <string>
+
+#include "Obj.h"
+
+class ObjString : public Obj {
+  public:
+	std::string value;
+};

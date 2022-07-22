@@ -4,6 +4,7 @@
 
 #include "CoreClasses.h"
 
+#include "ObjString.h"
 #include "ObjSystem.h"
 
 CoreClasses::~CoreClasses() = default;
@@ -24,7 +25,7 @@ CoreClasses::CoreClasses() {
 	m_rootClass.name = "Class";
 	m_rootClass.isMetaClass = true;
 	m_rootClass.parentClass = &m_object;
-	m_rootClass.type = nullptr;
+	m_rootClass.type = &m_rootClass; // The root class has itself as it's type
 }
 
 CoreClasses *CoreClasses::Instance() {
@@ -36,4 +37,12 @@ ObjSystem &CoreClasses::System() {
 	if (!m_system)
 		m_system = std::make_unique<ObjSystem>();
 	return *m_system;
+}
+
+ObjClass &CoreClasses::String() {
+	if (!m_string) {
+		// TODO make an instance of the string meta-class
+		abort();
+	}
+	return *m_string;
 }

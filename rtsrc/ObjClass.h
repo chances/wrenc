@@ -38,8 +38,13 @@
 
 #include <string>
 
+// A macro read by the bindings generator to mark a method as being accessible from Wren.
+#define WREN_METHOD()
+
 struct SignatureId {
 	uint64_t id;
+
+	operator uint64_t() const { return id; }
 };
 
 /// Basically this forms a hashmap for all the function signatures.
@@ -59,6 +64,8 @@ class FunctionTable {
 	/// 3. Check if entry->signatureId == signatureId, if so we've found the entry
 	/// 4. Advance to the next entry in the array (wrapping around) and go to step 2.
 	Entry entries[256];
+
+	static constexpr unsigned int NUM_ENTRIES = sizeof(entries) / sizeof(entries[0]);
 };
 
 /// Instances of this represent either the top-level Class, metaclasses or
@@ -82,6 +89,9 @@ class ObjClass : public Obj {
 	/// For metaclasses, this always points to the root 'Class' class.
 	ObjClass *parentClass = nullptr;
 
+	/// Find a virtual function in the virtual function table. Returns nullptr if it's not found.
+	FunctionTable::Entry *LookupMethod(SignatureId signature);
+
 	/// Setting p=1e-6 (one-in-a-million) gives us about six million signatures. This means that
 	/// in a programme with six million signatures there's about a one-in-a-million chance of a
 	/// collision. And for the collision to do anything, the colliding signatures
@@ -103,4 +113,14 @@ class ObjClass : public Obj {
 };
 
 /// Class used to define types in C++
-class ObjNativeClass : public ObjClass {};
+class ObjNativeClass : public ObjClass {
+  public:
+	void AddFunction(const std::string &signature, void *funcPtr);
+
+  protected:
+	/// Bind all the auto-generated method adapters to this class. Call it with
+	/// the name of your class. Calling it multiple times with multiple names is
+	/// valid as part of an inheritance tree.
+	/// The implementation of this function itself is auto-generated.
+	void Bind(const std::string &type, bool isMetaClass);
+};

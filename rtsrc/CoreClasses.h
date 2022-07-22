@@ -25,6 +25,7 @@ class CoreClasses {
 	inline ObjClass &RootClass() { return m_rootClass; }
 
 	ObjSystem &System();
+	ObjClass &String();
 
   private:
 	CoreClasses();
@@ -35,4 +36,5 @@ class CoreClasses {
 
 	// All other classes must be lazy-initialised to avoid them calling Instance while it's first running
 	std::unique_ptr<ObjSystem> m_system;
+	std::unique_ptr<ObjClass> m_string;
 };

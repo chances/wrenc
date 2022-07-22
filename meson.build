@@ -26,6 +26,23 @@ antlr_src = custom_target('gen_antlr',
   command: [java, '-jar', '@INPUT0@', '@INPUT1@', '-o', '@OUTDIR@', '-Dlanguage=Cpp', '-Xexact-output-dir', '-visitor'],
 )
 
+# For the runtime library, generate a file that contains functions for Wren to call that then call
+# the native C++ methods.
+prog_python = import('python').find_installation('python3')
+rtlib_bindings = custom_target(
+  'rtlib-bindings',
+  output : ['bindings.gen.cpp'],
+  input : [
+    'rtsrc/gen_bindings.py',
+    'rtsrc/Obj.h',
+    'rtsrc/ObjString.h',
+    'rtsrc/ObjMap.h',
+    'rtsrc/ObjClass.h',
+    'rtsrc/ObjSystem.h',
+  ],
+  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@'],
+)
+
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/common.cpp',
   'rtsrc/hash.cpp',
@@ -36,6 +53,7 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjClass.cpp',
   'rtsrc/ObjSystem.cpp',
   'rtsrc/CoreClasses.cpp',
+  rtlib_bindings,
   include_directories: ['rtsrc'],
 )
 rtlib = declare_dependency(
