@@ -52,13 +52,14 @@ class QbeBackend {
 
 	// Create a string constant if it doesn't already exist, and return it's name, ready for use in QBE IR.
 	std::string GetStringPtr(const std::string &value);
+	std::string GetStringObjPtr(const std::string &value);
 
 	Snippet *VisitExpr(IRExpr *expr);
 	Snippet *VisitStmt(IRStmt *expr);
 
 	// We're not actually an IRVisitor since we have to have special logic for every node so there's
 	// no point using any of the normal visitor logic.
-	void VisitFn(IRFn *node);
+	void VisitFn(IRFn *node, std::optional<std::string> initFunction);
 	Snippet *VisitClass(IRClass *node);
 	Snippet *VisitGlobalDecl(IRGlobalDecl *node);
 	Snippet *VisitImport(IRImport *node);
@@ -91,7 +92,8 @@ class QbeBackend {
 
 	// String constants
 	// Keys are the string literals, values are the associated symbol names
-	std::unordered_map<std::string, std::string> m_strings;
+	std::unordered_map<std::string, std::string> m_strings; // Raw C strings
+	std::unordered_map<std::string, std::string> m_stringObjs; // Wren ObjString objects
 
 	// Mapping of names that [MangleUniqueName] has encoded
 	std::unordered_map<std::string, std::string> m_uniqueNames;
@@ -100,4 +102,5 @@ class QbeBackend {
 	ArenaAllocator m_alloc;
 
 	static constexpr char PTR_TYPE = 'l';
+	void GenerateInitFunction(const std::string &initFuncName);
 };

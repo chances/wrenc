@@ -72,6 +72,10 @@ class FunctionTable {
 /// object classes in Wren / (see the diagram in the file header for more information)
 class ObjClass : public Obj {
   public:
+	/// Create a new ObjClass. It's parent class is left at nullptr which is invalid, you're
+	/// supposed to set that up after calling this.
+	ObjClass();
+
 	/// The method dispatch table. This is put up front to make it's offset easily predictable
 	/// without knowing the length of std::string, since this will be used by the generated
 	/// code for EVERY METHOD CALL (hence why it has to be inlined).
@@ -91,6 +95,9 @@ class ObjClass : public Obj {
 
 	/// Find a virtual function in the virtual function table. Returns nullptr if it's not found.
 	FunctionTable::Entry *LookupMethod(SignatureId signature);
+
+	/// Add a function to this class. This should only be used for initialising new classes.
+	void AddFunction(const std::string &signature, void *funcPtr);
 
 	/// Setting p=1e-6 (one-in-a-million) gives us about six million signatures. This means that
 	/// in a programme with six million signatures there's about a one-in-a-million chance of a
@@ -115,12 +122,15 @@ class ObjClass : public Obj {
 /// Class used to define types in C++
 class ObjNativeClass : public ObjClass {
   public:
-	void AddFunction(const std::string &signature, void *funcPtr);
+	ObjNativeClass(const std::string &name, const std::string &bindingName);
 
   protected:
 	/// Bind all the auto-generated method adapters to this class. Call it with
 	/// the name of your class. Calling it multiple times with multiple names is
 	/// valid as part of an inheritance tree.
 	/// The implementation of this function itself is auto-generated.
-	void Bind(const std::string &type, bool isMetaClass);
+	static void Bind(ObjClass *cls, const std::string &type, bool isMetaClass);
+
+  private:
+	ObjClass m_defaultMetaClass;
 };

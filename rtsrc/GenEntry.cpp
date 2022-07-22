@@ -7,7 +7,9 @@
 
 #include "GenEntry.h"
 #include "CoreClasses.h"
+#include "ObjBool.h"
 #include "ObjClass.h"
+#include "ObjString.h"
 #include "ObjSystem.h"
 #include "common.h"
 
@@ -19,7 +21,14 @@ Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
 Value wren_sys_var_System = NULL_VAL; // NOLINT(readability-identifier-naming)
 
+Value wren_sys_bool_false = NULL_VAL; // NOLINT(readability-identifier-naming)
+Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
+
+// wren_sys_class_string can be found in ObjString.h as a one-off
+ObjClass *wren_sys_class_string = nullptr; // NOLINT(readability-identifier-naming)
+
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature); // NOLINT(readability-identifier-naming)
+Value wren_init_string_literal(const char *literal, int length);      // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -44,8 +53,18 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	return func->func;
 }
 
+Value wren_init_string_literal(const char *literal, int length) {
+	// TODO figure out how we'll handle allocation for this
+	ObjString *str = new ObjString();
+	str->m_value = std::string(literal, length);
+	return encode_object(str);
+}
+
 void setupGenEntry() {
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
-	wren_sys_var_System = CoreClasses::Instance()->System().ToValue();
+	wren_sys_var_System = CoreClasses::Instance()->System()->ToValue();
+
+	wren_sys_bool_true = ObjBool::Get(true)->ToValue();
+	wren_sys_bool_false = ObjBool::Get(false)->ToValue();
 }

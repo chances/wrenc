@@ -3,7 +3,10 @@
 //
 
 #include "ObjClass.h"
+#include "CoreClasses.h"
 #include "hash.h"
+
+ObjClass::ObjClass() : Obj(nullptr) {}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {
 	static const uint64_t SIG_SEED = hashString("signature id", 0);
@@ -42,7 +45,7 @@ FunctionTable::Entry *ObjClass::LookupMethod(SignatureId signature) {
 	}
 }
 
-void ObjNativeClass::AddFunction(const std::string &signature, void *funcPtr) {
+void ObjClass::AddFunction(const std::string &signature, void *funcPtr) {
 	SignatureId id = FindSignatureId(signature);
 
 	// Put the function in the first free slot
@@ -60,4 +63,17 @@ void ObjNativeClass::AddFunction(const std::string &signature, void *funcPtr) {
 	FunctionTable::Entry &entry = functions.entries[idx];
 	entry.func = funcPtr;
 	entry.signature = id;
+}
+
+ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
+	parentClass = &CoreClasses::Instance()->Object();
+	type = &m_defaultMetaClass;
+	this->name = name;
+
+	m_defaultMetaClass.name = name;
+	m_defaultMetaClass.parentClass = m_defaultMetaClass.type = &CoreClasses::Instance()->RootClass();
+	m_defaultMetaClass.isMetaClass = true;
+
+	Bind(this, bindingName, false);
+	Bind(&m_defaultMetaClass, bindingName, true);
 }

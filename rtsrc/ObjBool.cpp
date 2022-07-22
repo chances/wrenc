@@ -3,28 +3,16 @@
 //
 
 #include "ObjBool.h"
-#include "CoreClasses.h"
 #include "ObjClass.h"
 
 class ObjBoolClass : public ObjNativeClass {
   public:
-	ObjBoolClass() {
-		name = "Bool";
-		parentClass = &CoreClasses::Instance()->Object();
-		type = &meta;
-
-		meta.name = name;
-		meta.parentClass = meta.type = &CoreClasses::Instance()->RootClass();
-		meta.isMetaClass = true;
-	}
-
-	ObjClass meta;
+	ObjBoolClass() : ObjNativeClass("Bool", "ObjBool") {}
 };
 
-ObjBool ObjBool::objTrue(true);
-ObjBool ObjBool::objFalse(false);
+ObjBool::ObjBool(bool value) : Obj(Class()), m_value(value) {}
 
-ObjBool::ObjBool(bool value) : m_value(value) {
+ObjClass *ObjBool::Class() {
 	static ObjBoolClass cls;
-	type = &cls;
+	return &cls;
 }

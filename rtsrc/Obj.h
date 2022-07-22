@@ -20,7 +20,7 @@ class ObjString;
 class Obj {
   public:
 	virtual ~Obj();
-	Obj();
+	Obj(ObjClass *type);
 
 	Obj(const Obj &) = delete;
 	Obj &operator=(const Obj &) = delete;

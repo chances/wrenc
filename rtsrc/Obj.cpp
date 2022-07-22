@@ -3,17 +3,21 @@
 //
 
 #include "Obj.h"
-#include "CoreClasses.h"
 #include "ObjClass.h"
 #include "ObjString.h"
 
 #include <string>
 
 Obj::~Obj() = default;
-Obj::Obj() = default;
+Obj::Obj(ObjClass *type) : type(type) {}
 
 std::string Obj::ToString() {
-	static SignatureId SIG = ObjClass::FindSignatureId("toString");
+	// If this is an object of a string, just read it out directly
+	ObjString *thisStr = dynamic_cast<ObjString *>(this);
+	if (thisStr)
+		return thisStr->m_value;
+
+	const static SignatureId SIG = ObjClass::FindSignatureId("toString");
 	FunctionTable::Entry *entry = type->LookupMethod(SIG);
 	if (!entry) {
 		fprintf(stderr, "Object '%s' is missing mandatory toString method!\n", type->name.c_str());
@@ -37,7 +41,7 @@ std::string Obj::ToString() {
 		        obj->type->name.c_str());
 	}
 
-	return nullptr;
+	return str->m_value;
 }
 
 std::string Obj::ToString(Value value) {

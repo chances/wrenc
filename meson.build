@@ -34,10 +34,8 @@ rtlib_bindings = custom_target(
   output : ['bindings.gen.cpp'],
   input : [
     'rtsrc/gen_bindings.py',
-    'rtsrc/Obj.h',
     'rtsrc/ObjString.h',
     'rtsrc/ObjMap.h',
-    'rtsrc/ObjClass.h',
     'rtsrc/ObjSystem.h',
     'rtsrc/ObjBool.h',
   ],

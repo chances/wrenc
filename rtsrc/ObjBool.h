@@ -13,10 +13,14 @@ class ObjBool : public Obj {
   public:
 	inline bool Value() const { return m_value; }
 
-	static ObjBool *Get(bool value) { return value ? &objTrue : &objFalse; }
+	static ObjBool *Get(bool value) {
+		static ObjBool objTrue(true), objFalse(false);
+		return value ? &objTrue : &objFalse;
+	}
+
+	static ObjClass *Class();
 
   private:
 	ObjBool(bool value);
-	static ObjBool objTrue, objFalse;
 	bool m_value = false;
 };

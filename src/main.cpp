@@ -11,7 +11,7 @@ int main(int argc, char **argv) {
 	fmt::print("hello world\n");
 
 	const char *test = R"(
-var hi = 123 // "abc"
+var hi = "abc"
 System.print(hi)
 // System.print("Hello, %(hi)!")
 

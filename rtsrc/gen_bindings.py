@@ -103,6 +103,9 @@ def generate(output: TextIO, files: List[str]):
 
     output.write("\n// Includes for referenced files:\n")
     for filename in files:
+        # If a C++ file is specified, use it's header
+        if filename.endswith(".cpp"):
+            filename = filename[:-3] + "h"
         output.write(f"#include \"{filename}\"\n")
 
     for cls in classes:
@@ -154,7 +157,7 @@ def generate(output: TextIO, files: List[str]):
             output.write(f"\treturn {return_value};\n")
             output.write("}\n")
 
-        output.write(f"static void register_{cls.name}(ObjNativeClass *cls, bool isMeta) {'{'}\n")
+        output.write(f"static void register_{cls.name}(ObjClass *cls, bool isMeta) {'{'}\n")
         for method in cls.methods:
             if method.static:
                 meta_requirement = "isMeta"
@@ -165,13 +168,13 @@ def generate(output: TextIO, files: List[str]):
         output.write("}\n")
 
     output.write("\n// Binding setup method, called by hand-written C++ classes\n")
-    output.write("void ObjNativeClass::Bind(const std::string &type, bool isMeta) {\n")
+    output.write("void ObjNativeClass::Bind(ObjClass *cls, const std::string &type, bool isMeta) {\n")
     for cls in classes:
         output.write(f"\tif (type == \"{cls.name}\") {'{'}\n")
-        output.write(f"\t\tregister_{cls.name}(this, isMeta);\n")
+        output.write(f"\t\tregister_{cls.name}(cls, isMeta);\n")
         output.write(f"\t\treturn;\n")
         output.write("\t}\n")
-    output.write("\tfprintf(stderr, \"Unknown bindings class '%s'\", type.c_str());\n")
+    output.write("\tfprintf(stderr, \"Unknown bindings class '%s'\\n\", type.c_str());\n")
     output.write("\tabort();\n")
     output.write("}\n")
 

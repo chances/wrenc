@@ -33,16 +33,10 @@ CoreClasses *CoreClasses::Instance() {
 	return &instance;
 }
 
-ObjSystem &CoreClasses::System() {
+ObjSystem *CoreClasses::System() {
 	if (!m_system)
 		m_system = std::make_unique<ObjSystem>();
-	return *m_system;
+	return m_system.get();
 }
 
-ObjClass &CoreClasses::String() {
-	if (!m_string) {
-		// TODO make an instance of the string meta-class
-		abort();
-	}
-	return *m_string;
-}
+ObjClass *CoreClasses::String() { return ObjString::Class(); }

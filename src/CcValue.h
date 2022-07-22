@@ -29,8 +29,6 @@ class CcValue {
 	CcValue(int value) : type(INT), i(value), n(value) {}
 	CcValue(double value) : type(NUM), i(value), n(value) {}
 
-	Value ToRuntimeValue() const;
-
 	Type type = NULL_TYPE;
 
 	bool b = false;

@@ -29,9 +29,18 @@ QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
 void QbeBackend::Generate(Module *module) {
+	std::string moduleInitFuncName = "module_init_func_" + MangleUniqueName(module->Name().value_or("unknown"));
+
 	for (IRFn *func : module->GetFunctions()) {
-		VisitFn(func);
+		std::optional<std::string> initFunc;
+		if (func == module->GetMainFunction()) {
+			initFunc = moduleInitFuncName;
+		}
+		VisitFn(func, initFunc);
 	}
+
+	// Generate the initialisation function
+	GenerateInitFunction(moduleInitFuncName);
 
 	// Add the global variables
 	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
@@ -53,6 +62,12 @@ void QbeBackend::Generate(Module *module) {
 			i++;
 		}
 		Print("section \".rodata\" data {} = {{b \"{}\", b 0}}", name, escaped);
+	}
+
+	// And pointers for the ObjString objects wrapping them - these are initialised when the
+	// module is first loaded.
+	for (const auto &[_, name] : m_stringObjs) {
+		Print("section \".data\" data {} = {{ l {} }}", name, NULL_VAL);
 	}
 
 	// TODO only for main module:
@@ -78,7 +93,8 @@ void QbeBackend::Generate(Module *module) {
 template <typename... Args> void QbeBackend::Print(fmt::format_string<Args...> fmtStr, Args &&...args) {
 	std::string formatted = fmt::format(std::move(fmtStr), std::forward<Args>(args)...);
 
-	if (m_inFunction) {
+	// Don't indent labels
+	if (m_inFunction && formatted.at(0) != '@') {
 		m_output << "\t";
 	}
 
@@ -96,6 +112,26 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 	lines.insert(lines.end(), std::make_move_iterator(other->lines.begin()),
 	             std::make_move_iterator(other->lines.end()));
 	return other->result;
+}
+
+void QbeBackend::GenerateInitFunction(const std::string &initFuncName) {
+	Print("function ${}() {{", initFuncName);
+	m_inFunction = true;
+	Print("@start");
+
+	Print("# Initialise string literals");
+	int i = 0;
+	for (const auto &[literal, name] : m_stringObjs) {
+		std::string varName = fmt::format("value_{}", i++);
+		std::string storageName = name;
+		storageName.erase(1, 4); // Remove the obj_ prefix
+		Print("%{} =l call $wren_init_string_literal({} {}, w {})", varName, PTR_TYPE, storageName, literal.size());
+		Print("storel %{}, {}", varName, name);
+	}
+
+	Print("ret");
+	m_inFunction = false;
+	Print("}}");
 }
 
 // Visitor functions //
@@ -148,11 +184,15 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 	return nullptr;
 }
 
-void QbeBackend::VisitFn(IRFn *node) {
+void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	// TODO argument handling
 	Print("function {} ${}() {{", PTR_TYPE, MangleUniqueName(node->debugName));
 	Print("@start");
 	m_inFunction = true;
+
+	if (initFunction) {
+		Print("call ${}() # Module initialisation routine", initFunction.value());
+	}
 
 	StmtBlock *block = dynamic_cast<StmtBlock *>(node->body);
 	ASSERT(block, "Function body must be a StmtBlock");
@@ -188,8 +228,37 @@ QbeBackend::Snippet *QbeBackend::VisitStmtAssign(StmtAssign *node) {
 QbeBackend::Snippet *QbeBackend::VisitExprConst(ExprConst *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 	VLocal *tmp = AddTemporary("const_value");
-	snip->Add("%{} ={} copy {}", tmp->name, PTR_TYPE, node->value.ToRuntimeValue());
 	snip->result = tmp;
+
+	Value value = NULL_VAL;
+	switch (node->value.type) {
+	case CcValue::UNDEFINED:
+		fmt::print(stderr, "Cannot convert UNDEFINED value to runtime value\n");
+		abort();
+		break;
+	case CcValue::NULL_TYPE:
+		value = encode_object(nullptr);
+		break;
+	case CcValue::INT:
+		value = encode_number(node->value.i);
+		break;
+	case CcValue::NUM:
+		value = encode_number(node->value.n);
+		break;
+	case CcValue::STRING: {
+		// Load the global variable storing the value of this string
+		snip->Add("%{} ={} load{} {}", tmp->name, PTR_TYPE, PTR_TYPE, GetStringObjPtr(node->value.s));
+		return snip;
+	}
+	case CcValue::BOOL:
+		snip->Add("%{} ={} load{} {}", tmp->name, PTR_TYPE, PTR_TYPE,
+		          node->value.b ? "$wren_sys_bool_true" : "$wren_sys_bool_false");
+		return snip;
+	default:
+		abort();
+	}
+
+	snip->Add("%{} ={} copy {}", tmp->name, PTR_TYPE, value);
 	return snip;
 }
 
@@ -273,7 +342,6 @@ std::string QbeBackend::GetStringPtr(const std::string &value) {
 	if (iter != m_strings.end())
 		return iter->second;
 
-	// TODO make this a valid and unique symbol
 	std::string symbolName = "$str_" + std::to_string(m_strings.size()) + "_" + MangleRawName(value, true);
 	const int MAX_SIZE = 35;
 	const std::string TRUNCATION_SUFFIX = "_TRUNC";
@@ -283,6 +351,17 @@ std::string QbeBackend::GetStringPtr(const std::string &value) {
 	}
 	m_strings[value] = symbolName;
 	return symbolName;
+}
+
+std::string QbeBackend::GetStringObjPtr(const std::string &value) {
+	auto iter = m_stringObjs.find(value);
+	if (iter != m_stringObjs.end())
+		return iter->second;
+
+	std::string rawSymbol = GetStringPtr(value);
+	std::string symbol = "$obj_" + rawSymbol.substr(1);
+	m_stringObjs[value] = symbol;
+	return symbol;
 }
 
 QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {

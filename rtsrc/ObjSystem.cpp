@@ -5,25 +5,7 @@
 #include "ObjSystem.h"
 #include "CoreClasses.h"
 
-// Metaclass for ObjSystem
-class ObjSystemMeta : public ObjNativeClass {
-  public:
-	ObjSystemMeta() {
-		name = "System";
-		isMetaClass = true;
-		parentClass = type = &CoreClasses::Instance()->RootClass();
-
-		Bind("ObjSystem", true);
-	}
-};
-
-ObjSystem::ObjSystem() {
-	static ObjSystemMeta meta;
-
-	parentClass = &CoreClasses::Instance()->Object();
-	name = meta.name;
-	type = &meta;
-}
+ObjSystem::ObjSystem() : ObjNativeClass("System", "ObjSystem") {}
 
 void ObjSystem::Print(Value value) {
 	std::string str = Obj::ToString(value);
