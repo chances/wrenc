@@ -18,5 +18,7 @@ class ObjString : public Obj {
 	static ObjString *New(const std::string &value);
 	static ObjString *New(std::string &&value);
 
+	WREN_METHOD(getter) int Count();
+
 	std::string m_value;
 };

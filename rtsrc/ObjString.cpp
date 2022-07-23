@@ -28,3 +28,5 @@ ObjString *ObjString::New(std::string &&value) {
 	obj->m_value = std::move(value);
 	return obj;
 }
+
+int ObjString::Count() { return m_value.size(); }

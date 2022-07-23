@@ -4,6 +4,7 @@
 
 #include "Obj.h"
 #include "ObjClass.h"
+#include "ObjNum.h"
 #include "ObjString.h"
 
 #include <string>
@@ -49,7 +50,7 @@ std::string Obj::ToString(Value value) {
 		return "null";
 	if (is_object(value))
 		return get_object_value(value)->ConvertToString();
-	return std::to_string(get_number_value(value));
+	return ObjNumClass::Instance()->ToString(get_number_value(value));
 }
 
 // By default, compare by identity

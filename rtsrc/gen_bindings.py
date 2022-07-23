@@ -57,7 +57,7 @@ class Method:
         # Num is special, since for non-static methods the first argument is the receiver
         if self.parent_class.name == NUMBER_CLASS and not self.static:
             count -= 1
-            if count < 1:
+            if count < 0:
                 raise Exception(f"Missing number class receiver for {self.name}")
 
         return count
