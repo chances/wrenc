@@ -16,6 +16,9 @@ class ObjSystem;
 class ObjMap;
 class ObjString;
 
+// A macro read by the bindings generator to mark a method as being accessible from Wren.
+#define WREN_METHOD()
+
 /// An object refers to basically anything accessible by Wren (maybe except for future inline classes).
 class Obj {
   public:

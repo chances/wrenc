@@ -12,6 +12,7 @@
 #include "ObjClass.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
+#include "ObjNum.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
 #include "WrenRuntime.h"
@@ -25,6 +26,7 @@ Value wren_sys_var_Bool = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
 Value wren_sys_var_List = NULL_VAL;   // NOLINT(readability-identifier-naming)
+Value wren_sys_var_Num = NULL_VAL;    // NOLINT(readability-identifier-naming)
 Value wren_sys_var_String = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_System = NULL_VAL; // NOLINT(readability-identifier-naming)
 
@@ -39,25 +41,26 @@ Value wren_alloc_obj(Value classVar);                                 // NOLINT(
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
-	if (!is_object(receiver)) {
-		// This does have to be implemented, look up the appropriate Num or Bool or whatever class
-		fprintf(stderr, "TODO - call on non-object with signature %lx\n", signature);
-		abort();
+	ObjClass *type;
+
+	if (is_object(receiver)) {
+		Obj *object = (Obj *)get_object_value(receiver);
+		if (!object) {
+			std::string name = ObjClass::LookupSignatureFromId({signature}, true);
+			fprintf(stderr, "Cannot call method '%s' on null receiver\n", name.c_str());
+			abort();
+		}
+		type = object->type;
+	} else {
+		// If it's not an object it must be a number, so say the receiver's type happens to be that
+		type = ObjNumClass::Instance();
 	}
 
-	Obj *object = (Obj *)get_object_value(receiver);
-	if (!object) {
-		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-		fprintf(stderr, "Cannot call method '%s' on null receiver\n", name.c_str());
-		abort();
-	}
-
-	ObjClass *type = object->type;
 	FunctionTable::Entry *func = type->LookupMethod(SignatureId{signature});
 
 	if (!func) {
 		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-		fprintf(stderr, "On receiver of type %s, could not find method %s\n", object->type->name.c_str(), name.c_str());
+		fprintf(stderr, "On receiver of type %s, could not find method %s\n", type->name.c_str(), name.c_str());
 		abort();
 	}
 
@@ -122,6 +125,7 @@ void setupGenEntry() {
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
 	wren_sys_var_List = ObjList::Class()->ToValue();
+	wren_sys_var_Num = ObjNumClass::Instance()->ToValue();
 	wren_sys_var_String = ObjString::Class()->ToValue();
 	wren_sys_var_System = CoreClasses::Instance()->System()->ToValue();
 

@@ -9,6 +9,18 @@ METHOD_REGEX = re.compile(
     r"^\s*WREN_METHOD\(\)\s+(?P<static>static\s+)?(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w+)\s+:")
 
+# Making a C++ method called (for example) OperatorPlus would have a Wren signature of '+'
+OPERATOR_PREFIX = "Operator"
+OPERATOR_TYPES = {
+    "Plus": "+",
+    "Minus": "-",
+    "Multiply": "*",
+    "Divide": "/",
+
+    "Equals": "==",
+}
+NUMBER_CLASS = "ObjNumClass"
+
 
 @dataclass
 class Arg:
@@ -29,13 +41,30 @@ class Method:
     name: str
     args: List[Arg]
     static: bool
+    parent_class: 'Class'
 
     def arity(self) -> int:
-        return len(self.args)
+        count = len(self.args)
+
+        # Num is special, since for non-static methods the first argument is the receiver
+        if self.parent_class.name == NUMBER_CLASS and not self.static:
+            count -= 1
+            if count < 1:
+                raise Exception(f"Missing number class receiver for {self.name}")
+
+        return count
 
     def signature(self) -> str:
         arg_part = ",".join(["_"] * self.arity())
         name = self.name
+
+        # If this is an operator function, handle that appropriately
+        if self.name.startswith(OPERATOR_PREFIX):
+            op_type = self.name.removeprefix(OPERATOR_PREFIX)
+            if op_type not in OPERATOR_TYPES:
+                raise Exception(f"Invalid operator name {self.name}")
+            name = OPERATOR_TYPES[op_type]
+
         # Make the first letter lowercase so we can match up the C++ and Wren styling
         name = name[0].lower() + name[1:]
         return f"{name}({arg_part})"
@@ -89,7 +118,7 @@ def parse_file(fi: TextIO) -> List[Class]:
             assert len(parts) == 2
             args.append(Arg(parts[0], parts[1], len(args)))
 
-        method = Method(return_type, name, args, static)
+        method = Method(return_type, name, args, static, current_class)
         current_class.methods.append(method)
 
     return classes
@@ -115,14 +144,20 @@ def generate(output: TextIO, files: List[str]):
     for cls in classes:
         output.write(f"\n// For class {cls.name}:\n")
         for method in cls.methods:
-            args_str = ",".join([f"Value {arg.raw_name()}" for arg in method.args])
-            if args_str:
+            # The number class is special, because the receiver is the first number argument
+            receiver_def = "Value receiver"
+            is_num_class = cls.name == NUMBER_CLASS
+            if is_num_class:
+                receiver_def = ""
+
+            args_str = ", ".join([f"Value {arg.raw_name()}" for arg in method.args])
+            if args_str and receiver_def:
                 args_str = ", " + args_str  # Add a comma to go the receiver
             debug_sig = cls.name + "." + method.signature()
-            output.write(f"static Value {method.method_name(cls)}(Value receiver{args_str}) {'{'}\n")
+            output.write(f"static Value {method.method_name(cls)}({receiver_def}{args_str}) {'{'}\n")
 
-            # Convert the receiver (if not static)
-            if not method.static:
+            # Convert the receiver (if not static or the number class)
+            if not method.static and not is_num_class:
                 output.write(f"\t{cls.name} *obj = checkReceiver<{cls.name}>(\"{debug_sig}\", receiver);\n")
 
             for i, arg in enumerate(method.args):
@@ -152,6 +187,8 @@ def generate(output: TextIO, files: List[str]):
             typed_args = ",".join([arg.typed_name() for arg in method.args])
             if method.static:
                 output.write(f"{cls.name}::{method.name}({typed_args});\n")
+            elif is_num_class:
+                output.write(f"{cls.name}::Instance()->{method.name}({typed_args});\n")
             else:
                 output.write(f"obj->{method.name}({typed_args});\n")
 
@@ -163,6 +200,8 @@ def generate(output: TextIO, files: List[str]):
                 return_value = "ret"
             elif method.return_type == "std::string":
                 return_value = "encode_object(ObjString::New(ret))"
+            elif method.return_type == "bool":
+                return_value = "encode_object(ObjBool::Get(ret))"
             elif method.return_type == "int" or method.return_type == "double":
                 return_value = "encode_number(ret)"
             elif method.return_type.startswith("Obj"):

@@ -39,9 +39,6 @@
 #include <string>
 #include <vector>
 
-// A macro read by the bindings generator to mark a method as being accessible from Wren.
-#define WREN_METHOD()
-
 struct SignatureId {
 	uint64_t id;
 

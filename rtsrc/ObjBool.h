@@ -11,7 +11,7 @@
 /// Only two objects are ever created, and no prises for guessing what they represent.
 class ObjBool : public Obj {
   public:
-	inline bool Value() const { return m_value; }
+	inline bool AsBool() const { return m_value; }
 
 	static ObjBool *Get(bool value) {
 		static ObjBool objTrue(true), objFalse(false);
@@ -19,6 +19,8 @@ class ObjBool : public Obj {
 	}
 
 	static ObjClass *Class();
+
+	WREN_METHOD() bool OperatorEquals(Value other);
 
   private:
 	ObjBool(bool value);

@@ -16,3 +16,8 @@ ObjClass *ObjBool::Class() {
 	static ObjBoolClass cls;
 	return &cls;
 }
+
+bool ObjBool::OperatorEquals(Value other) {
+	// Since there's only one possible matching value, a simple pointer comparison will do
+	return other == encode_object(this);
+}
