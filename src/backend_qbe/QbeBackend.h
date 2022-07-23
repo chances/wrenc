@@ -19,7 +19,7 @@ class QbeBackend {
 	QbeBackend();
 	~QbeBackend();
 
-	void Generate(Module *module);
+	std::string Generate(Module *module);
 
   private:
 	/// Information about a local variable

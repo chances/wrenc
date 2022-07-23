@@ -11,7 +11,6 @@
 #include <Scope.h>
 #include <SymbolTable.h>
 #include <fmt/format.h>
-#include <fstream>
 #include <sstream>
 
 #define ASSERT(cond, msg)                                                                                              \
@@ -29,7 +28,7 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
-void QbeBackend::Generate(Module *module) {
+std::string QbeBackend::Generate(Module *module) {
 	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"), false);
 
 	for (IRFn *func : module->GetFunctions()) {
@@ -110,17 +109,7 @@ void QbeBackend::Generate(Module *module) {
 	std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName, false);
 	Print("section \".rodata\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
 
-	fmt::print("Generated QBE IR:\n{}\n", m_output.str());
-
-	std::ofstream output;
-	output.exceptions(std::ios::badbit | std::ios::failbit);
-	try {
-		output.open("/tmp/wren_qbe_ir.qbe");
-		output << m_output.str() << std::endl;
-	} catch (const std::fstream::failure &ex) {
-		fmt::print(stderr, "Failed to write QBE IR: {}\n", ex.what());
-		exit(1);
-	}
+	return m_output.str();
 }
 
 template <typename... Args> void QbeBackend::Print(fmt::format_string<Args...> fmtStr, Args &&...args) {
