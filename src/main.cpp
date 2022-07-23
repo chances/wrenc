@@ -62,6 +62,10 @@ Wren.testStatic()
 var temp = Wren.new()
 temp.flyTo("Köln") // Test unicode
 
+for (adjective in ["small", "clean", "fast"]) {
+  System.print(adjective)
+}
+
 /*
 var adjectives = Fiber.new {
 	["small", "clean", "fast"].each {|word| Fiber.yield(word) }
@@ -87,6 +91,16 @@ while (!adjectives.isDone) System.print(adjectives.call())
 		printer.Process(fn);
 	std::unique_ptr<std::stringstream> dbg = printer.Extract();
 	// fmt::print("AST/IR:\n{}\n", dbg->str());
+	std::ofstream irOutput;
+	irOutput.exceptions(std::ios::badbit | std::ios::failbit);
+	std::string wrencIrFile = "/tmp/wren_wrenc_ir.txt";
+	try {
+		irOutput.open(wrencIrFile);
+		irOutput << dbg->str() << std::endl;
+	} catch (const std::fstream::failure &ex) {
+		fmt::print(stderr, "Failed to write QBE IR: {}\n", ex.what());
+		exit(1);
+	}
 
 	QbeBackend backend;
 	std::string qbeIr = backend.Generate(&mod);
@@ -164,8 +178,6 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 
 	// Use the glibc dynamic linker, this will need to be changed for other C libraries
 	prog.args.push_back("-dynamic-linker=/lib64/ld-linux-x86-64.so.2");
-
-	// TODO handle this better - for now, include the absolute path of the libwren-rtlib library
 
 	prog.Run();
 }

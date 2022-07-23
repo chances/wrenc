@@ -253,6 +253,7 @@ class StmtJump : public IRStmt {
 	StmtLabel *target = nullptr;
 	IRExpr *condition = nullptr; /// Unconditional if nullptr. Otherwise, if it evaluates to null or false, won't jump.
 	bool looping = false; /// If this jump is part of a loop, this is true. Otherwise the jump MUST only go 'forwards'.
+	bool jumpOnFalse = false; /// Jump if this value is falsy, and fallthrough on truey. Opposite of normal behaviour.
 };
 
 class StmtReturn : public IRStmt {

@@ -133,6 +133,10 @@ def generate(output: TextIO, files: List[str]):
                     cast_expr = f"checkArg<{arg.type}>(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
                 elif arg.type == "std::string":
                     cast_expr = f"checkString(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                elif arg.type == "double":
+                    cast_expr = f"checkDouble(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                elif arg.type == "int":
+                    cast_expr = f"checkInt(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
                 else:
                     raise Exception(f"Unknown arg type '{arg.type}' for method '{debug_sig}'")
 
@@ -159,6 +163,8 @@ def generate(output: TextIO, files: List[str]):
                 return_value = "ret"
             elif method.return_type == "std::string":
                 return_value = "encode_object(ObjString::New(ret))"
+            elif method.return_type == "int" or method.return_type == "double":
+                return_value = "encode_number(ret)"
             elif method.return_type.startswith("Obj"):
                 return_value = "encode_object(ret)"
             else:

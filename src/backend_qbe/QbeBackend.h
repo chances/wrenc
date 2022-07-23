@@ -44,6 +44,7 @@ class QbeBackend {
 	template <typename... Args> void Print(fmt::format_string<Args...> fmtStr, Args &&...args);
 
 	VLocal *LookupVariable(LocalVariable *decl);
+	std::string GetLabelName(StmtLabel *label);
 	std::string MangleGlobalName(IRGlobalDecl *var);
 	std::string MangleUniqueName(const std::string &name, bool excludeIdentical);
 	std::string MangleRawName(const std::string &str, bool permitAmbiguity);

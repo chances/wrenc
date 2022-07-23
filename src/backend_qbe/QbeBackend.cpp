@@ -426,6 +426,59 @@ QbeBackend::Snippet *QbeBackend::VisitExprAllocateInstanceMemory(ExprAllocateIns
 	return snip;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitStmtLabel(StmtLabel *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+	snip->Add("@{}", GetLabelName(node));
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitStmtJump(StmtJump *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	// Unconditional jumps are easy :)
+	if (!node->condition) {
+		snip->Add("jmp @{}", GetLabelName(node->target));
+		return snip;
+	}
+
+	// Control doesn't automatically fall through to the next block, so we have to add a label for it
+	// There's also an intermediate step where we know something isn't null, but don't know whether or
+	// not it's false.
+	std::string fallthroughLabel = fmt::format("fallthrough_{:016x}", (uint64_t)node);
+	std::string checkFalseLabel = fmt::format("if_check_false_{:016x}", (uint64_t)node);
+
+	// Switch around the jump targets depending on whether or not the jump is inverted.
+	std::string falseTarget = fallthroughLabel;
+	std::string trueTarget = GetLabelName(node->target);
+	if (node->jumpOnFalse) {
+		std::swap(falseTarget, trueTarget);
+	}
+
+	// First evaluate the expression
+	VLocal *expr = snip->Add(VisitExpr(node->condition));
+
+	// Check if the returned value is null. Unfortunately Wren has two 'falsey' values - null and false.
+	// First check null, because it's quicker - check if it matches a constant, and if so the condition is
+	// false and jump to the fallthrough label.
+	VLocal *isNull = AddTemporary("if_null");
+	snip->Add("%{} =w ceql %{}, {}", isNull->name, expr->name, NULL_VAL);
+	snip->Add("jnz %{}, @{}, @{}", isNull->name, falseTarget, checkFalseLabel);
+
+	// Add the false-ness check. One big disadvantage of our current system for storing booleans is that
+	// we have to load a global variable storing the false value's pointer. Statically allocating the
+	// false value so the linker can find the value doesn't work for shared libraries, otherwise it'd be
+	// a very clean solution.
+	snip->Add("@{}", checkFalseLabel);
+	VLocal *isFalse = AddTemporary("if_false");
+	VLocal *falsePtr = AddTemporary("if_false_ptr");
+	snip->Add("%{} =l loadl $wren_sys_bool_false", falsePtr->name);
+	snip->Add("%{} =w ceql %{}, %{}", isFalse->name, falsePtr->name, expr->name);
+	snip->Add("jnz %{}, @{}, @{}", isFalse->name, falseTarget, trueTarget);
+
+	snip->Add("@{}", fallthroughLabel);
+	return snip;
+}
+
 // Utility functions //
 
 QbeBackend::Snippet *QbeBackend::HandleUnimplemented(IRNode *node) {
@@ -493,6 +546,10 @@ QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 	return local;
 }
 
+std::string QbeBackend::GetLabelName(StmtLabel *label) {
+	return fmt::format("lbl_{:016x}_{}", (uint64_t)label, MangleRawName(label->debugName, true));
+}
+
 std::string QbeBackend::MangleGlobalName(IRGlobalDecl *var) {
 	// TODO add module name etc
 	return "$global_var_" + MangleRawName(var->name, false);
@@ -555,8 +612,6 @@ QbeBackend::Snippet *QbeBackend::VisitImport(IRImport *node) { return HandleUnim
 QbeBackend::Snippet *QbeBackend::VisitStmtFieldAssign(StmtFieldAssign *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtUpvalue(StmtUpvalueImport *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitStmtLabel(StmtLabel *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitStmtJump(StmtJump *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }

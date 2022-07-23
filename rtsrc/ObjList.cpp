@@ -40,3 +40,27 @@ std::string ObjList::Join(std::string joiner) {
 	}
 	return result.str();
 }
+
+Value ObjList::Iterate(Value current) {
+	if (current == NULL_VAL)
+		return 0;
+
+	if (is_object(current)) {
+		// Already checked for null so this is safe
+		std::string type = get_object_value(current)->type->name;
+		fprintf(stderr, "Cannot supply object type %s to List.iterate(_)", type.c_str());
+		abort();
+	}
+
+	int i = get_number_value(current);
+	i++;
+
+	// Returning null stops the loop. Do this after incrementing i since the value we return will be passed
+	// directly into items.at, which fails if i==items.size().
+	if (i >= items.size())
+		return NULL_VAL;
+
+	return encode_number(i);
+}
+
+Value ObjList::IteratorValue(int current) { return items.at(current); }

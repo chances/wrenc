@@ -2541,6 +2541,7 @@ static void startLoop(Compiler *compiler, Loop *loop, StmtLabel *start) {
 // later once we know where the end of the body is.
 static StmtJump *exitLoop(Compiler *compiler, IRExpr *condition) {
 	StmtJump *jmp = compiler->New<StmtJump>(nullptr, condition);
+	jmp->jumpOnFalse = true;
 	compiler->loop->exitJumps.push_back(jmp);
 	return jmp;
 }
@@ -2562,7 +2563,9 @@ static IRStmt *endLoop(Compiler *compiler) {
 	// We don't check for overflow here since the forward jump over the loop body
 	// will report an error for the same problem.
 	StmtBlock *block = compiler->New<StmtBlock>();
-	block->Add(compiler->New<StmtJump>(compiler->loop->start, nullptr));
+	StmtJump *returnToStart = compiler->New<StmtJump>(compiler->loop->start, nullptr);
+	block->Add(returnToStart);
+	returnToStart->looping = true;
 
 	// Make a label that all the break jumps go to
 	StmtLabel *breakToLabel = compiler->New<StmtLabel>("loop-end");
@@ -2649,7 +2652,7 @@ static IRStmt *forStatement(Compiler *compiler) {
 
 	// Advance the iterator by calling the ".iterate" method on the sequence.
 	ExprFuncCall *iterateCall =
-	    callMethod(compiler, "iterate(_)", loadVariable(compiler, iterSlot), {loadVariable(compiler, seqSlot)});
+	    callMethod(compiler, "iterate(_)", loadVariable(compiler, seqSlot), {loadVariable(compiler, iterSlot)});
 
 	// Update and test the iterator.
 	block->Add(compiler->New<StmtAssign>(iterSlot, iterateCall));

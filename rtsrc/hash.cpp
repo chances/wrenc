@@ -42,6 +42,7 @@ uint64_t hashData(const uint8_t *data, int len, uint64_t seed) {
 	while (remaining >= 16) {
 		uint64_t k1 = blocks[i++];
 		uint64_t k2 = blocks[i++];
+		remaining -= 16;
 
 		k1 *= C1;
 		k1 = rotl64(k1, 31);

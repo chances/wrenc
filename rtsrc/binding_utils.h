@@ -11,6 +11,8 @@
 #include "ObjString.h"
 #include "common.h"
 
+#include <math.h>
+
 template <typename T> T *checkReceiver(const char *method, Value value) {
 	if (!is_object(value)) {
 		fprintf(stderr, "Native function %s: receiver is not an object!\n", method);
@@ -59,4 +61,26 @@ template <typename T> T *checkArg(const char *method, int arg, Value value, bool
 std::string checkString(const char *method, int arg, Value value) {
 	ObjString *str = checkArg<ObjString>(method, arg, value, false);
 	return str->m_value;
+}
+
+double checkDouble(const char *method, int arg, Value value) {
+	if (!is_value_float(value)) {
+		fprintf(stderr, "Native function %s: argument %d is not a number!\n", method, arg);
+		abort();
+	}
+
+	return get_number_value(value);
+}
+
+double checkInt(const char *method, int arg, Value value) {
+	double num = checkDouble(method, arg, value);
+	int intValue = floor(num);
+	if (intValue != num) {
+		fprintf(stderr,
+		        "Native function %s: argument %d is a floating point value '%f', not an integer or is too large\n",
+		        method, arg, num);
+		abort();
+	}
+
+	return intValue;
 }

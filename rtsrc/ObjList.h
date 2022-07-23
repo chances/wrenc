@@ -8,6 +8,8 @@
 
 #include <vector>
 
+class ObjListIterator;
+
 class ObjList : public Obj {
   public:
 	ObjList();
@@ -21,6 +23,9 @@ class ObjList : public Obj {
 
 	WREN_METHOD() std::string Join();
 	WREN_METHOD() std::string Join(std::string joiner);
+
+	WREN_METHOD() Value Iterate(Value current);
+	WREN_METHOD() Value IteratorValue(int current);
 
 	std::vector<Value> items;
 };
