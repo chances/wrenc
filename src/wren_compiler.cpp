@@ -2952,16 +2952,18 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		return false;
 	}
 
-	// Build the method signature.
-	Signature *signature = normaliseSignature(compiler, signatureFromToken(compiler, SIG_GETTER));
-	compiler->enclosingClass->signature = signature;
+	// Build the method signature. For now don't normalise it, since signatureFn might change it anyway.
+	Signature tmpSignature = signatureFromToken(compiler, SIG_GETTER);
+	compiler->enclosingClass->signature = &tmpSignature;
 
 	Compiler methodCompiler;
 	initCompiler(&methodCompiler, compiler->parser, compiler, true);
-	methodCompiler.fn->debugName = classNode->info->name + "::" + signature->ToString();
 
-	// Compile the method signature.
-	signatureFn(&methodCompiler, signature);
+	// Compile the method signature. This might change the signature, so we have to normalise it afterwards.
+	signatureFn(&methodCompiler, &tmpSignature);
+	Signature *signature = normaliseSignature(compiler, tmpSignature);
+	compiler->enclosingClass->signature = signature;
+	methodCompiler.fn->debugName = classNode->info->name + "::" + signature->ToString();
 
 	methodCompiler.isInitializer = signature->type == SIG_INITIALIZER;
 
