@@ -8,16 +8,25 @@
 
 #include <fcntl.h>
 #include <fstream>
+#include <getopt.h>
 #include <signal.h>
 #include <sstream>
 
 static const std::string QBE_PATH = "./lib/qbe-1.0/qbe_bin";
 
 static int runQbe(std::string qbeIr);
-static void runAssembler(int assemblyFd, const std::string &outputFilename);
+static int runCompiler(const std::istream &input);
+static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
 static std::string compilerInstallDir;
+
+static option options[] = {
+    {"output", required_argument, 0, 'o'},
+    {"compile-only", no_argument, 0, 'c'},
+    {"help", no_argument, 0, 'h'},
+    {0},
+};
 
 int main(int argc, char **argv) {
 	// Ignore SIGPIPE that might be caused if QBE or the assembler (run as child processes) crash - we can handle
@@ -39,45 +48,129 @@ int main(int argc, char **argv) {
 		compilerInstallDir.erase(strokePos);
 	}
 
-	fmt::print("hello world\n");
+	bool needsHelp = false; // Print the help page?
+	bool compileOnly = false;
+	std::string outputFile;
 
-	const char *test = R"(
-var hi = "abc"
-// System.print("Hello, %(hi)!")
+	while (true) {
+		int opt = getopt_long(argc, argv, "o:ch", options, nullptr);
 
-System.print("Hello, world!")
+		// -1 means we ran out of options
+		if (opt == -1)
+			break;
 
-class Wren {
-  construct new() {}
-  flyTo(city) {
-    System.print("Flying to %(city) ")
-  }
+		switch (opt) {
+		case 'o':
+			outputFile = optarg;
+			break;
+		case 'c':
+			compileOnly = true;
+			break;
+		case 'h':
+			needsHelp = true;
+			break;
+		case '?':
+			// Error message already printed by getopt
+			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
+			exit(1);
+		default:
+			// This shouldn't happen, invalid options come back as '?'
+			fmt::print(stderr, "Unhandled option value '{}'\n", opt);
+			abort();
+		}
+	}
 
-  static testStatic() {
-    System.print("static test")
-  }
+	if (needsHelp) {
+		fmt::print("Usage: {} [-hc] [-o «filename»] inputs...\n", argv[0]);
+
+		std::vector<std::tuple<std::string, std::string, std::string>> optHelp;
+		optHelp.emplace_back("-h", "--help", "Print this help page");
+		optHelp.emplace_back("-c", "--compile-only", "Only compile the input files, do not link them");
+		optHelp.emplace_back("-o file", "--output=file", "Write the output to the file [file]");
+		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
+
+		// Find the longest argument string, so we can line everything up
+		int maxLengths[2] = {0, 0};
+		for (const auto &tuple : optHelp) {
+			std::string shortOpt, longOpt, help;
+			std::tie(shortOpt, longOpt, help) = tuple;
+			maxLengths[0] = std::max(maxLengths[0], (int)shortOpt.size());
+			maxLengths[1] = std::max(maxLengths[1], (int)longOpt.size());
+		}
+
+		for (const auto &tuple : optHelp) {
+			std::string shortOpt, longOpt, help;
+			std::tie(shortOpt, longOpt, help) = tuple;
+
+			while (shortOpt.size() < maxLengths[0])
+				shortOpt.push_back(' ');
+			while (longOpt.size() < maxLengths[1])
+				longOpt.push_back(' ');
+
+			fmt::print(" {} {}  {}\n", shortOpt, longOpt, help);
+		}
+
+		exit(0);
+	}
+
+	if (outputFile.empty()) {
+		fmt::print(stderr, "{}: missing option --output. Use --help for more information.\n", argv[0]);
+		exit(1);
+	}
+
+	// The remaining arguments are input filenames - either source or object files
+	std::vector<std::string> sourceFiles;
+	std::vector<std::string> objectFiles;
+	for (int i = optind; i < argc; i++) {
+		std::string file = argv[i];
+		if (file.ends_with(".o") || file.ends_with(".obj")) {
+			objectFiles.push_back(file);
+		} else {
+			sourceFiles.push_back(file);
+		}
+	}
+
+	if (sourceFiles.empty() && objectFiles.empty()) {
+		fmt::print(stderr, "{}: No source files specified. Use --help for more information.\n", argv[0]);
+		exit(1);
+	}
+
+	std::vector<int> assemblyFiles;
+	for (const std::string &sourceFile : sourceFiles) {
+		std::ifstream input;
+		try {
+			input.open(sourceFile);
+			assemblyFiles.push_back(runCompiler(input));
+		} catch (const std::fstream::failure &ex) {
+			fmt::print(stderr, "Failed to read source file {}: {}\n", sourceFile, ex.what());
+			exit(1);
+		}
+	}
+
+	if (compileOnly) {
+		runAssembler(assemblyFiles, outputFile);
+	} else {
+		// FIXME use a proper temporary file
+		if (!assemblyFiles.empty()) {
+			runAssembler(assemblyFiles, "/tmp/wren-output-test.o");
+			objectFiles.push_back("/tmp/wren-output-test.o");
+		}
+		runLinker(outputFile, objectFiles);
+	}
 }
 
-Wren.testStatic()
-var temp = Wren.new()
-temp.flyTo("Köln") // Test unicode
-
-for (adjective in ["small", "clean", "fast"]) {
-  System.print(adjective)
-}
-
-/*
-var adjectives = Fiber.new {
-	["small", "clean", "fast"].each {|word| Fiber.yield(word) }
-}
-
-while (!adjectives.isDone) System.print(adjectives.call())
-*/
-)";
+static int runCompiler(const std::istream &input) {
+	std::string source;
+	{
+		// Quick way to read an entire stream
+		std::stringstream buf;
+		buf << input.rdbuf();
+		source = buf.str();
+	}
 
 	CompContext ctx;
-	Module mod;
-	IRFn *rootFn = wrenCompile(&ctx, &mod, test, false);
+	Module mod; // TODO name the module
+	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false);
 
 	if (!rootFn)
 		return 1;
@@ -119,10 +212,7 @@ while (!adjectives.isDone) System.print(adjectives.call())
 	}
 
 	int assemblyFileFd = runQbe(qbeIr);
-	runAssembler(assemblyFileFd, "/tmp/wren-output-test.o");
-	runLinker("/tmp/wren-output-test.exe", {"/tmp/wren-output-test.o"});
-
-	return 0;
+	return assemblyFileFd;
 }
 
 std::string filenameForFd(int fd) { return fmt::format("/dev/fd/{}", fd); }
@@ -147,14 +237,16 @@ static int runQbe(std::string qbeIr) {
 	return tmpFd;
 }
 
-static void runAssembler(int assemblyFd, const std::string &outputFilename) {
+static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename) {
 	RunProgramme prog;
 	prog.args.push_back("/usr/bin/env");
 	prog.args.push_back("as");
 	prog.args.push_back("-o");
 	prog.args.push_back(outputFilename);
-	prog.args.push_back(filenameForFd(assemblyFd));
-	prog.preservedFDs.push_back(assemblyFd);
+	for (int fd : assemblyFDs) {
+		prog.args.push_back(filenameForFd(fd));
+		prog.preservedFDs.push_back(fd);
+	}
 	prog.Run();
 }
 
