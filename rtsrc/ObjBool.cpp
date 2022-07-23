@@ -17,7 +17,4 @@ ObjClass *ObjBool::Class() {
 	return &cls;
 }
 
-bool ObjBool::OperatorEquals(Value other) {
-	// Since there's only one possible matching value, a simple pointer comparison will do
-	return other == encode_object(this);
-}
+std::string ObjBool::ToString() { return m_value ? "true" : "false"; }

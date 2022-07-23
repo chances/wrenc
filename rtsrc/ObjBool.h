@@ -20,7 +20,7 @@ class ObjBool : public Obj {
 
 	static ObjClass *Class();
 
-	WREN_METHOD() bool OperatorEquals(Value other);
+	WREN_METHOD(getter) std::string ToString();
 
   private:
 	ObjBool(bool value);

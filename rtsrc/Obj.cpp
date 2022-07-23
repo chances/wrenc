@@ -11,7 +11,7 @@
 Obj::~Obj() = default;
 Obj::Obj(ObjClass *type) : type(type) {}
 
-std::string Obj::ToString() {
+std::string Obj::ConvertToString() {
 	// If this is an object of a string, just read it out directly
 	ObjString *thisStr = dynamic_cast<ObjString *>(this);
 	if (thisStr)
@@ -48,6 +48,21 @@ std::string Obj::ToString(Value value) {
 	if (value == NULL_VAL)
 		return "null";
 	if (is_object(value))
-		return get_object_value(value)->ToString();
+		return get_object_value(value)->ConvertToString();
 	return std::to_string(get_number_value(value));
+}
+
+// By default, compare by identity
+bool Obj::OperatorEqualTo(Value other) { return other == encode_object(this); }
+bool Obj::OperatorNotEqual(Value other) { return !OperatorEqualTo(other); }
+
+bool Obj::Is(ObjClass *cls) {
+	// Walk through the type hierarchy and see if we are or extend the specified class
+	ObjClass *iter = type;
+	while (iter) {
+		if (iter == cls)
+			return true;
+		iter = iter->parentClass;
+	}
+	return false;
 }

@@ -129,7 +129,14 @@ class ObjClass : public Obj {
 /// Class used to define types in C++
 class ObjNativeClass : public ObjClass {
   public:
-	ObjNativeClass(const std::string &name, const std::string &bindingName);
+	/// Constructor for ObjNativeClass. Automatically sets up a metaclass as the parent
+	/// @arg name        The accessible-to-Wren name of this class
+	/// @arg bindingName The name of the C++ class, used to bind methods declared with the WREN_METHOD() macro
+	/// @arg parent      The class to inherit from. Defaults to nullptr, which means Obj.
+	/// @arg inheritParentMethods  Whether or not to inherit methods from the parent class. Should almost always be
+	///                            left at the default value of true.
+	ObjNativeClass(const std::string &name, const std::string &bindingName, ObjClass *parent = nullptr,
+	               bool inheritParentMethods = true);
 
   protected:
 	/// Bind all the auto-generated method adapters to this class. Call it with

@@ -84,14 +84,25 @@ void ObjClass::AddFunction(const std::string &signature, void *funcPtr) {
 	definedFunctions.push_back(&entry);
 }
 
-ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
-	parentClass = &CoreClasses::Instance()->Object();
+ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName, ObjClass *parent,
+                               bool inheritParentMethods) {
+	parentClass = parent ? parent : &CoreClasses::Instance()->Object();
 	type = &m_defaultMetaClass;
 	this->name = name;
 
 	m_defaultMetaClass.name = name;
 	m_defaultMetaClass.parentClass = m_defaultMetaClass.type = &CoreClasses::Instance()->RootClass();
 	m_defaultMetaClass.isMetaClass = true;
+
+	// If we should inherit the methods from our parent, then copy them over.
+	// ObjClass doesn't automatically bind it's methods though, so in that case initialise them ourselves
+	if (inheritParentMethods) {
+		if (parentClass == &CoreClasses::Instance()->Object()) {
+			Bind(this, "Obj", false);
+		} else {
+			functions = parentClass->functions;
+		}
+	}
 
 	Bind(this, bindingName, false);
 	Bind(&m_defaultMetaClass, bindingName, true);

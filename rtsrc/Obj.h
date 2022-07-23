@@ -17,7 +17,7 @@ class ObjMap;
 class ObjString;
 
 // A macro read by the bindings generator to mark a method as being accessible from Wren.
-#define WREN_METHOD()
+#define WREN_METHOD(...)
 
 /// An object refers to basically anything accessible by Wren (maybe except for future inline classes).
 class Obj {
@@ -38,7 +38,13 @@ class Obj {
 
 	inline Value ToValue() { return encode_object(this); }
 
+	// By default, compare identity
+	WREN_METHOD() bool OperatorEqualTo(Value other);
+	WREN_METHOD() bool OperatorNotEqual(Value other);
+	WREN_METHOD() bool Is(ObjClass *cls);
+
 	/// Helper method to make a virtual call to the toString function
-	std::string ToString();
+	/// Note this is called ConvertToString and not ToString to avoid clashing with implementations of the Wren method
+	std::string ConvertToString();
 	static std::string ToString(Value value);
 };

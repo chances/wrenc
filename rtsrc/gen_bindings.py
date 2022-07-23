@@ -6,8 +6,10 @@ from typing import TextIO, List
 from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
-    r"^\s*WREN_METHOD\(\)\s+(?P<static>static\s+)?(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
-CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w+)\s+:")
+    r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<static>static\s+)?" +
+    r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
+CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
+ARG_REGEX = re.compile(r"^\s*(?P<type>\S+\s\**)(?P<name>\w+)\s*$")
 
 # Making a C++ method called (for example) OperatorPlus would have a Wren signature of '+'
 OPERATOR_PREFIX = "Operator"
@@ -17,7 +19,12 @@ OPERATOR_TYPES = {
     "Multiply": "*",
     "Divide": "/",
 
-    "Equals": "==",
+    "EqualTo": "==",
+    "NotEqual": "!=",
+    "LessThan": "<",
+    "LessThanEq": "<=",
+    "GreaterThan": ">",
+    "GreaterThanEq": ">=",
 }
 NUMBER_CLASS = "ObjNumClass"
 
@@ -41,6 +48,7 @@ class Method:
     name: str
     args: List[Arg]
     static: bool
+    special_type: str
     parent_class: 'Class'
 
     def arity(self) -> int:
@@ -62,15 +70,19 @@ class Method:
         if self.name.startswith(OPERATOR_PREFIX):
             op_type = self.name.removeprefix(OPERATOR_PREFIX)
             if op_type not in OPERATOR_TYPES:
-                raise Exception(f"Invalid operator name {self.name}")
+                raise Exception(f"Invalid operator name {self.parent_class.name}::{self.name}")
             name = OPERATOR_TYPES[op_type]
 
         # Make the first letter lowercase so we can match up the C++ and Wren styling
         name = name[0].lower() + name[1:]
+
+        if self.special_type == 'getter':
+            return name
+
         return f"{name}({arg_part})"
 
-    def method_name(self, cls: "Class"):
-        return f"binding_{cls.name}_{self.name}_{self.arity()}"
+    def method_name(self):
+        return f"binding_{self.parent_class.name}_{self.name}_{self.arity()}"
 
 
 @dataclass
@@ -106,6 +118,10 @@ def parse_file(fi: TextIO) -> List[Class]:
         name = method_match.group("name")
         args_str = method_match.group("args")
         static = method_match.group("static") is not None
+        special_type = method_match.group("type")
+
+        if special_type not in ['', 'getter']:
+            raise Exception(f"Invalid special type '{special_type}' for method {current_class.name}::{name}")
 
         args = []
         for arg_str in args_str.split(","):
@@ -113,12 +129,16 @@ def parse_file(fi: TextIO) -> List[Class]:
             if args_str == "":
                 continue
 
-            arg_str = arg_str.strip()
-            parts = arg_str.split(" ")
-            assert len(parts) == 2
-            args.append(Arg(parts[0], parts[1], len(args)))
+            # We can't just split the argument to type+name by split(' '), since that wouldn't handle
+            # pointers like "Obj *thing", as it would think the name is "*thing".
+            arg_match = ARG_REGEX.match(arg_str)
+            if not arg_match:
+                raise Exception(f"Could not match arguments for method {current_class.name}::{name}: '{arg_str}'")
 
-        method = Method(return_type, name, args, static, current_class)
+            arg_type = arg_match.group("type").replace(" ", "")  # Remove space before pointer
+            args.append(Arg(arg_type, arg_match.group("name"), len(args)))
+
+        method = Method(return_type, name, args, static, special_type, current_class)
         current_class.methods.append(method)
 
     return classes
@@ -154,7 +174,7 @@ def generate(output: TextIO, files: List[str]):
             if args_str and receiver_def:
                 args_str = ", " + args_str  # Add a comma to go the receiver
             debug_sig = cls.name + "." + method.signature()
-            output.write(f"static Value {method.method_name(cls)}({receiver_def}{args_str}) {'{'}\n")
+            output.write(f"static Value {method.method_name()}({receiver_def}{args_str}) {'{'}\n")
 
             # Convert the receiver (if not static or the number class)
             if not method.static and not is_num_class:
@@ -165,7 +185,10 @@ def generate(output: TextIO, files: List[str]):
                 if arg.type == "Value":
                     cast_expr = arg.raw_name()
                 elif arg.type.startswith("Obj"):
-                    cast_expr = f"checkArg<{arg.type}>(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                    # Remove the pointer to use as a template parameter. Yeah, this will change Obj** to Obj, but we
+                    # don't support that anyway, so no big loss there.
+                    non_ptr = arg.type.replace('*', '')
+                    cast_expr = f"checkArg<{non_ptr}>(\"{debug_sig}\", {i + 1}, {arg.raw_name()}, true)"
                 elif arg.type == "std::string":
                     cast_expr = f"checkString(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
                 elif arg.type == "double":
@@ -219,7 +242,7 @@ def generate(output: TextIO, files: List[str]):
             else:
                 meta_requirement = "!isMeta"
             output.write(f"\tif ({meta_requirement})\n")
-            output.write(f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name(cls)});\n")
+            output.write(f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()});\n")
         output.write("}\n")
 
     output.write("\n// Binding setup method, called by hand-written C++ classes\n")
