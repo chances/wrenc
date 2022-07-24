@@ -1315,7 +1315,8 @@ static StmtUpvalueImport *addUpvalue(Compiler *compiler, VarDecl *var) {
 // If it reaches a method boundary, this stops and returns -1 since methods do
 // not close over local variables.
 static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
-	// If we are at the top level, we didn't find it.
+	// If we are at the top level, we didn't find it. This is because you don't have
+	// local variables at the top level - they're all module-level variables.
 	if (compiler->parent == NULL)
 		return nullptr;
 
@@ -1361,7 +1362,7 @@ static VarDecl *resolveNonmodule(Compiler *compiler, const std::string &name) {
 	if (variable) // && variable->Scope() == VarDecl::SCOPE_LOCAL)
 		return variable;
 
-	// Tt's not a local, so guess that it's an upvalue.
+	// It's not a local, so guess that it's an upvalue.
 	return findUpvalue(compiler, name);
 }
 

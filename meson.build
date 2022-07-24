@@ -41,6 +41,7 @@ rtlib_bindings = custom_target(
     'rtsrc/ObjBool.h',
     'rtsrc/ObjList.h',
     'rtsrc/ObjNum.h',
+    'rtsrc/ObjFn.h',
   ],
   command : [prog_python, '@INPUT@', '--output', '@OUTPUT@'],
 )
@@ -57,12 +58,14 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjBool.cpp',
   'rtsrc/ObjList.cpp',
   'rtsrc/ObjNum.cpp',
+  'rtsrc/ObjFn.cpp',
   'rtsrc/ObjManaged.cpp',
   'rtsrc/CoreClasses.cpp',
   'rtsrc/ClassDescription.cpp',
   'rtsrc/WrenRuntime.cpp',
   rtlib_bindings,
   include_directories: ['rtsrc'],
+  override_options: ['cpp_std=c++20'],
 )
 rtlib = declare_dependency(
   link_with: [rtlib_lib],

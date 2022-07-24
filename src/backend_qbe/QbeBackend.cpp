@@ -26,6 +26,8 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 }
 
 static const std::string SYM_FIELD_OFFSET = "class_field_offset_";
+static const std::string SYM_CLOSURE_DATA_TBL = "closure_data_";
+static const std::string SYM_CLOSURE_DESC_OBJ = "closure_obj_";
 
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
@@ -83,6 +85,19 @@ std::string QbeBackend::Generate(Module *module) {
 
 		Print("w {} 0,", (int)Cmd::END, CD::FLAG_NONE); // Signal the end of the class description
 		Print("}}");
+	}
+
+	// Add a table describing all the closures, and pointers to data objects for them
+	for (IRFn *fn : module->GetClosures()) {
+		std::string funcName = MangleUniqueName(fn->debugName, false);
+		Print("section \".bss\" data ${}{} = {{ {} 0 }}", SYM_CLOSURE_DESC_OBJ, GetClosureName(fn), PTR_TYPE);
+		Print("section \".rodata\" data ${}{} = {{ ", SYM_CLOSURE_DATA_TBL, GetClosureName(fn));
+		Print("\t{} ${},", PTR_TYPE, funcName);
+		Print("\t{} {},", PTR_TYPE, GetStringPtr(fn->debugName));
+		Print("\tw {}, w {}", fn->arity, fn->upvalues.size());
+		Print("}}");
+
+		// TODO upvalues
 	}
 
 	// Add the strings
@@ -180,6 +195,17 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		std::string offsetVarName = fmt::format("tmp_field_offset_{}", cls->info->name);
 		Print("%{} =l call $wren_class_get_field_offset(l %{})", offsetVarName, varName);
 		Print("storel %{}, ${}{}", offsetVarName, SYM_FIELD_OFFSET, cls->info->name);
+	}
+
+	Print("# Register upvalues");
+	for (IRFn *fn : module->GetClosures()) {
+		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
+		// is then used to closure objects wrapping this function.
+		std::string name = GetClosureName(fn);
+		std::string dataName = fmt::format("tmp_upvalue_{}", name);
+		Print("%{} ={} call $wren_register_closure({} ${}{})", dataName, PTR_TYPE, PTR_TYPE, SYM_CLOSURE_DATA_TBL,
+		      name);
+		Print("store{} %{}, ${}{}", PTR_TYPE, dataName, SYM_CLOSURE_DESC_OBJ, name);
 	}
 
 	Print("# Register signatures table");
@@ -536,6 +562,23 @@ QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) {
 	return snip;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	// Get a description object storing the properties of this closure
+	std::string name = GetClosureName(node->func);
+	VLocal *descObj = AddTemporary("closure_desc_" + name);
+	Print("%{} ={} load{} ${}{}", descObj->name, PTR_TYPE, PTR_TYPE, SYM_CLOSURE_DESC_OBJ, name);
+
+	// And use the description object to request a new closure over it
+	snip->result = AddTemporary("closure_result_" + node->func->debugName);
+	snip->Add("%{} =l call $wren_create_closure({} %{})", snip->result->name, PTR_TYPE, descObj->name);
+
+	// TODO upvalue handling
+
+	return snip;
+}
+
 // Utility functions //
 
 QbeBackend::Snippet *QbeBackend::HandleUnimplemented(IRNode *node) {
@@ -603,6 +646,8 @@ QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
 	return local;
 }
 
+std::string QbeBackend::GetClosureName(IRFn *func) { return MangleUniqueName(func->debugName, false); }
+
 std::string QbeBackend::GetLabelName(StmtLabel *label) {
 	return fmt::format("lbl_{:016x}_{}", (uint64_t)label, MangleRawName(label->debugName, true));
 }
@@ -669,4 +714,3 @@ QbeBackend::Snippet *QbeBackend::VisitImport(IRImport *node) { return HandleUnim
 QbeBackend::Snippet *QbeBackend::VisitStmtUpvalue(StmtUpvalueImport *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }

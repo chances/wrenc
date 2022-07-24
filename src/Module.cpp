@@ -43,6 +43,18 @@ const std::vector<IRFn *> &Module::GetFunctions() const { return m_functions; }
 
 const IRFn *Module::GetMainFunction() const { return m_functions.front(); }
 
+std::vector<IRFn *> Module::GetClosures() const {
+	std::vector<IRFn *> result;
+	for (IRFn *fn : m_functions) {
+		// Anything that doesn't have an enclosing class, and is not the top-level function, is a closure
+		if (fn->enclosingClass || fn == GetMainFunction())
+			continue;
+
+		result.push_back(fn);
+	}
+	return result;
+}
+
 const std::vector<IRClass *> &Module::GetClasses() const { return m_classes; }
 
 void Module::AddNode(IRNode *node) {

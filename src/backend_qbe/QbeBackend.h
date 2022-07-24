@@ -45,6 +45,7 @@ class QbeBackend {
 
 	VLocal *LookupVariable(LocalVariable *decl);
 	std::string GetLabelName(StmtLabel *label);
+	std::string GetClosureName(IRFn *func);
 	std::string MangleGlobalName(IRGlobalDecl *var);
 	std::string MangleUniqueName(const std::string &name, bool excludeIdentical);
 	std::string MangleRawName(const std::string &str, bool permitAmbiguity);

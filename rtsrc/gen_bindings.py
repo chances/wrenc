@@ -9,7 +9,7 @@ METHOD_REGEX = re.compile(
     r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<static>static\s+)?" +
     r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
-ARG_REGEX = re.compile(r"^\s*(?P<type>\S+\s\**)(?P<name>\w+)\s*$")
+ARG_REGEX = re.compile(r"^\s*(?P<type>.+\s[*&]*)(?P<name>\w+)\s*$")
 
 # Making a C++ method called (for example) OperatorPlus would have a Wren signature of '+'
 OPERATOR_PREFIX = "Operator"
@@ -120,7 +120,7 @@ def parse_file(fi: TextIO) -> List[Class]:
         static = method_match.group("static") is not None
         special_type = method_match.group("type")
 
-        if special_type not in ['', 'getter']:
+        if special_type not in ['', 'getter', 'variadic']:
             raise Exception(f"Invalid special type '{special_type}' for method {current_class.name}::{name}")
 
         args = []
@@ -137,6 +137,11 @@ def parse_file(fi: TextIO) -> List[Class]:
 
             arg_type = arg_match.group("type").replace(" ", "")  # Remove space before pointer
             args.append(Arg(arg_type, arg_match.group("name"), len(args)))
+
+        # Variadic functions have a last argument that's the array of values, and that's not something Wren
+        # actually passes values into.
+        if special_type == 'variadic':
+            args.pop()
 
         method = Method(return_type, name, args, static, special_type, current_class)
         current_class.methods.append(method)
@@ -173,6 +178,10 @@ def generate(output: TextIO, files: List[str]):
             args_str = ", ".join([f"Value {arg.raw_name()}" for arg in method.args])
             if args_str and receiver_def:
                 args_str = ", " + args_str  # Add a comma to go the receiver
+
+            if method.special_type == 'variadic':
+                args_str += ", const std::initializer_list<Value> &var_args"
+
             debug_sig = cls.name + "." + method.signature()
             output.write(f"static Value {method.method_name()}({receiver_def}{args_str}) {'{'}\n")
 
@@ -207,7 +216,13 @@ def generate(output: TextIO, files: List[str]):
                 output.write(f"{method.return_type} ret = ")
 
             # Generate the method call
-            typed_args = ",".join([arg.typed_name() for arg in method.args])
+            typed_arg_list = [arg.typed_name() for arg in method.args]
+
+            if method.special_type == 'variadic':
+                # Pass all the vararg values through - no typechecking on these.
+                typed_arg_list.append("var_args")
+
+            typed_args = ",".join(typed_arg_list)
             if method.static:
                 output.write(f"{cls.name}::{method.name}({typed_args});\n")
             elif is_num_class:
@@ -235,6 +250,20 @@ def generate(output: TextIO, files: List[str]):
             output.write(f"\treturn {return_value};\n")
             output.write("}\n")
 
+            # Variadic methods need a bunch of helper methods with different numbers of arguments. While it should be
+            # fine ABI-wise to take a bunch of parameters we don't use and ignore some of them to only use a single
+            # function, then we wouldn't know how many arguments were passed. Thus we need one function for each
+            # number of arguments we can take. Wren picks 17 (16+no args) as the number you can pass to Fn.call
+            # so we'll copy that.
+            if method.special_type == 'variadic':
+                for num in range(17):
+                    args = "Value r" + "".join([f",Value a{n}" for n in range(num)])
+                    forward_args = ",".join([f"a{n}" for n in range(num)])
+
+                    body = f"return {method.method_name()}(r, {'{'} {forward_args} {'}'});"
+
+                    output.write(f"static Value {method.method_name()}_va{num}({args}) {'{'} {body} {'}'}\n")
+
         output.write(f"static void register_{cls.name}(ObjClass *cls, bool isMeta) {'{'}\n")
         for method in cls.methods:
             if method.static:
@@ -242,7 +271,24 @@ def generate(output: TextIO, files: List[str]):
             else:
                 meta_requirement = "!isMeta"
             output.write(f"\tif ({meta_requirement})\n")
-            output.write(f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()});\n")
+            if not method.special_type == 'variadic':
+                output.write(f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()});\n")
+                continue
+
+            # Write out all the variadic functions
+            output.write("\t{\n")
+            for num in range(17):
+                signature = method.signature()[:-1]  # Cut off the last bracket
+
+                # Add the new arguments
+                if num != 0 and signature[-1] == '_':
+                    signature += ","
+                signature += ",".join(["_"] * num)
+                signature += ")"  # Put the bracket back on
+
+                output.write(f"\t\tcls->AddFunction(\"{signature}\", (void*){method.method_name()}_va{num});\n")
+            output.write("\t}\n")
+
         output.write("}\n")
 
     output.write("\n// Binding setup method, called by hand-written C++ classes\n")

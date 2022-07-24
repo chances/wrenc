@@ -31,6 +31,8 @@ class Module {
 	/// first function in this list.
 	const std::vector<IRFn *> &GetFunctions() const;
 
+	std::vector<IRFn *> GetClosures() const;
+
 	/// Get the module's initialisation function. Same as GetFunctions.at(0);
 	const IRFn *GetMainFunction() const;
 

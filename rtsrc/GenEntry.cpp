@@ -10,6 +10,7 @@
 #include "CoreClasses.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
+#include "ObjFn.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
 #include "ObjNum.h"
@@ -26,6 +27,7 @@ extern "C" {
 Value wren_sys_var_Bool = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
+Value wren_sys_var_Fn = NULL_VAL;     // NOLINT(readability-identifier-naming)
 Value wren_sys_var_List = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Num = NULL_VAL;    // NOLINT(readability-identifier-naming)
 Value wren_sys_var_String = NULL_VAL; // NOLINT(readability-identifier-naming)
@@ -40,6 +42,8 @@ void wren_register_signatures_table(const char *signatures);          // NOLINT(
 Value wren_init_class(const char *name, uint8_t *dataBlock);          // NOLINT(readability-identifier-naming)
 Value wren_alloc_obj(Value classVar);                                 // NOLINT(readability-identifier-naming)
 int wren_class_get_field_offset(Value classVar);                      // NOLINT(readability-identifier-naming)
+ClosureSpec *wren_register_closure(void *specData);                   // NOLINT(readability-identifier-naming)
+Value wren_create_closure(ClosureSpec *spec);                         // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -147,10 +151,25 @@ int wren_class_get_field_offset(Value classVar) {
 	return cls->fieldOffset;
 }
 
+ClosureSpec *wren_register_closure(void *specData) {
+	// Leaks memory, but it'd never be freed anyway since it gets put in a module-level global
+	return new ClosureSpec(specData);
+}
+
+Value wren_create_closure(ClosureSpec *spec) {
+	if (spec == nullptr) {
+		fprintf(stderr, "Cannot pass null spec to wren_create_closure\n");
+		abort();
+	}
+	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec);
+	return closure->ToValue();
+}
+
 void setupGenEntry() {
 	wren_sys_var_Bool = ObjBool::Class()->ToValue();
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
+	wren_sys_var_Fn = ObjFn::Class()->ToValue();
 	wren_sys_var_List = ObjList::Class()->ToValue();
 	wren_sys_var_Num = ObjNumClass::Instance()->ToValue();
 	wren_sys_var_String = ObjString::Class()->ToValue();
