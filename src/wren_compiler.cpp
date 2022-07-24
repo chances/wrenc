@@ -3307,6 +3307,17 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 			IRClass *classDecl = dynamic_cast<IRClass *>(node);
 			if (classDecl) {
 				IRGlobalDecl *global = module->AddVariable(classDecl->info->name);
+
+				// If the variable was already defined, check if it was implicitly defined
+				if (global == nullptr) {
+					IRGlobalDecl *current = module->FindVariable(classDecl->info->name);
+					if (current->undeclaredLineUsed.has_value()) {
+						global = current;
+						global->undeclaredLineUsed = std::optional<int>();
+					}
+				}
+
+				// If it explicitly defined, fail
 				if (!global) {
 					error(&compiler, "Module-level variable for class '%s' is already defined",
 					      classDecl->info->name.c_str());
