@@ -133,7 +133,6 @@ void IRVisitor::VisitStmtAssign(StmtAssign *node) {
 }
 void IRVisitor::VisitStmtFieldAssign(StmtFieldAssign *node) {
 	// node->var isn't a VarDecl
-	Visit(node->object);
 	Visit(node->value);
 }
 void IRVisitor::VisitStmtUpvalue(StmtUpvalueImport *node) { VisitVar(node->parent); }
@@ -151,7 +150,7 @@ void IRVisitor::VisitStmtLoadModule(StmtLoadModule *node) {
 }
 void IRVisitor::VisitExprConst(ExprConst *node) {}
 void IRVisitor::VisitExprLoad(ExprLoad *node) { VisitVar(node->var); }
-void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) { Visit(node->object); }
+void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) {}
 void IRVisitor::VisitExprFuncCall(ExprFuncCall *node) {
 	Visit(node->receiver);
 	for (IRExpr *expr : node->args)
@@ -325,4 +324,13 @@ void IRPrinter::VisitExprGetClassVar(ExprGetClassVar *node) {
 void IRPrinter::VisitFn(IRFn *node) {
 	m_tagStack.back().header += " " + node->debugName;
 	IRVisitor::VisitFn(node);
+}
+
+void IRPrinter::VisitStmtFieldAssign(StmtFieldAssign *node) {
+	m_tagStack.back().header += " " + node->var->Name();
+	IRVisitor::VisitStmtFieldAssign(node);
+}
+void IRPrinter::VisitExprFieldLoad(ExprFieldLoad *node) {
+	m_tagStack.back().header += " " + node->var->Name();
+	IRVisitor::VisitExprFieldLoad(node);
 }

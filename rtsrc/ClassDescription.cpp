@@ -17,6 +17,10 @@ struct AddMethodInsn {
 	void *func;
 };
 
+struct AddFieldInsn {
+	const char *name;
+};
+
 void ClassDescription::Parse(uint8_t *data) {
 	while (true) {
 		CommandInsn *cmd = (CommandInsn *)data;
@@ -33,6 +37,15 @@ void ClassDescription::Parse(uint8_t *data) {
 			    .name = method->name,
 			    .func = method->func,
 			    .isStatic = (cmd->flags & FLAG_STATIC) != 0,
+			});
+			break;
+		}
+		case Command::ADD_FIELD: {
+			AddFieldInsn *field = (AddFieldInsn *)data;
+			data += sizeof(*field);
+
+			fields.emplace_back(FieldDecl{
+			    .name = field->name,
 			});
 			break;
 		}

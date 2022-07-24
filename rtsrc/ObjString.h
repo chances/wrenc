@@ -19,6 +19,7 @@ class ObjString : public Obj {
 	static ObjString *New(std::string &&value);
 
 	WREN_METHOD(getter) int Count();
+	WREN_METHOD() std::string OperatorPlus(Value other);
 
 	std::string m_value;
 };

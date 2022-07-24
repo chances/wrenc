@@ -25,6 +25,8 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 	abort();
 }
 
+static const std::string SYM_FIELD_OFFSET = "class_field_offset_";
+
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
@@ -73,6 +75,12 @@ std::string QbeBackend::Generate(Module *module) {
 		writeMethods(cls->info->methods, false);
 		writeMethods(cls->info->staticMethods, true);
 
+		// Write the fields
+		for (const std::unique_ptr<FieldVariable> &var : cls->info->fields.fields) {
+			Print("w {} {},", (int)Cmd::ADD_FIELD, 0);
+			Print("{} {},", PTR_TYPE, GetStringPtr(var->Name()));
+		}
+
 		Print("w {} 0,", (int)Cmd::END, CD::FLAG_NONE); // Signal the end of the class description
 		Print("}}");
 	}
@@ -92,6 +100,15 @@ std::string QbeBackend::Generate(Module *module) {
 	// Add pointers to the ObjClass instances for all the classes we've declared
 	for (IRClass *cls : module->GetClasses()) {
 		Print("section \".data\" data $class_var_{} = {{ l {} }}", cls->info->name, NULL_VAL);
+	}
+
+	// Add fields to store the offset of the member fields in each class. This is required since we
+	// can currently have classes extending from classes in another file, and they don't know how
+	// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
+	// we have to add it to the object pointer to get the fields area.
+	for (IRClass *cls : module->GetClasses()) {
+		// Make it word-sized, that'll be big enough and hopefully help with getting more into the cache
+		Print("section \".bss\" data ${}{} = {{ w {} }}", SYM_FIELD_OFFSET, cls->info->name, 0);
 	}
 
 	// Write the signature table - it's used for error messages, when the runtime only knows the
@@ -158,6 +175,11 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{})", varName, PTR_TYPE, classNameSym, PTR_TYPE,
 		      cls->info->name);
 		Print("storel %{}, $class_var_{}", varName, cls->info->name);
+
+		// Read the field offset
+		std::string offsetVarName = fmt::format("tmp_field_offset_{}", cls->info->name);
+		Print("%{} =l call $wren_class_get_field_offset(l %{})", offsetVarName, varName);
+		Print("storel %{}, ${}{}", offsetVarName, SYM_FIELD_OFFSET, cls->info->name);
 	}
 
 	Print("# Register signatures table");
@@ -222,7 +244,8 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	std::string funcName = MangleUniqueName(node->debugName, false);
 
 	std::string args;
-	if (node->isMethod) {
+	// Check if this is a method or not. This is non-null for static methods, but they also have receivers.
+	if (node->enclosingClass) {
 		// Add the receiver
 		args += "l %this, ";
 	}
@@ -239,6 +262,16 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 
 	if (initFunction) {
 		Print("call ${}() # Module initialisation routine", initFunction.value());
+	}
+
+	// If this is a method, load the field offset. We're probably going to access our fields (if not, QBE should
+	// be able to remove this load?) so it's good to only have to load their offset once
+	// For more information about these offsets, see the comment on the code generating this symbol for more information
+	if (node->enclosingClass) {
+		Print("%this_ptr =l and %this, {}", CONTENT_MASK); // This is equivalent to get_object_value
+		Print("%this_field_start_offset =w loadw ${}{}", SYM_FIELD_OFFSET, node->enclosingClass->info->name);
+		Print("%this_field_start =l extuw %this_field_start_offset");   // Unsigned extend word->long
+		Print("%this_field_start =l add %this_field_start, %this_ptr"); // Add this to get the field area pointer
 	}
 
 	StmtBlock *block = dynamic_cast<StmtBlock *>(node->body);
@@ -471,11 +504,43 @@ QbeBackend::Snippet *QbeBackend::VisitStmtJump(StmtJump *node) {
 	return snip;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitStmtFieldAssign(StmtFieldAssign *node) {
+	// The byte offset of the target field, relative to the first field
+	// Since Value is eight bytes wide (even on a hypothetical 32-bit port), multiply by that.
+	int fieldPos = node->var->Id() * 8;
+
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	VLocal *value = snip->Add(VisitExpr(node->value));
+
+	// Find the address of the field to write to
+	VLocal *targetFieldOffset = AddTemporary("field_ptr_" + node->var->Name());
+	snip->Add("%{} =l add %this_field_start, {}", targetFieldOffset->name, fieldPos);
+
+	// Write out the field
+	snip->Add("storel %{}, %{}", value->name, targetFieldOffset->name);
+
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) {
+	// See VisitStmtFieldAssign for comments explaining this
+	int fieldPos = node->var->Id() * 8;
+
+	Snippet *snip = m_alloc.New<Snippet>();
+	VLocal *targetFieldOffset = AddTemporary("field_ptr_" + node->var->Name());
+	snip->result = AddTemporary("field_load_" + node->var->Name());
+	snip->Add("%{} =l add %this_field_start, {}", targetFieldOffset->name, fieldPos);
+	snip->Add("%{} =l loadl %{}", snip->result->name, targetFieldOffset->name);
+
+	return snip;
+}
+
 // Utility functions //
 
 QbeBackend::Snippet *QbeBackend::HandleUnimplemented(IRNode *node) {
 	fmt::print(stderr, "QbeBackend: Unsupported node {}\n", typeid(*node).name());
-	return nullptr;
+	abort();
 }
 
 QbeBackend::VLocal *QbeBackend::AddTemporary(std::string debugName) {
@@ -601,9 +666,7 @@ std::string QbeBackend::MangleRawName(const std::string &str, bool permitAmbigui
 QbeBackend::Snippet *QbeBackend::VisitClass(IRClass *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitGlobalDecl(IRGlobalDecl *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitImport(IRImport *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitStmtFieldAssign(StmtFieldAssign *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtUpvalue(StmtUpvalueImport *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }

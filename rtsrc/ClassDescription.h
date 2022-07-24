@@ -13,6 +13,7 @@ class ClassDescription {
 	enum class Command {
 		END = 0,
 		ADD_METHOD,
+		ADD_FIELD,
 	};
 
 	static constexpr uint32_t FLAG_NONE = 0;
@@ -24,7 +25,12 @@ class ClassDescription {
 		bool isStatic;
 	};
 
+	struct FieldDecl {
+		std::string name;
+	};
+
 	void Parse(uint8_t *data);
 
 	std::vector<MethodDecl> methods;
+	std::vector<FieldDecl> fields;
 };

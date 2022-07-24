@@ -18,6 +18,7 @@
 #include "WrenRuntime.h"
 #include "common.h"
 
+#include <string.h>
 #include <vector>
 
 // These are the functions in question
@@ -38,6 +39,7 @@ Value wren_init_string_literal(const char *literal, int length);      // NOLINT(
 void wren_register_signatures_table(const char *signatures);          // NOLINT(readability-identifier-naming)
 Value wren_init_class(const char *name, uint8_t *dataBlock);          // NOLINT(readability-identifier-naming)
 Value wren_alloc_obj(Value classVar);                                 // NOLINT(readability-identifier-naming)
+int wren_class_get_field_offset(Value classVar);                      // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -91,12 +93,12 @@ void wren_register_signatures_table(const char *signatures) {
 }
 
 Value wren_init_class(const char *name, uint8_t *dataBlock) {
-	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name);
+	std::unique_ptr<ClassDescription> spec = std::make_unique<ClassDescription>();
+	spec->Parse(dataBlock);
 
-	ClassDescription desc;
-	desc.Parse(dataBlock);
+	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name, std::move(spec));
 
-	for (const ClassDescription::MethodDecl &method : desc.methods) {
+	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
 		ObjClass *target = method.isStatic ? cls->type : cls;
 		target->AddFunction(method.name, method.func);
 	}
@@ -116,8 +118,33 @@ Value wren_alloc_obj(Value classVar) {
 		abort();
 	}
 
-	ObjManaged *obj = WrenRuntime::Instance().New<ObjManaged>(cls);
+	// We have to allocate managed objects specially, to account for their variable-sized field area
+	void *mem = WrenRuntime::Instance().AllocateMem(cls->size, alignof(ObjManaged));
+	memset(mem, 0, cls->size);                   // Zero as a matter of good practice
+	ObjManaged *obj = new (mem) ObjManaged(cls); // Initialise with placement-new
+
+	// Null-initialise all the fields
+	Value *fieldsEnd = (Value *)((uint64_t)obj + cls->size);
+	for (Value *i = obj->fields; i < fieldsEnd; i++) {
+		*i = NULL_VAL;
+	}
+
 	return encode_object(obj);
+}
+
+int wren_class_get_field_offset(Value classVar) {
+	if (!is_object(classVar)) {
+		fprintf(stderr, "Cannot call wren_class_get_field_offset with number argument\n");
+		abort();
+	}
+
+	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
+	if (!cls) {
+		fprintf(stderr, "Cannot call wren_class_get_field_offset with null or non-ObjManagedClass type\n");
+		abort();
+	}
+
+	return cls->fieldOffset;
 }
 
 void setupGenEntry() {

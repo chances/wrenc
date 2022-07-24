@@ -59,6 +59,17 @@ void IRCleanup::VisitBlock(StmtBlock *node) {
 			continue;
 		}
 
+		// If we find a return, remove everything after it until we find a label, since that's the only
+		// way you can access something after a return.
+		if (dynamic_cast<StmtReturn *>(stmt)) {
+			while (i + 1 < node->statements.size()) {
+				IRStmt *next = node->statements.at(i + 1);
+				if (dynamic_cast<StmtLabel *>(next))
+					break;
+				node->statements.erase(node->statements.begin() + i + 1);
+			}
+		}
+
 		Visit(stmt);
 	}
 }

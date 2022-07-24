@@ -18,6 +18,9 @@ class SymbolTable {
 
 	/// Gets a given field, or allocates it if the field didn't already exist
 	FieldVariable *Ensure(const std::string &name);
+
+	std::vector<std::unique_ptr<FieldVariable>> fields;
+	std::unordered_map<std::string, FieldVariable *> byName;
 };
 
 class FieldVariable {
@@ -25,8 +28,9 @@ class FieldVariable {
 	inline const std::string &Name() const { return m_name; }
 	inline int Id() const { return m_fieldId; }
 
-  private:
 	~FieldVariable();
+
+  private:
 	FieldVariable();
 
 	std::string m_name;

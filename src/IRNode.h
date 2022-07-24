@@ -15,6 +15,7 @@
 // Declarations
 class IRExpr;
 class IRStmt;
+class IRClass;
 class LocalVariable; // From Scope.h
 class FieldVariable; // From SymbolTable.h
 class Signature;     // From CompContext.h
@@ -81,8 +82,12 @@ class IRFn : public IRNode {
 	// The thing that gets run when this function is called
 	IRStmt *body = nullptr;
 
-	// Is this a method or a closure?
-	bool isMethod = false;
+	// If this is a method, this is the class the method is contained in. If this is a closure or
+	// the root function of a module, this is nullptr. This is a good way to check if this function
+	// is a method or not.
+	// Note this is also true for static methods (they are instance methods of the class object, and
+	// have a normal receiver etc).
+	IRClass *enclosingClass = nullptr;
 
 	// The name of this node, as it's used for debugging
 	std::string debugName = "<unknown_func>";
@@ -172,16 +177,15 @@ class StmtAssign : public IRStmt {
 	IRExpr *expr = nullptr;
 };
 
-/// Assign a value to an object's fields
+/// Assign a value to the receiver object's fields
 class StmtFieldAssign : public IRStmt {
   public:
 	StmtFieldAssign() {}
-	StmtFieldAssign(FieldVariable *var, IRExpr *object, IRExpr *value) : var(var), object(object), value(value) {}
+	StmtFieldAssign(FieldVariable *var, IRExpr *value) : var(var), value(value) {}
 
 	void Accept(IRVisitor *visitor) override;
 
 	FieldVariable *var = nullptr;
-	IRExpr *object = nullptr;
 	IRExpr *value = nullptr;
 };
 
@@ -308,16 +312,15 @@ class ExprLoad : public IRExpr {
 	VarDecl *var;
 };
 
-/// Read a value from an object's fields
+/// Read a value from the receiver object's fields
 class ExprFieldLoad : public IRExpr {
   public:
 	ExprFieldLoad() {}
-	ExprFieldLoad(FieldVariable *var, IRExpr *object) : var(var), object(object) {}
+	ExprFieldLoad(FieldVariable *var) : var(var) {}
 
 	void Accept(IRVisitor *visitor) override;
 
 	FieldVariable *var = nullptr;
-	IRExpr *object = nullptr;
 };
 
 /// Either a function or a method call, depending on whether the receiver is null or not
@@ -458,6 +461,8 @@ class IRPrinter : private IRVisitor {
 	void VisitExprSystemVar(ExprSystemVar *node) override;
 	void VisitExprGetClassVar(ExprGetClassVar *node) override;
 	void VisitFn(IRFn *node) override;
+	void VisitStmtFieldAssign(StmtFieldAssign *node) override;
+	void VisitExprFieldLoad(ExprFieldLoad *node) override;
 
 	std::string GetLabelId(StmtLabel *label);
 

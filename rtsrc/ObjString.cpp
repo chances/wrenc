@@ -30,3 +30,5 @@ ObjString *ObjString::New(std::string &&value) {
 }
 
 int ObjString::Count() { return m_value.size(); }
+
+std::string ObjString::OperatorPlus(Value other) { return m_value + Obj::ToString(other); }

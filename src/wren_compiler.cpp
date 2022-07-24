@@ -1949,14 +1949,14 @@ static IRExpr *field(Compiler *compiler, bool canAssign) {
 		run->temporary = temporary;
 
 		block->Add(compiler->New<StmtAssign>(temporary, value));
-		block->Add(compiler->New<StmtFieldAssign>(field, loadThis(compiler), loadVariable(compiler, temporary)));
+		block->Add(compiler->New<StmtFieldAssign>(field, loadVariable(compiler, temporary)));
 
 		return run;
 	}
 
 	allowLineBeforeDot(compiler);
 
-	return compiler->New<ExprFieldLoad>(field, loadThis(compiler));
+	return compiler->New<ExprFieldLoad>(field);
 }
 
 // Compiles a read or assignment to [variable].
@@ -2993,7 +2993,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
 		methodCompiler.fn->body = finishBody(&methodCompiler);
 		method->fn = methodCompiler.fn;
-		method->fn->isMethod = true;
+		method->fn->enclosingClass = classNode;
 		endCompiler(&methodCompiler, signature->ToString());
 		compiler->parser->module->AddNode(method->fn);
 	}
@@ -3013,14 +3013,14 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		IRFn *fn = compiler->New<IRFn>();
 		compiler->parser->module->AddNode(fn);
 		fn->arity = signature->arity;
-		fn->isMethod = true;
+		fn->enclosingClass = classNode;
 		alloc->fn = fn;
 
 		StmtBlock *block = compiler->New<StmtBlock>();
 		fn->body = block;
 
 		LocalVariable *objLocal = compiler->New<LocalVariable>();
-		objLocal->name = "alloc-temp-special";
+		objLocal->name = "alloc_temp_special";
 		objLocal->depth = 0;
 		objLocal->isUpvalue = false;
 		fn->locals.push_back(objLocal);
