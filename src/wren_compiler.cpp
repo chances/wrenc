@@ -1718,6 +1718,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		initCompiler(&fnCompiler, compiler->parser, compiler, false);
 		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
 		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
+		compiler->parser->module->AddNode(fnCompiler.fn);
 
 		// Make a dummy signature to track the arity.
 		Signature fnSignature = {"", SIG_METHOD, 0};
@@ -1730,7 +1731,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 
 		fnCompiler.fn->arity = fnSignature.arity;
 
-		finishBody(&fnCompiler);
+		fnCompiler.fn->body = finishBody(&fnCompiler);
 
 		// Name the function based on the method its passed to.
 		std::string name = signature->ToString() + " block argument";
@@ -3014,6 +3015,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		compiler->parser->module->AddNode(fn);
 		fn->arity = signature->arity;
 		fn->enclosingClass = classNode;
+		fn->debugName = method->fn->debugName + "::alloc";
 		alloc->fn = fn;
 
 		StmtBlock *block = compiler->New<StmtBlock>();

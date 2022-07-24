@@ -157,9 +157,7 @@ void IRVisitor::VisitExprFuncCall(ExprFuncCall *node) {
 		Visit(expr);
 }
 void IRVisitor::VisitExprClosure(ExprClosure *node) {
-	// Closures are only generated for anonymous functions, which are only accessible through these nodes, so
-	// it's fine to visit them.
-	Visit(node->func);
+	// The functions closures bind to are added to the module directly, we'd see them twice if we visited it here
 }
 void IRVisitor::VisitExprLoadReceiver(ExprLoadReceiver *node) {}
 void IRVisitor::VisitExprRunStatements(ExprRunStatements *node) {
@@ -323,6 +321,15 @@ void IRPrinter::VisitExprGetClassVar(ExprGetClassVar *node) {
 
 void IRPrinter::VisitFn(IRFn *node) {
 	m_tagStack.back().header += " " + node->debugName;
+
+	// Add a tag with the arguments
+	std::string args = "args";
+	for (LocalVariable *arg : node->parameters) {
+		args += " " + arg->name;
+	}
+	StartTag(args, true);
+	EndTag();
+
 	IRVisitor::VisitFn(node);
 }
 
@@ -333,4 +340,14 @@ void IRPrinter::VisitStmtFieldAssign(StmtFieldAssign *node) {
 void IRPrinter::VisitExprFieldLoad(ExprFieldLoad *node) {
 	m_tagStack.back().header += " " + node->var->Name();
 	IRVisitor::VisitExprFieldLoad(node);
+}
+
+void IRPrinter::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
+	m_tagStack.back().header += " " + node->target->info->name;
+	IRVisitor::VisitExprAllocateInstanceMemory(node);
+}
+
+void IRPrinter::VisitExprClosure(ExprClosure *node) {
+	m_tagStack.back().header += " " + node->func->debugName;
+	IRVisitor::VisitExprClosure(node);
 }

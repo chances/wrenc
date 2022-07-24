@@ -463,6 +463,8 @@ class IRPrinter : private IRVisitor {
 	void VisitFn(IRFn *node) override;
 	void VisitStmtFieldAssign(StmtFieldAssign *node) override;
 	void VisitExprFieldLoad(ExprFieldLoad *node) override;
+	void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) override;
+	void VisitExprClosure(ExprClosure *node) override;
 
 	std::string GetLabelId(StmtLabel *label);
 
