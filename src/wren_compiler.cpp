@@ -2188,7 +2188,8 @@ static IRExpr *and_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 
 	// Skip the right argument if the left is false.
 	StmtJump *jump = compiler->AddNew<StmtJump>(block);
-	jump->condition = compiler->New<ExprLogicalNot>(loadVariable(compiler, tmp));
+	jump->condition = loadVariable(compiler, tmp);
+	jump->jumpOnFalse = true;
 	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_AND);
 	compiler->AddNew<StmtAssign>(block, tmp, rhs);
 	jump->target = compiler->AddNew<StmtLabel>(block, "and-target");
@@ -2232,9 +2233,10 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 	wrapper->statement = block;
 	wrapper->temporary = tmp;
 
-	// If the condition is false, jumpToFalse to the 2nd term
+	// If the condition is false, jump to the 2nd term
 	StmtJump *jumpToFalse = compiler->AddNew<StmtJump>(block);
-	jumpToFalse->condition = compiler->New<ExprLogicalNot>(loadVariable(compiler, tmp));
+	jumpToFalse->condition = loadVariable(compiler, tmp);
+	jumpToFalse->jumpOnFalse = true;
 
 	// Compile the then branch.
 	IRExpr *trueValue = parsePrecedence(compiler, PREC_CONDITIONAL);
@@ -2690,7 +2692,8 @@ static IRStmt *ifStatement(Compiler *compiler) {
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after if condition.");
 
 	// Jump to the else branch if the condition is false.
-	StmtJump *ifJump = compiler->AddNew<StmtJump>(block, nullptr, compiler->New<ExprLogicalNot>(condition));
+	StmtJump *ifJump = compiler->AddNew<StmtJump>(block, nullptr, condition);
+	ifJump->jumpOnFalse = true;
 
 	// Compile the then branch.
 	block->Add(statement(compiler));
@@ -2728,7 +2731,8 @@ static IRStmt *whileStatement(Compiler *compiler) {
 	IRExpr *condition = expression(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after while condition.");
 
-	StmtJump *jumpOut = compiler->AddNew<StmtJump>(block, nullptr, compiler->New<ExprLogicalNot>(condition));
+	StmtJump *jumpOut = compiler->AddNew<StmtJump>(block, nullptr, condition);
+	jumpOut->jumpOnFalse = true;
 	loop.exitJumps.push_back(jumpOut);
 
 	block->Add(loopBody(compiler));

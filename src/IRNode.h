@@ -358,15 +358,6 @@ class ExprRunStatements : public IRExpr {
 	LocalVariable *temporary = nullptr;
 };
 
-/// Logical inverse, yields ¬input
-class ExprLogicalNot : public IRExpr {
-  public:
-	ExprLogicalNot(IRExpr *input) : input(input) {}
-	void Accept(IRVisitor *visitor) override;
-
-	IRExpr *input = nullptr;
-};
-
 /// Allocates the memory for a new object. If this is a foreign object, the foreign allocation method
 /// is also called.
 class ExprAllocateInstanceMemory : public IRExpr {
@@ -429,7 +420,6 @@ class IRVisitor {
 	virtual void VisitExprClosure(ExprClosure *node);
 	virtual void VisitExprLoadReceiver(ExprLoadReceiver *node);
 	virtual void VisitExprRunStatements(ExprRunStatements *node);
-	virtual void VisitExprLogicalNot(ExprLogicalNot *node);
 	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	virtual void VisitExprSystemVar(ExprSystemVar *node);
 	virtual void VisitExprGetClassVar(ExprGetClassVar *node);

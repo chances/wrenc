@@ -18,7 +18,6 @@ const std::set<std::string> INLINE_NODES = {
     typeid(StmtReturn).name(),
     typeid(StmtJump).name(),
     typeid(ExprLoad).name(),
-    typeid(ExprLogicalNot).name(),
 };
 const bool PRINT_ADDR = false;
 
@@ -96,7 +95,6 @@ void ExprFuncCall::Accept(IRVisitor *visitor) { visitor->VisitExprFuncCall(this)
 void ExprClosure::Accept(IRVisitor *visitor) { visitor->VisitExprClosure(this); }
 void ExprLoadReceiver::Accept(IRVisitor *visitor) { visitor->VisitExprLoadReceiver(this); }
 void ExprRunStatements::Accept(IRVisitor *visitor) { visitor->VisitExprRunStatements(this); }
-void ExprLogicalNot::Accept(IRVisitor *visitor) { visitor->VisitExprLogicalNot(this); }
 void ExprAllocateInstanceMemory::Accept(IRVisitor *visitor) { visitor->VisitExprAllocateInstanceMemory(this); }
 void ExprSystemVar::Accept(IRVisitor *visitor) { visitor->VisitExprSystemVar(this); }
 void ExprGetClassVar::Accept(IRVisitor *visitor) { visitor->VisitExprGetClassVar(this); }
@@ -169,7 +167,6 @@ void IRVisitor::VisitExprRunStatements(ExprRunStatements *node) {
 	VisitVar(node->temporary);
 	Visit(node->statement);
 }
-void IRVisitor::VisitExprLogicalNot(ExprLogicalNot *node) { Visit(node->input); }
 void IRVisitor::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
 	// Our IRClass nodes are already in the tree, don't visit them
 }

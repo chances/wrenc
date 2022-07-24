@@ -185,7 +185,6 @@ QbeBackend::Snippet *QbeBackend::VisitExpr(IRExpr *expr) {
 	DISPATCH(VisitExprClosure, ExprClosure);
 	DISPATCH(VisitExprLoadReceiver, ExprLoadReceiver);
 	DISPATCH(VisitExprRunStatements, ExprRunStatements);
-	DISPATCH(VisitExprLogicalNot, ExprLogicalNot);
 	DISPATCH(VisitExprAllocateInstanceMemory, ExprAllocateInstanceMemory);
 	DISPATCH(VisitExprSystemVar, ExprSystemVar);
 	DISPATCH(VisitExprGetClassVar, ExprGetClassVar);
@@ -311,13 +310,6 @@ QbeBackend::Snippet *QbeBackend::VisitExprConst(ExprConst *node) {
 }
 
 QbeBackend::Snippet *QbeBackend::VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node) {
-	// Make sure we don't have a statement needlessly hidden inside here, though
-	if (dynamic_cast<ExprRunStatements *>(node->expr)) {
-		fmt::print(
-		    stderr,
-		    "ExprRunStatements must not appear directly inside a StmtEvalAndIgnore, it should have been cleaned up!");
-	}
-
 	// Ignore the result, how much simpler could it get :)
 	return VisitExpr(node->expr);
 }
@@ -615,4 +607,3 @@ QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnim
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprFieldLoad(ExprFieldLoad *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitExprLogicalNot(ExprLogicalNot *node) { return HandleUnimplemented(node); }

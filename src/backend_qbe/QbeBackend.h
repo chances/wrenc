@@ -87,7 +87,6 @@ class QbeBackend {
 	Snippet *VisitExprClosure(ExprClosure *node);
 	Snippet *VisitExprLoadReceiver(ExprLoadReceiver *node);
 	Snippet *VisitExprRunStatements(ExprRunStatements *node);
-	Snippet *VisitExprLogicalNot(ExprLogicalNot *node);
 	Snippet *VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	Snippet *VisitExprSystemVar(ExprSystemVar *node);
 	Snippet *VisitExprGetClassVar(ExprGetClassVar *node);
