@@ -136,15 +136,27 @@ int main(int argc, char **argv) {
 	}
 
 	std::vector<int> assemblyFiles;
+	bool hitError = false;
 	for (const std::string &sourceFile : sourceFiles) {
 		std::ifstream input;
 		try {
 			input.open(sourceFile);
-			assemblyFiles.push_back(runCompiler(input));
+			int fd = runCompiler(input);
+			if (fd == -1) {
+				hitError = true;
+			} else {
+				assemblyFiles.push_back(fd);
+			}
 		} catch (const std::fstream::failure &ex) {
 			fmt::print(stderr, "Failed to read source file {}: {}\n", sourceFile, ex.what());
 			exit(1);
 		}
+	}
+
+	// Wait until now to print the error, to get errors from multiple files if we're compiling multiple files at once.
+	if (hitError) {
+		fmt::print(stderr, "Parse errors found, aborting\n");
+		return 1;
 	}
 
 	if (compileOnly) {
@@ -173,7 +185,7 @@ static int runCompiler(const std::istream &input) {
 	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false);
 
 	if (!rootFn)
-		return 1;
+		return -1;
 
 	IRCleanup cleanup;
 	for (IRFn *fn : mod.GetFunctions())
