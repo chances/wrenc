@@ -16,12 +16,12 @@
 class IRExpr;
 class IRStmt;
 class IRClass;
-class LocalVariable; // From Scope.h
-class FieldVariable; // From SymbolTable.h
-class Signature;     // From CompContext.h
-class Compiler;      // From wren_compiler.cpp
-class ClassInfo;     // From ClassInfo.h
-class StmtUpvalueImport;
+class LocalVariable;   // From Scope.h
+class UpvalueVariable; // From Scope.h
+class FieldVariable;   // From SymbolTable.h
+class Signature;       // From CompContext.h
+class Compiler;        // From wren_compiler.cpp
+class ClassInfo;       // From ClassInfo.h
 class IRVisitor;
 class IRPrinter;
 
@@ -65,13 +65,10 @@ class IRFn : public IRNode {
 	void Accept(IRVisitor *visitor) override;
 
 	std::vector<LocalVariable *> locals; // Locals may have duplicate names from different scopes, hence vector not map
-	std::unordered_map<VarDecl *, StmtUpvalueImport *> upvalues;
+	std::unordered_map<VarDecl *, UpvalueVariable *> upvalues; // Upvalues imported from the parent function
 
 	// Function parameters. These also appear in [locals].
 	std::vector<LocalVariable *> parameters;
-
-	// A list of all the upvalue imports that haven't been placed in the AST tree, and will be placed later.
-	std::vector<StmtUpvalueImport *> unInsertedImports;
 
 	// Locals used as temporaries by the compiler, which aren't checked for name conflicts.
 	std::vector<LocalVariable *> temporaries;
@@ -187,29 +184,6 @@ class StmtFieldAssign : public IRStmt {
 
 	FieldVariable *var = nullptr;
 	IRExpr *value = nullptr;
-};
-
-/**
- * Reference a variable from the enclosing function. Only after this statement
- * is executed may the upvalue be accessed.
- *
- * If the function returns without this statement ever executing then the
- * variable in the outer function is never referenced, saving an allocation. Thus
- * this should be done as late as possible.
- *
- * This is inserted into the IR tree in a post-parse pass, put it in IRFn's
- * unInsertedImports array during parsing.
- */
-class StmtUpvalueImport : public IRStmt, public VarDecl {
-  public:
-	StmtUpvalueImport(VarDecl *parent) : parent(parent) {}
-
-	std::string Name() const override;
-	ScopeType Scope() const override;
-	void Accept(IRVisitor *visitor) override;
-
-	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
-	VarDecl *parent = nullptr;
 };
 
 /// Statement that evaluates an expression and throws away the result. This is an adapter of sorts for IRExpr-s.
@@ -409,7 +383,6 @@ class IRVisitor {
 	virtual void VisitImport(IRImport *node);
 	virtual void VisitStmtAssign(StmtAssign *node);
 	virtual void VisitStmtFieldAssign(StmtFieldAssign *node);
-	virtual void VisitStmtUpvalue(StmtUpvalueImport *node);
 	virtual void VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node);
 	virtual void VisitBlock(StmtBlock *node);
 	virtual void VisitStmtLabel(StmtLabel *node);
@@ -428,6 +401,7 @@ class IRVisitor {
 	virtual void VisitExprGetClassVar(ExprGetClassVar *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
+	virtual void VisitUpvalueVariable(UpvalueVariable *var);
 	// TODO for other variables
 };
 

@@ -46,9 +46,6 @@ void StmtBlock::Add(Compiler *forAlloc, IRExpr *expr) {
 ExprConst::ExprConst() {}
 ExprConst::ExprConst(CcValue value) : value(value) {}
 
-std::string StmtUpvalueImport::Name() const { return parent->Name() + "/UPVALUE"; }
-VarDecl::ScopeType StmtUpvalueImport::Scope() const { return SCOPE_UPVALUE; }
-
 ExprSystemVar::ExprSystemVar(std::string name) : name(name) {
 	if (!SYSTEM_VAR_NAMES.contains(name)) {
 		fmt::print(stderr, "Illegal system variable name '{}'\n", name);
@@ -79,7 +76,6 @@ void IRImport::Accept(IRVisitor *visitor) { visitor->VisitImport(this); }
 // Statements
 void StmtAssign::Accept(IRVisitor *visitor) { visitor->VisitStmtAssign(this); }
 void StmtFieldAssign::Accept(IRVisitor *visitor) { visitor->VisitStmtFieldAssign(this); }
-void StmtUpvalueImport::Accept(IRVisitor *visitor) { visitor->VisitStmtUpvalue(this); }
 void StmtEvalAndIgnore::Accept(IRVisitor *visitor) { visitor->VisitStmtEvalAndIgnore(this); }
 void StmtBlock::Accept(IRVisitor *visitor) { visitor->VisitBlock(this); } // Use Block not StmtBlock since it's special
 void StmtLabel::Accept(IRVisitor *visitor) { visitor->VisitStmtLabel(this); }
@@ -119,8 +115,8 @@ void IRVisitor::VisitFn(IRFn *node) {
 		// Ignore entry.second because upvalue imports are scattered around the tree
 	}
 
-	for (StmtUpvalueImport *import : node->unInsertedImports)
-		Visit(import);
+	for (const auto &entry : node->upvalues)
+		VisitVar(entry.second);
 
 	Visit(node->body);
 }
@@ -135,7 +131,6 @@ void IRVisitor::VisitStmtFieldAssign(StmtFieldAssign *node) {
 	// node->var isn't a VarDecl
 	Visit(node->value);
 }
-void IRVisitor::VisitStmtUpvalue(StmtUpvalueImport *node) { VisitVar(node->parent); }
 void IRVisitor::VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node) { Visit(node->expr); }
 void IRVisitor::VisitBlock(StmtBlock *node) {
 	for (IRStmt *stmt : node->statements)
@@ -171,6 +166,7 @@ void IRVisitor::VisitExprSystemVar(ExprSystemVar *node) {}
 void IRVisitor::VisitExprGetClassVar(ExprGetClassVar *node) {}
 
 void IRVisitor::VisitLocalVariable(LocalVariable *var) {}
+void IRVisitor::VisitUpvalueVariable(UpvalueVariable *var) {}
 
 // Node IR printing
 

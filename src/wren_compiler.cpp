@@ -1290,16 +1290,15 @@ static void popScope(Compiler *compiler) {
 // Adds an upvalue to [compiler]'s function with the given properties. Does not
 // add one if an upvalue for that variable is already in the list. Returns the
 // index of the upvalue.
-static StmtUpvalueImport *addUpvalue(Compiler *compiler, VarDecl *var) {
+static UpvalueVariable *addUpvalue(Compiler *compiler, VarDecl *var) {
 	// Look for an existing one.
 	auto upvalueIter = compiler->fn->upvalues.find(var);
 	if (upvalueIter != compiler->fn->upvalues.end())
 		return upvalueIter->second;
 
 	// Otherwise, create one
-	StmtUpvalueImport *upvalue = compiler->New<StmtUpvalueImport>(var);
+	UpvalueVariable *upvalue = compiler->New<UpvalueVariable>(var);
 	compiler->fn->upvalues[var] = upvalue;
-	compiler->fn->unInsertedImports.push_back(upvalue);
 	return upvalue;
 }
 
@@ -3025,7 +3024,6 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		LocalVariable *objLocal = compiler->New<LocalVariable>();
 		objLocal->name = "alloc_temp_special";
 		objLocal->depth = 0;
-		objLocal->isUpvalue = false;
 		fn->locals.push_back(objLocal);
 
 		// First, allocate the memory of the new instance

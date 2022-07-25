@@ -22,12 +22,25 @@ class LocalVariable : public VarDecl {
 	// top level code. One is the scope within that, etc.
 	int depth = -1;
 
-	// If this local variable is being used as an upvalue.
-	bool isUpvalue = false;
+	// If upvalues are bound to this variable, this contains the list of such variables.
+	std::vector<UpvalueVariable *> upvalues;
 
 	std::string Name() const override;
 	ScopeType Scope() const override;
 	void Accept(IRVisitor *visitor) override;
+};
+
+/// Reference a variable from the enclosing function.
+class UpvalueVariable : public VarDecl {
+  public:
+	UpvalueVariable(VarDecl *parent) : parent(parent) {}
+
+	std::string Name() const override;
+	ScopeType Scope() const override;
+	void Accept(IRVisitor *visitor) override;
+
+	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
+	VarDecl *parent = nullptr;
 };
 
 class ScopeFrame {

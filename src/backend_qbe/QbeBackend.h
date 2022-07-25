@@ -73,7 +73,7 @@ class QbeBackend {
 
 	Snippet *VisitStmtAssign(StmtAssign *node);
 	Snippet *VisitStmtFieldAssign(StmtFieldAssign *node);
-	Snippet *VisitStmtUpvalue(StmtUpvalueImport *node);
+	Snippet *VisitStmtUpvalue(UpvalueVariable *node);
 	Snippet *VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node);
 	Snippet *VisitBlock(StmtBlock *node);
 	Snippet *VisitStmtLabel(StmtLabel *node);

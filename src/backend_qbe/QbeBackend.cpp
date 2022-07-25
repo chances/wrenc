@@ -252,7 +252,6 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 
 	DISPATCH(VisitStmtAssign, StmtAssign);
 	DISPATCH(VisitStmtFieldAssign, StmtFieldAssign);
-	DISPATCH(VisitStmtUpvalue, StmtUpvalueImport);
 	DISPATCH(VisitStmtEvalAndIgnore, StmtEvalAndIgnore);
 	DISPATCH(VisitBlock, StmtBlock);
 	DISPATCH(VisitStmtLabel, StmtLabel);
@@ -711,6 +710,5 @@ std::string QbeBackend::MangleRawName(const std::string &str, bool permitAmbigui
 QbeBackend::Snippet *QbeBackend::VisitClass(IRClass *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitGlobalDecl(IRGlobalDecl *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitImport(IRImport *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitStmtUpvalue(StmtUpvalueImport *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }
