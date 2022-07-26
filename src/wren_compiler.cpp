@@ -1297,8 +1297,15 @@ static UpvalueVariable *addUpvalue(Compiler *compiler, VarDecl *var) {
 		return upvalueIter->second;
 
 	// Otherwise, create one
-	UpvalueVariable *upvalue = compiler->New<UpvalueVariable>(var);
+	UpvalueVariable *upvalue = compiler->New<UpvalueVariable>(var, compiler->fn);
 	compiler->fn->upvalues[var] = upvalue;
+
+	if (compiler->fn->upvaluesByName.contains(var->Name())) {
+		fmt::print(stderr, "Duplicate upvalue variable name '{}'\n", var->Name().c_str());
+		abort();
+	}
+	compiler->fn->upvaluesByName[var->Name()] = upvalue;
+
 	return upvalue;
 }
 
@@ -1324,15 +1331,21 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 	if (name[0] != '_' && compiler->parent->enclosingClass != NULL)
 		return nullptr;
 
-	// See if it's a local variable in the immediately enclosing function.
-	VarDecl *local = compiler->parent->locals.Lookup(name);
-	if (local) {
-		// Mark the local as an upvalue so we know to close it when it goes out of
-		// scope.
-		// compiler->parent->locals[local].isUpvalue = true; // TODO
-		abort(); // Guard TODO
+	// Check if we've already got an upvalue for this variable
+	auto byNameIter = compiler->fn->upvaluesByName.find(name);
+	if (byNameIter != compiler->fn->upvaluesByName.end()) {
+		return byNameIter->second;
+	}
 
-		return addUpvalue(compiler, local);
+	// See if it's a local variable in the immediately enclosing function.
+	LocalVariable *local = compiler->parent->locals.Lookup(name);
+	if (local) {
+		UpvalueVariable *upvalue = addUpvalue(compiler, local);
+
+		// Mark the local as an upvalue so we know to close it when it goes out of scope.
+		local->upvalues.push_back(upvalue);
+
+		return upvalue;
 	}
 
 	// See if it's an upvalue in the immediately enclosing function. In other
@@ -1358,7 +1371,7 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 static VarDecl *resolveNonmodule(Compiler *compiler, const std::string &name) {
 	// Look it up in the local scopes.
 	VarDecl *variable = compiler->locals.Lookup(name);
-	if (variable) // && variable->Scope() == VarDecl::SCOPE_LOCAL)
+	if (variable)
 		return variable;
 
 	// It's not a local, so guess that it's an upvalue.

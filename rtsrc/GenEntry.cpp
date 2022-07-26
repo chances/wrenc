@@ -43,7 +43,7 @@ Value wren_init_class(const char *name, uint8_t *dataBlock);          // NOLINT(
 Value wren_alloc_obj(Value classVar);                                 // NOLINT(readability-identifier-naming)
 int wren_class_get_field_offset(Value classVar);                      // NOLINT(readability-identifier-naming)
 ClosureSpec *wren_register_closure(void *specData);                   // NOLINT(readability-identifier-naming)
-Value wren_create_closure(ClosureSpec *spec);                         // NOLINT(readability-identifier-naming)
+Value wren_create_closure(ClosureSpec *spec, void *stack);            // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -156,12 +156,13 @@ ClosureSpec *wren_register_closure(void *specData) {
 	return new ClosureSpec(specData);
 }
 
-Value wren_create_closure(ClosureSpec *spec) {
+Value wren_create_closure(ClosureSpec *spec, void *stack) {
 	if (spec == nullptr) {
 		fprintf(stderr, "Cannot pass null spec to wren_create_closure\n");
 		abort();
 	}
-	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec);
+	// Stack may be null if we have no upvalues
+	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec, stack);
 	return closure->ToValue();
 }
 

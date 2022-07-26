@@ -40,6 +40,19 @@ class QbeBackend {
 		VLocal *result = nullptr;
 	};
 
+	struct UpvaluePackDef {
+		// All the variables bound to upvalues in the relevant closure
+		std::vector<UpvalueVariable *> variables;
+
+		// The positions of the variables in the upvalue pack, the inverse of variables
+		std::unordered_map<UpvalueVariable *, int> variableIds;
+
+		// The position of the variables in the variable stack storage of the parent function. This is used to generate
+		// the data tables for the closures, so it can point the entries in the upvalue pack to the stack of the parent
+		// function.
+		std::unordered_map<UpvalueVariable *, int> valuesOnParentStack;
+	};
+
 	// Private, so declaring inline is fine
 	template <typename... Args> void Print(fmt::format_string<Args...> fmtStr, Args &&...args);
 
@@ -73,7 +86,6 @@ class QbeBackend {
 
 	Snippet *VisitStmtAssign(StmtAssign *node);
 	Snippet *VisitStmtFieldAssign(StmtFieldAssign *node);
-	Snippet *VisitStmtUpvalue(UpvalueVariable *node);
 	Snippet *VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node);
 	Snippet *VisitBlock(StmtBlock *node);
 	Snippet *VisitStmtLabel(StmtLabel *node);
@@ -97,6 +109,9 @@ class QbeBackend {
 	std::stringstream m_output;
 	std::unordered_map<LocalVariable *, std::unique_ptr<VLocal>> m_locals;
 	std::vector<std::unique_ptr<VLocal>> m_temporaries;
+	UpvaluePackDef *m_currentFnUpvaluePack = nullptr;
+	std::unordered_map<VarDecl *, int> m_stackVariables; // Local variables that are on the stack, and their positions
+	std::unordered_map<IRFn *, std::unique_ptr<UpvaluePackDef>> m_functionUpvaluePacks;
 
 	// All the function signatures we've used, so we can put them in an array for debug messages
 	std::unordered_set<std::string> m_signatures;

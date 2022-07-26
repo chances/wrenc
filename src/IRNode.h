@@ -66,6 +66,7 @@ class IRFn : public IRNode {
 
 	std::vector<LocalVariable *> locals; // Locals may have duplicate names from different scopes, hence vector not map
 	std::unordered_map<VarDecl *, UpvalueVariable *> upvalues; // Upvalues imported from the parent function
+	std::unordered_map<std::string, UpvalueVariable *> upvaluesByName;
 
 	// Function parameters. These also appear in [locals].
 	std::vector<LocalVariable *> parameters;

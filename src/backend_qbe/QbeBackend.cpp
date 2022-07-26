@@ -35,6 +35,24 @@ QbeBackend::~QbeBackend() = default;
 std::string QbeBackend::Generate(Module *module) {
 	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"), false);
 
+	// Make the upvalue pack for each function that needs them
+	for (IRFn *func : module->GetClosures()) {
+		std::unique_ptr<UpvaluePackDef> pack = std::make_unique<UpvaluePackDef>();
+
+		for (const auto &entry : func->upvalues) {
+			// Assign an increasing series of IDs for each variable in an arbitrary order
+			pack->variables.push_back(entry.second);
+			pack->variableIds[entry.second] = pack->variables.size() - 1; // -1 to get the index of the last entry
+		}
+
+		// If this pack doesn't have any upvalues, then don't register it's pack. This means it's signature
+		// won't include the upvalue pack as the first argument, which should slightly improve performance.
+		if (pack->variableIds.empty())
+			continue;
+
+		m_functionUpvaluePacks[func] = std::move(pack);
+	}
+
 	for (IRFn *func : module->GetFunctions()) {
 		std::optional<std::string> initFunc;
 		if (func == module->GetMainFunction()) {
@@ -94,10 +112,28 @@ std::string QbeBackend::Generate(Module *module) {
 		Print("section \".rodata\" data ${}{} = {{ ", SYM_CLOSURE_DATA_TBL, GetClosureName(fn));
 		Print("\t{} ${},", PTR_TYPE, funcName);
 		Print("\t{} {},", PTR_TYPE, GetStringPtr(fn->debugName));
-		Print("\tw {}, w {}", fn->arity, fn->upvalues.size());
-		Print("}}");
+		Print("\tw {0}, w {1}, # arity={0} num_upvalues={1}", fn->arity, fn->upvalues.size());
 
-		// TODO upvalues
+		// Keep track of how many words are written so we can keep the section qword-aligned
+		int words = 0;
+
+		// Write the upvalue indices
+		auto upvaluePackIter = m_functionUpvaluePacks.find(fn);
+		if (upvaluePackIter != m_functionUpvaluePacks.end()) {
+			UpvaluePackDef *pack = upvaluePackIter->second.get();
+			for (UpvalueVariable *upvalue : pack->variables) {
+				Print("\tw {}, # Parent stack position of variable '{}'", pack->valuesOnParentStack.at(upvalue),
+				      upvalue->parent->Name());
+				words += 1;
+			}
+		}
+
+		// Pad to achieve 64-bit alignment if necessary
+		if (words % 2 == 1) {
+			Print("\tw -1, # Alignment padding");
+		}
+
+		Print("}}");
 	}
 
 	// Add the strings
@@ -268,11 +304,21 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	std::string funcName = MangleUniqueName(node->debugName, false);
 
+	if (m_functionUpvaluePacks.contains(node)) {
+		m_currentFnUpvaluePack = m_functionUpvaluePacks.at(node).get();
+	}
+
 	std::string args;
 	// Check if this is a method or not. This is non-null for static methods, but they also have receivers.
 	if (node->enclosingClass) {
 		// Add the receiver
 		args += "l %this, ";
+	}
+	if (m_currentFnUpvaluePack) {
+		// Upvalues take the pointer to a pack of variables as their first argument, but for convenience in the
+		// calling code we widen it into the size of a value. This might need some changes for 32-bit support (if
+		// QBE ever gets support for that).
+		args += std::string("l %upvalue_pack, ");
 	}
 	for (LocalVariable *arg : node->parameters) {
 		VLocal *var = LookupVariable(arg);
@@ -287,6 +333,59 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 
 	if (initFunction) {
 		Print("call ${}() # Module initialisation routine", initFunction.value());
+	}
+
+	// If a function supplies upvalues to a closure contained within it, that closure needs to have a pointer to the
+	// values in the parent function. Once the parent function returns these values live on the heap, but before that
+	// they live on the stack. This code allocates stack space for all the variables referenced by closures.
+	// A function might have many variables and many closures, and those closures can use any set of those variables.
+	// Thus we can't have an array of values per closure. But passing in a bunch of different value pointers when we
+	// create a closure would be a big pain, so instead we create one array of values for all the variables used by
+	// closures. Each closure's data table encodes the offsets of the variables it cares about in this table, and we
+	// can pass it as a single pointer argument to the closure creation function.
+	int variablesUsedAsUpvalues = 0;
+	for (LocalVariable *var : node->locals) {
+		if (var->upvalues.empty())
+			continue;
+
+		// The position of this variable in the stack is equal to the current number of upvalues, since they're placed
+		// in the order they appear here.
+		int stackIndex = variablesUsedAsUpvalues;
+
+		// Put it in the local stack variables array, so we know to access it on the stack and what it's index is
+		if (m_stackVariables.contains(var)) {
+			fmt::print(stderr, "Cannot add variable '{}' to the stack again in function '{}'\n", var->Name(),
+			           node->debugName);
+		}
+		m_stackVariables[var] = stackIndex;
+
+		// Mark each variable's position on the stack. This gets baked into the closure data block so that when
+		// we create a closure, we just pass our variable stack in and it pulls out the correct values.
+		for (UpvalueVariable *up : var->upvalues) {
+			auto iter = m_functionUpvaluePacks.find(up->containingFunction);
+			if (iter == m_functionUpvaluePacks.end()) {
+				fmt::print(stderr, "Upvalue '{}' references function '{}' which doesn't have an upvalue pack\n",
+				           up->parent->Name(), up->containingFunction->debugName);
+				abort();
+			}
+
+			UpvaluePackDef *pack = iter->second.get();
+
+			if (pack->valuesOnParentStack.contains(up)) {
+				fmt::print(
+				    stderr,
+				    "Upvalue '{}' in function '{}' has already been allocated a source stack position when building "
+				    "function '{}'\n",
+				    up->parent->Name(), up->containingFunction->debugName, node->debugName);
+				abort();
+			}
+			pack->valuesOnParentStack[up] = stackIndex;
+		}
+
+		variablesUsedAsUpvalues++;
+	}
+	if (variablesUsedAsUpvalues != 0) {
+		Print("%stack_locals ={} alloc8 {}", PTR_TYPE, variablesUsedAsUpvalues * sizeof(Value));
 	}
 
 	// If this is a method, load the field offset. We're probably going to access our fields (if not, QBE should
@@ -309,6 +408,9 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	}
 
 	m_inFunction = false;
+
+	m_currentFnUpvaluePack = nullptr;
+	m_stackVariables.clear();
 	Print("}}");
 }
 
@@ -317,9 +419,15 @@ QbeBackend::Snippet *QbeBackend::VisitStmtAssign(StmtAssign *node) {
 
 	VLocal *input = snip->Add(VisitExpr(node->expr));
 
+	auto stackLocalIter = m_stackVariables.find(node->var);
 	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
 	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
-	if (local) {
+	if (stackLocalIter != m_stackVariables.end()) {
+		VLocal *localDerefTemp = AddTemporary("assign_stack_local_ptr_" + node->var->Name());
+		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
+		          stackLocalIter->second * sizeof(Value));
+		snip->Add("storel %{}, %{}", input->name, localDerefTemp->name);
+	} else if (local) {
 		snip->Add("%{} ={} copy %{}", LookupVariable(local)->name, PTR_TYPE, input->name);
 	} else if (global) {
 		snip->Add("store{} %{}, {}", PTR_TYPE, input->name, MangleGlobalName(global));
@@ -422,14 +530,45 @@ QbeBackend::Snippet *QbeBackend::VisitStmtReturn(StmtReturn *node) {
 }
 
 QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
+	auto stackLocalIter = m_stackVariables.find(node->var);
 	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
 	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
+	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
 	Snippet *snip = m_alloc.New<Snippet>();
 	snip->result = AddTemporary("var_load_" + node->var->Name());
-	if (local) {
+	if (stackLocalIter != m_stackVariables.end()) {
+		VLocal *localDerefTemp = AddTemporary("stack_local_ptr_" + node->var->Name());
+		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
+		          stackLocalIter->second * sizeof(Value));
+		snip->Add("%{} =l loadl %{}", snip->result->name, localDerefTemp->name);
+	} else if (local) {
 		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
 	} else if (global) {
 		snip->Add("%{} ={} load{} {}", snip->result->name, PTR_TYPE, PTR_TYPE, MangleGlobalName(global));
+	} else if (upvalue) {
+		if (!m_currentFnUpvaluePack) {
+			fmt::print(stderr, "Found UpvalueVariable without an upvalue pack!\n");
+			abort();
+		}
+
+		auto upvalueIter = m_currentFnUpvaluePack->variableIds.find(upvalue);
+		if (upvalueIter == m_currentFnUpvaluePack->variableIds.end()) {
+			fmt::print(stderr, "Could not find upvalue in current pack for variable {}\n", upvalue->parent->Name());
+			abort();
+		}
+		int offset = upvalueIter->second * sizeof(Value);
+
+		// Get a pointer pointing to the position in the upvalue pack where this variable is
+		VLocal *valuePtr = AddTemporary("upvalue_pack_sub_ptr");
+		snip->Add("%{} ={} add %upvalue_pack, {}", valuePtr->name, PTR_TYPE, offset);
+
+		// The upvalue pack stores pointers, so at this point our variable is a Value** and we have to dereference
+		// it twice. In the future we should store never-modified variables directly, so this would be Value*.
+		// This chases the pointer in-place, that is in the same variable, to avoid the bother of declaring another one.
+		snip->Add("%{} ={} load{} %{}", valuePtr->name, PTR_TYPE, PTR_TYPE, valuePtr->name);
+
+		// Load the value itself
+		snip->Add("%{} =l loadl %{}", snip->result->name, valuePtr->name);
 	} else {
 		fmt::print(stderr, "Unknown variable type in load: {}\n", typeid(*node->var).name());
 	}
@@ -570,8 +709,11 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 	Print("%{} ={} load{} ${}{}", descObj->name, PTR_TYPE, PTR_TYPE, SYM_CLOSURE_DESC_OBJ, name);
 
 	// And use the description object to request a new closure over it
+	// Pass in our stack, as the closure will bind to values on it
+	const char *stackLocals = node->func->upvalues.empty() ? "0" : "%stack_locals";
 	snip->result = AddTemporary("closure_result_" + node->func->debugName);
-	snip->Add("%{} =l call $wren_create_closure({} %{})", snip->result->name, PTR_TYPE, descObj->name);
+	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {})", snip->result->name, PTR_TYPE, descObj->name, PTR_TYPE,
+	          stackLocals);
 
 	// TODO upvalue handling
 

@@ -17,7 +17,7 @@ class ClassDescription {
 	};
 
 	static constexpr uint32_t FLAG_NONE = 0;
-	static constexpr uint32_t FLAG_STATIC = 1 << 0;
+	static constexpr uint32_t FLAG_STATIC = 1 << 0; // Indicates a function is static
 
 	struct MethodDecl {
 		std::string name;

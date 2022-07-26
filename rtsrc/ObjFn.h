@@ -7,6 +7,7 @@
 #include "Obj.h"
 
 #include <initializer_list>
+#include <vector>
 
 class ClosureSpec;
 
@@ -45,7 +46,7 @@ class ClosureSpec;
 class ObjFn : public Obj {
   public:
 	~ObjFn();
-	ObjFn(ClosureSpec *spec);
+	ObjFn(ClosureSpec *spec, void *parentStack);
 
 	/// In Wren there's two ways to create an Fn object:
 	/// * Using Fn.new { my closure }
@@ -66,6 +67,10 @@ class ObjFn : public Obj {
 	static ObjClass *Class();
 
 	ClosureSpec *spec;
+
+	// Our actual upvalues. The data of this vector gets passed in as the upvalue pack when this function is called, if
+	// there's a non-zero number of upvalues (if there's no upvalues, there's no need to waste a register).
+	std::vector<Value *> upvaluePointers;
 };
 
 /// Stores information about a closure, allocated on module load.
@@ -76,4 +81,7 @@ class ClosureSpec {
 	std::string name;
 	int arity = -1;
 	void *funcPtr = nullptr;
+
+	// Where the upvalues are, as an index into the values array passed into the ObjFn constructor
+	std::vector<int> upvalueOffsets;
 };

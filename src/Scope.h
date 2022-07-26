@@ -33,7 +33,7 @@ class LocalVariable : public VarDecl {
 /// Reference a variable from the enclosing function.
 class UpvalueVariable : public VarDecl {
   public:
-	UpvalueVariable(VarDecl *parent) : parent(parent) {}
+	UpvalueVariable(VarDecl *parent, IRFn *fn) : parent(parent), containingFunction(fn) {}
 
 	std::string Name() const override;
 	ScopeType Scope() const override;
@@ -41,6 +41,10 @@ class UpvalueVariable : public VarDecl {
 
 	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
 	VarDecl *parent = nullptr;
+
+	/// The function this node belongs to. This is useful because you can find the upvalues of a local variable which
+	/// naturally belongs to a different function.
+	IRFn *containingFunction = nullptr;
 };
 
 class ScopeFrame {
