@@ -941,14 +941,17 @@ std::string QbeBackend::GetStringObjPtr(const std::string &value) {
 std::string QbeBackend::EscapeString(std::string value) {
 	for (int i = 0; i < value.size(); i++) {
 		char c = value.at(i);
-		if (c != '"' && c != '\\')
+		if (c != '"' && c != '\\' && c != '\n')
 			continue;
 
-		// Insert an escape string
-		value.insert(value.begin() + i, '\\');
+		// End the string, insert the literal, and continue the string
+		std::string escapeBit = fmt::format("\", b {}, b \"", (int)c);
+		value.erase(value.begin() + i);
+		value.insert(value.begin() + i, escapeBit.begin(), escapeBit.end());
 
-		// Skip the character, otherwise we'll keep escaping it in an infinite loop
-		i++;
+		// Skip the newly-inserted section, otherwise we'll keep escaping it in an infinite loop
+		// Note we use -1 since we just deleted the character we were iterating through
+		i += escapeBit.size() - 1;
 	}
 	return value;
 }
