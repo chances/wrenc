@@ -23,33 +23,37 @@
 #include <string.h>
 #include <vector>
 
+#define EXPORT __attribute__((visibility("default")))
+
 // These are the functions in question
+// NOLINTBEGIN(readability-identifier-naming)
 extern "C" {
-Value wren_sys_var_Bool = NULL_VAL;   // NOLINT(readability-identifier-naming)
-Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
-Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
-Value wren_sys_var_Fn = NULL_VAL;     // NOLINT(readability-identifier-naming)
-Value wren_sys_var_Fiber = NULL_VAL;  // NOLINT(readability-identifier-naming)
-Value wren_sys_var_List = NULL_VAL;   // NOLINT(readability-identifier-naming)
-Value wren_sys_var_Num = NULL_VAL;    // NOLINT(readability-identifier-naming)
-Value wren_sys_var_String = NULL_VAL; // NOLINT(readability-identifier-naming)
-Value wren_sys_var_System = NULL_VAL; // NOLINT(readability-identifier-naming)
+EXPORT Value wren_sys_var_Bool = NULL_VAL;
+EXPORT Value wren_sys_var_Object = NULL_VAL;
+EXPORT Value wren_sys_var_Class = NULL_VAL;
+EXPORT Value wren_sys_var_Fn = NULL_VAL;
+EXPORT Value wren_sys_var_Fiber = NULL_VAL;
+EXPORT Value wren_sys_var_List = NULL_VAL;
+EXPORT Value wren_sys_var_Num = NULL_VAL;
+EXPORT Value wren_sys_var_String = NULL_VAL;
+EXPORT Value wren_sys_var_System = NULL_VAL;
 
-Value wren_sys_bool_false = NULL_VAL; // NOLINT(readability-identifier-naming)
-Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
+EXPORT Value wren_sys_bool_false = NULL_VAL;
+EXPORT Value wren_sys_bool_true = NULL_VAL;
 
-void *wren_virtual_method_lookup(Value receiver, uint64_t signature);        // NOLINT(readability-identifier-naming)
-Value wren_init_string_literal(const char *literal, int length);             // NOLINT(readability-identifier-naming)
-void wren_register_signatures_table(const char *signatures);                 // NOLINT(readability-identifier-naming)
-Value wren_init_class(const char *name, uint8_t *dataBlock);                 // NOLINT(readability-identifier-naming)
-Value wren_alloc_obj(Value classVar);                                        // NOLINT(readability-identifier-naming)
-int wren_class_get_field_offset(Value classVar);                             // NOLINT(readability-identifier-naming)
-ClosureSpec *wren_register_closure(void *specData);                          // NOLINT(readability-identifier-naming)
-Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead); // NOLINT(readability-identifier-naming)
-Value **wren_get_closure_upvalue_pack(ObjFn *closure);                       // NOLINT(readability-identifier-naming)
-ObjFn *wren_get_closure_chain_next(ObjFn *closure);                          // NOLINT(readability-identifier-naming)
-void *wren_alloc_upvalue_storage(int numClosures);                           // NOLINT(readability-identifier-naming)
+EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
+EXPORT Value wren_init_string_literal(const char *literal, int length);
+EXPORT void wren_register_signatures_table(const char *signatures);
+EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock);
+EXPORT Value wren_alloc_obj(Value classVar);
+EXPORT int wren_class_get_field_offset(Value classVar);
+EXPORT ClosureSpec *wren_register_closure(void *specData);
+EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead);
+EXPORT Value **wren_get_closure_upvalue_pack(ObjFn *closure);
+EXPORT ObjFn *wren_get_closure_chain_next(ObjFn *closure);
+EXPORT void *wren_alloc_upvalue_storage(int numClosures);
 }
+// NOLINTEND(readability-identifier-naming)
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	ObjClass *type;
@@ -194,7 +198,7 @@ void *wren_alloc_upvalue_storage(int numClosures) {
 	return WrenRuntime::Instance().AllocateMem(sizeof(Value) * numClosures, 8);
 }
 
-void setupGenEntry() {
+EXPORT void setupGenEntry() {
 	wren_sys_var_Bool = ObjBool::Class()->ToValue();
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();

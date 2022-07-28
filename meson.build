@@ -124,6 +124,10 @@ rtlib_lib = shared_library('wren-rtlib',
   include_directories: ['rtsrc'],
   override_options: ['cpp_std=c++20'],
   dependencies: [common],
+
+  # Hide symbols. This is not only good practice, but without it we'd have to have all of wren_core's
+  # symbols go through the GOT which would be a big pain.
+  gnu_symbol_visibility: 'hidden',
 )
 rtlib = declare_dependency(
   link_with: [rtlib_lib],
