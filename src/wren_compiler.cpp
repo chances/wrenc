@@ -1816,7 +1816,7 @@ static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) { return comp
 
 // Loads the receiver of the currently enclosing method. Correctly handles
 // functions defined inside methods.
-static IRExpr *loadThis(Compiler *compiler) { return loadVariable(compiler, resolveNonmodule(compiler, "this")); }
+static IRExpr *loadThis(Compiler *compiler) { return compiler->New<ExprLoadReceiver>(); }
 
 // Pushes the value for a module-level variable implicitly imported from core.
 static IRExpr *loadCoreVariable(Compiler *compiler, std::string name) { return compiler->New<ExprSystemVar>(name); }
