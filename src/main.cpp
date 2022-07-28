@@ -14,6 +14,7 @@
 
 static const std::string QBE_PATH = "./lib/qbe-1.0/qbe_bin";
 
+std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
 static int runCompiler(const std::istream &input);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
@@ -21,9 +22,12 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 
 static std::string compilerInstallDir;
 
+const int DONT_ASSEMBLE = 1;
+
 static option options[] = {
     {"output", required_argument, 0, 'o'},
     {"compile-only", no_argument, 0, 'c'},
+    {"dont-assemble", no_argument, 0, DONT_ASSEMBLE},
     {"help", no_argument, 0, 'h'},
     {0},
 };
@@ -50,6 +54,7 @@ int main(int argc, char **argv) {
 
 	bool needsHelp = false; // Print the help page?
 	bool compileOnly = false;
+	bool dontAssemble = false;
 	std::string outputFile;
 
 	while (true) {
@@ -69,6 +74,9 @@ int main(int argc, char **argv) {
 		case 'h':
 			needsHelp = true;
 			break;
+		case DONT_ASSEMBLE:
+			dontAssemble = true;
+			break;
 		case '?':
 			// Error message already printed by getopt
 			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
@@ -87,6 +95,8 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("-h", "--help", "Print this help page");
 		optHelp.emplace_back("-c", "--compile-only", "Only compile the input files, do not link them");
 		optHelp.emplace_back("-o file", "--output=file", "Write the output to the file [file]");
+
+		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
 
 		// Find the longest argument string, so we can line everything up
@@ -159,7 +169,23 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (compileOnly) {
+	if (dontAssemble) {
+		// Join all the assembly files together
+		std::ofstream output;
+		output.exceptions(std::ios::badbit | std::ios::failbit);
+		try {
+			output.open(outputFile);
+			for (int assemblyFd : assemblyFiles) {
+				std::ifstream input;
+				input.exceptions(std::ios::badbit | std::ios::failbit);
+				input.open(filenameForFd(assemblyFd));
+				output << input.rdbuf();
+			}
+		} catch (const std::fstream::failure &ex) {
+			fmt::print(stderr, "Failed to write assembly: {}\n", ex.what());
+			exit(1);
+		}
+	} else if (compileOnly) {
 		runAssembler(assemblyFiles, outputFile);
 	} else {
 		// FIXME use a proper temporary file
