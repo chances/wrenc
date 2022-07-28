@@ -38,52 +38,6 @@ common = declare_dependency(
   include_directories: ['common'],
 )
 
-# For the runtime library, generate a file that contains functions for Wren to call that then call
-# the native C++ methods.
-prog_python = import('python').find_installation('python3')
-rtlib_bindings = custom_target(
-  'rtlib-bindings',
-  output : ['bindings.gen.cpp'],
-  input : [
-    'rtsrc/gen_bindings.py',
-    'rtsrc/Obj.h',
-    'rtsrc/ObjString.h',
-    'rtsrc/ObjMap.h',
-    'rtsrc/ObjSystem.h',
-    'rtsrc/ObjBool.h',
-    'rtsrc/ObjList.h',
-    'rtsrc/ObjNum.h',
-    'rtsrc/ObjFibre.h',
-    'rtsrc/ObjFn.h',
-  ],
-  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@'],
-)
-
-rtlib_lib = shared_library('wren-rtlib',
-  'rtsrc/GenEntry.cpp',
-  'rtsrc/Obj.cpp',
-  'rtsrc/ObjString.cpp',
-  'rtsrc/ObjMap.cpp',
-  'rtsrc/ObjClass.cpp',
-  'rtsrc/ObjSystem.cpp',
-  'rtsrc/ObjBool.cpp',
-  'rtsrc/ObjList.cpp',
-  'rtsrc/ObjNum.cpp',
-  'rtsrc/ObjFibre.cpp',
-  'rtsrc/ObjFn.cpp',
-  'rtsrc/ObjManaged.cpp',
-  'rtsrc/CoreClasses.cpp',
-  'rtsrc/WrenRuntime.cpp',
-  rtlib_bindings,
-  include_directories: ['rtsrc'],
-  override_options: ['cpp_std=c++20'],
-  dependencies: [common],
-)
-rtlib = declare_dependency(
-  link_with: [rtlib_lib],
-  include_directories: ['rtsrc'],
-)
-
 # Make the main programme library almost runnable, so we can link it in to make a standalone Wren programme
 # To do this, declare it as an executable then mess around with the linker flags
 rtlib_main_stub = executable('wren-rtlib-stub',
@@ -128,4 +82,50 @@ executable('wrencc',
     'src',
   ],
   override_options: ['cpp_std=c++20'],
+)
+
+# For the runtime library, generate a file that contains functions for Wren to call that then call
+# the native C++ methods.
+prog_python = import('python').find_installation('python3')
+rtlib_bindings = custom_target(
+  'rtlib-bindings',
+  output : ['bindings.gen.cpp'],
+  input : [
+    'rtsrc/gen_bindings.py',
+    'rtsrc/Obj.h',
+    'rtsrc/ObjString.h',
+    'rtsrc/ObjMap.h',
+    'rtsrc/ObjSystem.h',
+    'rtsrc/ObjBool.h',
+    'rtsrc/ObjList.h',
+    'rtsrc/ObjNum.h',
+    'rtsrc/ObjFibre.h',
+    'rtsrc/ObjFn.h',
+  ],
+  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@'],
+)
+
+rtlib_lib = shared_library('wren-rtlib',
+  'rtsrc/GenEntry.cpp',
+  'rtsrc/Obj.cpp',
+  'rtsrc/ObjString.cpp',
+  'rtsrc/ObjMap.cpp',
+  'rtsrc/ObjClass.cpp',
+  'rtsrc/ObjSystem.cpp',
+  'rtsrc/ObjBool.cpp',
+  'rtsrc/ObjList.cpp',
+  'rtsrc/ObjNum.cpp',
+  'rtsrc/ObjFibre.cpp',
+  'rtsrc/ObjFn.cpp',
+  'rtsrc/ObjManaged.cpp',
+  'rtsrc/CoreClasses.cpp',
+  'rtsrc/WrenRuntime.cpp',
+  rtlib_bindings,
+  include_directories: ['rtsrc'],
+  override_options: ['cpp_std=c++20'],
+  dependencies: [common],
+)
+rtlib = declare_dependency(
+  link_with: [rtlib_lib],
+  include_directories: ['rtsrc'],
 )
