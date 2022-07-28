@@ -4,10 +4,13 @@
 
 #include "IRCleanup.h"
 
+#include <set>
+
 void IRCleanup::Process(IRNode *root) {
 	Visit(root);
 
 	// Remove all the unused labels
+	std::set<StmtBlock *> blocksToUpdate;
 	for (const auto &entry : m_labelData) {
 		const LabelInfo &info = entry.second;
 		// If the label is used (so we shouldn't remove it) or it's parent isn't a block (so we can't remove it), then
@@ -23,6 +26,13 @@ void IRCleanup::Process(IRNode *root) {
 				break;
 			}
 		}
+
+		// Make a note to clean this block up, in case you have two returns separated by a jump.
+		blocksToUpdate.insert(info.parent);
+	}
+
+	for (StmtBlock *block : blocksToUpdate) {
+		VisitBlock(block, false);
 	}
 }
 
@@ -40,7 +50,9 @@ void IRCleanup::Visit(IRNode *node) {
 	m_parents.pop_back();
 }
 
-void IRCleanup::VisitBlock(StmtBlock *node) {
+void IRCleanup::VisitBlock(StmtBlock *node) { VisitBlock(node, true); }
+
+void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 	// If we flatten a block the statements list will get longer, but that's fine - how it is now we'll
 	// go over all the nodes we flatten, so long as we decrement i after removing a block.
 	for (int i = 0; i < node->statements.size(); i++) {
@@ -70,7 +82,8 @@ void IRCleanup::VisitBlock(StmtBlock *node) {
 			}
 		}
 
-		Visit(stmt);
+		if (recurse)
+			Visit(stmt);
 	}
 }
 

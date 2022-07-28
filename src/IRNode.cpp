@@ -112,12 +112,9 @@ void IRVisitor::VisitFn(IRFn *node) {
 		var->Accept(this);
 
 	for (const auto &entry : node->upvalues) {
-		VisitVar(entry.first);
-		// Ignore entry.second because upvalue imports are scattered around the tree
-	}
-
-	for (const auto &entry : node->upvalues)
+		// Don't visit entry.first since that's a variable from a different function
 		VisitVar(entry.second);
+	}
 
 	Visit(node->body);
 }

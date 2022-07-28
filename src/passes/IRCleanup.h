@@ -23,6 +23,11 @@ class IRCleanup : private IRVisitor {
 	void VisitStmtLabel(StmtLabel *node) override;
 	void VisitStmtJump(StmtJump *node) override;
 
+	/// This function cleans up a block. If [recurse] is true it visits all the block's children so it
+	/// behaves like a normal visitor function, however if [recurse] is true it does not - this is useful
+	/// for cleaning up a single block after modifying it.
+	void VisitBlock(StmtBlock *node, bool recurse);
+
 	struct LabelInfo {
 		StmtBlock *parent = nullptr;
 		bool used = false;
