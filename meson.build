@@ -26,6 +26,18 @@ antlr_src = custom_target('gen_antlr',
   command: [java, '-jar', '@INPUT0@', '@INPUT1@', '-o', '@OUTDIR@', '-Dlanguage=Cpp', '-Xexact-output-dir', '-visitor'],
 )
 
+# Common library shared by both the runtime and compiler
+common_lib = static_library('common-lib',
+  'common/common.cpp',
+  'common/ClassDescription.cpp',
+  'common/HashUtil.cpp',
+  include_directories: ['common'],
+)
+common = declare_dependency(
+  link_with: [common_lib],
+  include_directories: ['common'],
+)
+
 # For the runtime library, generate a file that contains functions for Wren to call that then call
 # the native C++ methods.
 prog_python = import('python').find_installation('python3')
@@ -48,8 +60,6 @@ rtlib_bindings = custom_target(
 )
 
 rtlib_lib = shared_library('wren-rtlib',
-  'rtsrc/common.cpp',
-  'rtsrc/hash.cpp',
   'rtsrc/GenEntry.cpp',
   'rtsrc/Obj.cpp',
   'rtsrc/ObjString.cpp',
@@ -63,11 +73,11 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjFn.cpp',
   'rtsrc/ObjManaged.cpp',
   'rtsrc/CoreClasses.cpp',
-  'rtsrc/ClassDescription.cpp',
   'rtsrc/WrenRuntime.cpp',
   rtlib_bindings,
   include_directories: ['rtsrc'],
   override_options: ['cpp_std=c++20'],
+  dependencies: [common],
 )
 rtlib = declare_dependency(
   link_with: [rtlib_lib],
@@ -109,7 +119,7 @@ executable('wrencc',
   dependencies: [
     antlr,
     fmt,
-    rtlib,
+    common,
   ],
   cpp_args: [
     '-fPIC', # Required for Qt on my system

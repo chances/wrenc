@@ -6,8 +6,6 @@
 
 #include <string>
 
-#include "common.h"
-
 /**
  * A representation of a value that can be represented in the compiler.
  */

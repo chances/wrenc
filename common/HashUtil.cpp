@@ -1,11 +1,16 @@
 //
-// Created by znix on 22/07/22.
+// Created by znix on 28/07/22.
 //
 
-#include "hash.h"
-#include "ObjClass.h"
+#include "HashUtil.h"
 
 #include <algorithm>
+
+SignatureId hash_util::findSignatureId(const std::string &name) {
+	static const uint64_t SIG_SEED = hashString("signature id", 0);
+	uint64_t value = hashString(name, SIG_SEED);
+	return SignatureId{value};
+}
 
 // Roughly use MurmurHash3 - https://github.com/aappleby/smhasher/wiki/MurmurHash3
 // Source https://github.com/aappleby/smhasher/blob/61a0530f282/src/MurmurHash3.cpp
@@ -24,7 +29,7 @@ static inline uint64_t finalMix64(uint64_t k) {
 
 static inline uint64_t rotl64(uint64_t x, int8_t r) { return (x << r) | (x >> (64 - r)); }
 
-uint64_t hashData(const uint8_t *data, int len, uint64_t seed) {
+uint64_t hash_util::hashData(const uint8_t *data, int len, uint64_t seed) {
 	int remaining = len;
 
 	uint64_t h1 = seed;
@@ -105,6 +110,6 @@ uint64_t hashData(const uint8_t *data, int len, uint64_t seed) {
 	return h1;
 }
 
-uint64_t hashString(const std::string &value, uint64_t seed) {
+uint64_t hash_util::hashString(const std::string &value, uint64_t seed) {
 	return hashData((const uint8_t *)value.data(), value.size(), seed);
 }

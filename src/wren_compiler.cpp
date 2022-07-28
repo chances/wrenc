@@ -21,7 +21,6 @@
 #include "Module.h"
 #include "Scope.h"
 #include "SymbolTable.h"
-#include "common.h"
 
 // This is written in bottom-up order, so the tokenization comes first, then
 // parsing/code generation. This minimizes the number of explicit forward

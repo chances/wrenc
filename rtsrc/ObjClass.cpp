@@ -4,7 +4,6 @@
 
 #include "ObjClass.h"
 #include "CoreClasses.h"
-#include "hash.h"
 
 #include <inttypes.h>
 #include <unordered_map>
@@ -14,10 +13,9 @@ static std::unordered_map<uint64_t, std::string> signatureNames;
 ObjClass::ObjClass() : Obj(nullptr) {}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {
-	static const uint64_t SIG_SEED = hashString("signature id", 0);
-	uint64_t value = hashString(name, SIG_SEED);
-	signatureNames[value] = name;
-	return SignatureId{value};
+	SignatureId id = hash_util::findSignatureId(name);
+	signatureNames[id] = name;
+	return id;
 }
 
 std::string ObjClass::LookupSignatureFromId(SignatureId id, bool allowUnknown) {

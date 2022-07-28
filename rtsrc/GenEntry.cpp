@@ -6,12 +6,11 @@
 //
 
 #include "GenEntry.h"
-#include "ClassDescription.h"
 #include "CoreClasses.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
-#include "ObjFn.h"
 #include "ObjFibre.h"
+#include "ObjFn.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
 #include "ObjNum.h"
@@ -19,6 +18,7 @@
 #include "ObjSystem.h"
 #include "WrenRuntime.h"
 #include "common.h"
+#include "common/ClassDescription.h"
 
 #include <string.h>
 #include <vector>

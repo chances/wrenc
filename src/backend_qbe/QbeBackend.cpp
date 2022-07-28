@@ -6,7 +6,8 @@
 #include "ClassDescription.h"
 #include "ClassInfo.h"
 #include "CompContext.h"
-#include "ObjClass.h"
+#include "HashUtil.h"
+#include "common.h"
 
 #include <Scope.h>
 #include <SymbolTable.h>
@@ -502,7 +503,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 	// TODO we can optimise this a lot
 	std::string signatureStr = node->signature->ToString();
 	m_signatures.insert(signatureStr);
-	uint64_t signature = ObjClass::FindSignatureId(signatureStr);
+	uint64_t signature = hash_util::findSignatureId(signatureStr);
 	// Print the signature string as a comment to aid manually reading IR
 	snip->Add("%{} ={} call $wren_virtual_method_lookup({} %{}, l {}) # {}", funcPtr->name, PTR_TYPE, PTR_TYPE,
 	          receiver->name, signature, signatureStr);

@@ -3,8 +3,8 @@
 //
 
 #include "ObjManaged.h"
-#include "ClassDescription.h"
 #include "CoreClasses.h"
+#include "common/ClassDescription.h"
 
 ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {}
 ObjManaged::~ObjManaged() = default;
