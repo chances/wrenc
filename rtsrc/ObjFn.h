@@ -68,6 +68,10 @@ class ObjFn : public Obj {
 
 	ClosureSpec *spec;
 
+	// The 'next' pointer in a linked list of functions used by the compiler to keep track of what functions
+	// need their upvalue pointers to be updated when the local variables they're pointing to leave the stack.
+	ObjFn *upvalueFixupList = nullptr;
+
 	// Our actual upvalues. The data of this vector gets passed in as the upvalue pack when this function is called, if
 	// there's a non-zero number of upvalues (if there's no upvalues, there's no need to waste a register).
 	std::vector<Value *> upvaluePointers;

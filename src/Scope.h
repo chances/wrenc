@@ -68,6 +68,15 @@ class ScopeStack {
 	// Get the total number of variables, including shadowed ones.
 	int VariableCount();
 
+	/// Get the variables declared in the specified stack frame, the top stack frame, and everything in between.
+	/// This is mostly for jumping out of loops and returning, where you have to clear a bunch of stack frames
+	/// not in the usual order.
+	/// [since] is the ID of the first stack frame to include, from [GetTopFrame].
+	std::vector<LocalVariable *> GetFramesSince(int since);
+
+	/// Get the index of the current stack frame.
+	int GetTopFrame();
+
 	void PopFrame();
 
 	void PushFrame();

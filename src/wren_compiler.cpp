@@ -247,9 +247,9 @@ struct Loop {
 	// Index of the first instruction of the body of the loop.
 	StmtLabel *body = nullptr;
 
-	// Depth of the scope(s) that need to be exited if a break is hit inside the
-	// loop.
-	int scopeDepth;
+	// The index of the stack frame that the body of the loop is in. If the loop is
+	// broken out of, this is used to clean up all the variables inside the loop.
+	int contentFrameId = -1;
 
 	// The loop enclosing this one, or NULL if this is the outermost loop.
 	Loop *enclosing;
@@ -1255,36 +1255,40 @@ static void pushScope(Compiler *compiler) {
 // directly when compiling "break" statements to ditch the local variables
 // before jumping out of the loop even though they are still in scope *past*
 // the break instruction.
-static void discardLocals(Compiler *compiler, int depth) {
+// Returns the statement required to release these variables, or null if none is required. This is
+// mostly for upvalues, to kick them off to the heap if they're still being referenced.
+static IRStmt *discardLocals(Compiler *compiler, const std::vector<LocalVariable *> &discarded) {
 	ASSERT(compiler->scopeDepth > -1, "Cannot exit top-level scope.");
 
-	// Keeping this around to close upvalues, if that's how we end up implementing it
+	if (discarded.empty())
+		return nullptr;
 
-	// int local = compiler->numLocals - 1;
-	// while (local >= 0 && compiler->locals[local].depth >= depth) {
-	// 	// If the local was closed over, make sure the upvalue gets closed when it
-	// 	// goes out of scope on the stack. We use emitByte() and not emitOp() here
-	// 	// because we don't want to track that stack effect of these pops since the
-	// 	// variables are still in scope after the break.
-	// 	if (compiler->locals[local].isUpvalue) {
-	// 		emitByte(compiler, CODE_CLOSE_UPVALUE);
-	// 	} else {
-	// 		emitByte(compiler, CODE_POP);
-	// 	}
+	// All the variables that are used as upvalues in another function need to be moved from the
+	// stack to the heap.
+	StmtRelocateUpvalues *relocate = compiler->New<StmtRelocateUpvalues>();
+	for (LocalVariable *var : discarded) {
+		if (var->upvalues.empty())
+			continue;
+		relocate->variables.push_back(var);
+	}
 
-	// 	local--;
-	// }
+	if (relocate->variables.empty())
+		return nullptr;
 
-	// return compiler->numLocals - local - 1;
+	return relocate;
 }
 
 // Closes the last pushed block scope and discards any local variables declared
 // in that scope. This should only be called in a statement context where no
 // temporaries are still on the stack.
-static void popScope(Compiler *compiler) {
-	discardLocals(compiler, compiler->scopeDepth);
+// Returns the statement required to release these variables, or null if none is required. This is
+// mostly for upvalues, to kick them off to the heap if they're still being referenced.
+static IRStmt *popScope(Compiler *compiler) {
+	std::vector<LocalVariable *> discarded = compiler->locals.GetFramesSince(compiler->locals.GetTopFrame());
+	IRStmt *stmt = discardLocals(compiler, discarded);
 	compiler->scopeDepth--;
 	compiler->locals.PopFrame();
+	return stmt;
 }
 
 // Adds an upvalue to [compiler]'s function with the given properties. Does not
@@ -1519,6 +1523,7 @@ static IRStmt *finishBody(Compiler *compiler) {
 	bool isExpressionBody = expr != nullptr;
 
 	ASSERT(expr || stmt, "The contents of a block must either be a statement or an expression");
+	ASSERT(compiler->locals.GetTopFrame() == 0, "Cannot finishBody of a non-root scope");
 
 	IRExpr *returnValue = nullptr;
 	StmtBlock *block = compiler->New<StmtBlock>();
@@ -1539,6 +1544,9 @@ static IRStmt *finishBody(Compiler *compiler) {
 	} else {
 		returnValue = expr;
 	}
+
+	// Free anything left on the stack
+	block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
 
 	block->Add(compiler->New<StmtReturn>(returnValue));
 	return block;
@@ -1732,6 +1740,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
 		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
 		compiler->parser->module->AddNode(fnCompiler.fn);
+		compiler->fn->closures.push_back(fnCompiler.fn);
 
 		// Make a dummy signature to track the arity.
 		Signature fnSignature = {"", SIG_METHOD, 0};
@@ -2548,7 +2557,7 @@ IRExpr *expression(Compiler *compiler) { return parsePrecedence(compiler, PREC_L
 static void startLoop(Compiler *compiler, Loop *loop, StmtLabel *start) {
 	loop->enclosing = compiler->loop;
 	loop->start = start;
-	loop->scopeDepth = compiler->scopeDepth;
+	loop->contentFrameId = compiler->locals.GetTopFrame();
 	compiler->loop = loop;
 }
 
@@ -2687,12 +2696,12 @@ static IRStmt *forStatement(Compiler *compiler) {
 	block->Add(loopBody(compiler));
 
 	// Loop variable.
-	popScope(compiler);
+	block->Add(popScope(compiler));
 
 	block->Add(endLoop(compiler));
 
 	// Hidden variables.
-	popScope(compiler);
+	block->Add(popScope(compiler));
 
 	return block;
 }
@@ -2771,14 +2780,15 @@ IRStmt *statement(Compiler *compiler) {
 
 		// Since we will be jumping out of the scope, make sure any locals in it
 		// are discarded first.
-		discardLocals(compiler, compiler->loop->scopeDepth + 1);
+		StmtBlock *block = compiler->New<StmtBlock>();
+		block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(compiler->loop->contentFrameId)));
 
 		// Add a placeholder jump. We don't yet know what the end-of-loop label is (it
 		// won't have been created yet), so make it jump to nullptr and add it to the
 		// list of jumps to be fixed up by endLoop.
-		StmtJump *jump = compiler->New<StmtJump>();
+		StmtJump *jump = compiler->AddNew<StmtJump>(block);
 		compiler->loop->exitJumps.push_back(jump);
-		return jump;
+		return block;
 	}
 	if (match(compiler, TOKEN_CONTINUE)) {
 		if (compiler->loop == NULL) {
@@ -2788,10 +2798,12 @@ IRStmt *statement(Compiler *compiler) {
 
 		// Since we will be jumping out of the scope, make sure any locals in it
 		// are discarded first.
-		discardLocals(compiler, compiler->loop->scopeDepth + 1);
+		StmtBlock *block = compiler->New<StmtBlock>();
+		block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(compiler->loop->contentFrameId)));
 
 		// emit a jump back to the top of the loop
-		return compiler->New<StmtJump>(compiler->loop->start, nullptr);
+		compiler->AddNew<StmtJump>(block, compiler->loop->start, nullptr);
+		return block;
 	}
 	if (match(compiler, TOKEN_FOR)) {
 		return forStatement(compiler);
@@ -2800,20 +2812,34 @@ IRStmt *statement(Compiler *compiler) {
 		return ifStatement(compiler);
 	}
 	if (match(compiler, TOKEN_RETURN)) {
+		StmtBlock *block = compiler->New<StmtBlock>();
+		IRExpr *returnValue;
+
 		// Compile the return value.
 		if (peek(compiler) == TOKEN_LINE) {
 			// If there's no expression after return, initializers should
 			// return 'this' and regular methods should return null
-			IRExpr *returnValue = compiler->isInitializer ? loadThis(compiler) : null(compiler);
-			return compiler->New<StmtReturn>(returnValue);
+			returnValue = compiler->isInitializer ? loadThis(compiler) : null(compiler);
+		} else {
+			if (compiler->isInitializer) {
+				error(compiler, "A constructor cannot return a value.");
+			}
+
+			returnValue = expression(compiler);
 		}
 
-		if (compiler->isInitializer) {
-			error(compiler, "A constructor cannot return a value.");
-		}
+		// Free everything on the stack, making sure we evaluate the expression first so there aren't any
+		// last-minute uses of the variables after discarding them.
+		LocalVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
+		compiler->AddNew<StmtAssign>(block, tempReturn, returnValue);
 
-		IRExpr *returnValue = expression(compiler);
-		return compiler->New<StmtReturn>(returnValue);
+		// Relocate any upvalues, and any other cleanup we have to do. Do this all the way down to the first
+		// frame, since all the frames are obviously gone once we return.
+		block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
+
+		compiler->AddNew<StmtReturn>(block, loadVariable(compiler, tempReturn));
+
+		return block;
 	}
 	if (match(compiler, TOKEN_WHILE)) {
 		return whileStatement(compiler);
@@ -2833,7 +2859,15 @@ IRStmt *statement(Compiler *compiler) {
 			ASSERT(expr, "finishBlock returned neither a statement nor an expression");
 			stmt = compiler->New<StmtEvalAndIgnore>(expr);
 		}
-		popScope(compiler);
+
+		// Cleanup for any variables on the stack
+		IRStmt *cleanup = popScope(compiler);
+		if (cleanup) {
+			StmtBlock *block = compiler->New<StmtBlock>();
+			block->Add(stmt);
+			block->Add(cleanup);
+			stmt = block;
+		}
 
 		return stmt;
 	}
@@ -3125,7 +3159,11 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 #endif
 
 	compiler->enclosingClass = NULL;
-	popScope(compiler);
+
+	IRStmt *cleanup = popScope(compiler);
+	if (cleanup) {
+		error(compiler, "Class block local cleanup not yet implemented");
+	}
 
 	classInfo.inStatic = false;
 	classInfo.signature = nullptr;

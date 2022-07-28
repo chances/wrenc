@@ -74,6 +74,9 @@ class IRFn : public IRNode {
 	// Locals used as temporaries by the compiler, which aren't checked for name conflicts.
 	std::vector<LocalVariable *> temporaries;
 
+	// The closure functions defined inside this function. This is mainly for upvalue processing.
+	std::vector<IRFn *> closures;
+
 	// The arity, or number of arguments, of the function/method (not including the receiver)
 	int arity = 0;
 
@@ -261,6 +264,18 @@ class StmtLoadModule : public IRStmt {
 	std::vector<VarImport> variables;
 };
 
+/// Moves an upvalue (if it's currently referenced by a closure) from the
+/// stack to the heap, and updates all the closures accordingly.
+/// This is placed at the end of source-level blocks so variables modified
+/// in later iterations of a loop don't alter the value of the variables
+/// defined in previous iterations.
+class StmtRelocateUpvalues : public IRStmt {
+  public:
+	void Accept(IRVisitor *visitor) override;
+
+	std::vector<LocalVariable *> variables;
+};
+
 // //////////////////// //
 // //// EXPRESSIONS /// //
 // //////////////////// //
@@ -400,6 +415,7 @@ class IRVisitor {
 	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	virtual void VisitExprSystemVar(ExprSystemVar *node);
 	virtual void VisitExprGetClassVar(ExprGetClassVar *node);
+	virtual void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
 	virtual void VisitUpvalueVariable(UpvalueVariable *var);
@@ -440,6 +456,7 @@ class IRPrinter : private IRVisitor {
 	void VisitExprFieldLoad(ExprFieldLoad *node) override;
 	void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) override;
 	void VisitExprClosure(ExprClosure *node) override;
+	void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) override;
 
 	std::string GetLabelId(StmtLabel *label);
 

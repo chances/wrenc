@@ -48,11 +48,24 @@ void ScopeStack::PopFrame() {
 	m_frames.pop_back();
 	m_top = m_frames.back().get();
 }
+
 void ScopeStack::PushFrame() {
 	m_frames.push_back(std::make_unique<ScopeFrame>());
 	m_frames.back()->parent = m_top;
 	m_top = m_frames.back().get();
 }
+
+std::vector<LocalVariable *> ScopeStack::GetFramesSince(int since) {
+	std::vector<LocalVariable *> variables;
+	for (int i = since; i < m_frames.size(); i++) {
+		for (const auto &entry : m_frames.at(i)->locals) {
+			variables.push_back(entry.second);
+		}
+	}
+	return variables;
+}
+
+int ScopeStack::GetTopFrame() { return m_frames.size() - 1; }
 
 std::string LocalVariable::Name() const { return name; }
 

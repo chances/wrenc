@@ -92,6 +92,7 @@ class QbeBackend {
 	Snippet *VisitStmtJump(StmtJump *node);
 	Snippet *VisitStmtReturn(StmtReturn *node);
 	Snippet *VisitStmtLoadModule(StmtLoadModule *node);
+	Snippet *VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node);
 
 	Snippet *VisitExprConst(ExprConst *node);
 	Snippet *VisitExprLoad(ExprLoad *node);
@@ -112,6 +113,9 @@ class QbeBackend {
 	UpvaluePackDef *m_currentFnUpvaluePack = nullptr;
 	std::unordered_map<VarDecl *, int> m_stackVariables; // Local variables that are on the stack, and their positions
 	std::unordered_map<IRFn *, std::unique_ptr<UpvaluePackDef>> m_functionUpvaluePacks;
+
+	// Stack index of linked list of each type of closure that's using upvalues.
+	std::unordered_map<IRFn *, int> m_closureFnChain;
 
 	// All the function signatures we've used, so we can put them in an array for debug messages
 	std::unordered_set<std::string> m_signatures;

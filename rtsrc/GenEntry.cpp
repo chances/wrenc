@@ -36,14 +36,17 @@ Value wren_sys_var_System = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_bool_false = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_bool_true = NULL_VAL;  // NOLINT(readability-identifier-naming)
 
-void *wren_virtual_method_lookup(Value receiver, uint64_t signature); // NOLINT(readability-identifier-naming)
-Value wren_init_string_literal(const char *literal, int length);      // NOLINT(readability-identifier-naming)
-void wren_register_signatures_table(const char *signatures);          // NOLINT(readability-identifier-naming)
-Value wren_init_class(const char *name, uint8_t *dataBlock);          // NOLINT(readability-identifier-naming)
-Value wren_alloc_obj(Value classVar);                                 // NOLINT(readability-identifier-naming)
-int wren_class_get_field_offset(Value classVar);                      // NOLINT(readability-identifier-naming)
-ClosureSpec *wren_register_closure(void *specData);                   // NOLINT(readability-identifier-naming)
-Value wren_create_closure(ClosureSpec *spec, void *stack);            // NOLINT(readability-identifier-naming)
+void *wren_virtual_method_lookup(Value receiver, uint64_t signature);        // NOLINT(readability-identifier-naming)
+Value wren_init_string_literal(const char *literal, int length);             // NOLINT(readability-identifier-naming)
+void wren_register_signatures_table(const char *signatures);                 // NOLINT(readability-identifier-naming)
+Value wren_init_class(const char *name, uint8_t *dataBlock);                 // NOLINT(readability-identifier-naming)
+Value wren_alloc_obj(Value classVar);                                        // NOLINT(readability-identifier-naming)
+int wren_class_get_field_offset(Value classVar);                             // NOLINT(readability-identifier-naming)
+ClosureSpec *wren_register_closure(void *specData);                          // NOLINT(readability-identifier-naming)
+Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead); // NOLINT(readability-identifier-naming)
+Value **wren_get_closure_upvalue_pack(ObjFn *closure);                       // NOLINT(readability-identifier-naming)
+ObjFn *wren_get_closure_chain_next(ObjFn *closure);                          // NOLINT(readability-identifier-naming)
+void *wren_alloc_upvalue_storage(int numClosures);                           // NOLINT(readability-identifier-naming)
 }
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
@@ -156,14 +159,37 @@ ClosureSpec *wren_register_closure(void *specData) {
 	return new ClosureSpec(specData);
 }
 
-Value wren_create_closure(ClosureSpec *spec, void *stack) {
+Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead) {
 	if (spec == nullptr) {
 		fprintf(stderr, "Cannot pass null spec to wren_create_closure\n");
 		abort();
 	}
+
 	// Stack may be null if we have no upvalues
 	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec, stack);
+
+	// Add this object to the linked list of all the other functions of the same type that have been created
+	// This is used for tracking which closures need to be fixed up when their upvalues escape.
+	// If this closure doesn't use upvalues, then listHead will be null as there's no need to track it.
+	if (listHead) {
+		closure->upvalueFixupList = *listHead;
+		*listHead = closure;
+	}
+
 	return closure->ToValue();
+}
+
+Value **wren_get_closure_upvalue_pack(ObjFn *closure) { return closure->upvaluePointers.data(); }
+ObjFn *wren_get_closure_chain_next(ObjFn *closure) {
+	// TODO implement
+	return nullptr;
+}
+
+// Allocate space for a closed upvalue on the heap, move the value there, and update all the closures that
+// point to that value over to the new storage location.
+void *wren_alloc_upvalue_storage(int numClosures) {
+	// TODO reference-counting stuff
+	return WrenRuntime::Instance().AllocateMem(sizeof(Value) * numClosures, 8);
 }
 
 void setupGenEntry() {

@@ -294,6 +294,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 	DISPATCH(VisitStmtJump, StmtJump);
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
+	DISPATCH(VisitStmtRelocateUpvalues, StmtRelocateUpvalues);
 
 #undef DISPATCH
 
@@ -382,8 +383,17 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 			pack->valuesOnParentStack[up] = stackIndex;
 		}
 
+		// Use up two stack slots - one for the value itself, and the next for the linked list of closures
+		// that reference this variable.
 		variablesUsedAsUpvalues++;
 	}
+
+	// Keep linked lists of each type of closure we've constructed, so that when we close an upvalue we know what
+	// closures need to be updated with it.
+	for (IRFn *closure : node->closures) {
+		m_closureFnChain[closure] = variablesUsedAsUpvalues++;
+	}
+
 	if (variablesUsedAsUpvalues != 0) {
 		Print("%stack_locals ={} alloc8 {}", PTR_TYPE, variablesUsedAsUpvalues * sizeof(Value));
 	}
@@ -411,6 +421,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 
 	m_currentFnUpvaluePack = nullptr;
 	m_stackVariables.clear();
+	m_closureFnChain.clear();
 	Print("}}");
 }
 
@@ -708,14 +719,180 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 	VLocal *descObj = AddTemporary("closure_desc_" + name);
 	Print("%{} ={} load{} ${}{}", descObj->name, PTR_TYPE, PTR_TYPE, SYM_CLOSURE_DESC_OBJ, name);
 
+	// Find the start of the linked list of closures - we use this to keep track of the closures
+	// If this function doesn't use upvalues, then there's no need to keep this list.
+	auto chainPos = m_closureFnChain.find(node->func);
+	VLocal *listHead = nullptr;
+	if (chainPos != m_closureFnChain.end()) {
+		// Intentionally, we pass in the pointer to the list head, and not the value - the create closure function
+		// modifies the value on the stack in order to add this closure to the list.
+		listHead = AddTemporary("closure_list_head_" + node->func->debugName);
+		snip->Add("%{} =l add %stack_locals, {}", listHead->name, chainPos->second * sizeof(VLocal));
+	}
+
 	// And use the description object to request a new closure over it
 	// Pass in our stack, as the closure will bind to values on it
 	const char *stackLocals = node->func->upvalues.empty() ? "0" : "%stack_locals";
+	std::string listHeadName = listHead ? "%" + listHead->name : "0";
 	snip->result = AddTemporary("closure_result_" + node->func->debugName);
-	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {})", snip->result->name, PTR_TYPE, descObj->name, PTR_TYPE,
-	          stackLocals);
+	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {}, {} {})", snip->result->name, PTR_TYPE, descObj->name,
+	          PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
 
-	// TODO upvalue handling
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {
+	// TODO optimise this by knowing what functions use what variables, to save a few instructions when checking
+	// WARNING WARNING: Complicated, fragile and messy code ahead
+	// Note: here, 'relocation' means a variable we're moving from the stack to the heap, so closures
+	// can continue using it once the block it was declared in is gone.
+
+	struct RelocInfo {
+		LocalVariable *local = nullptr;
+		VLocal *newStoragePtr = nullptr; // Variable in which the new (relocated) address is stored
+		int variableStackPos = -1;
+	};
+	struct FnRelocInfo {
+		IRFn *closure;
+		UpvalueVariable *upvalue;
+		RelocInfo info;
+	};
+	std::vector<RelocInfo> relocations;
+	std::map<IRFn *, std::vector<FnRelocInfo>> byFunction;
+
+	for (LocalVariable *var : node->variables) {
+		// See if this variable is used by closures, and if so, find the stack index of the list
+		auto iter = m_stackVariables.find(var);
+		if (iter == m_stackVariables.end())
+			continue;
+
+		// At present this shouldn't return, but if we ever start putting variables on the stack
+		// for reasons other than upvalues then this will become important.
+		if (var->upvalues.empty())
+			continue;
+
+		RelocInfo reloc = RelocInfo{
+		    .local = var,
+		    .variableStackPos = iter->second,
+		};
+		relocations.emplace_back(reloc);
+		for (UpvalueVariable *upvalue : var->upvalues) {
+			byFunction[upvalue->containingFunction].emplace_back(FnRelocInfo{
+			    .closure = upvalue->containingFunction,
+			    .upvalue = upvalue,
+			    .info = reloc,
+			});
+		}
+	}
+
+	Snippet *snip = m_alloc.New<Snippet>();
+	if (relocations.empty())
+		return snip;
+
+	for (auto &[fn, fnRelocs] : byFunction) {
+		auto chainPos = m_closureFnChain.find(fn);
+		if (chainPos == m_closureFnChain.end()) {
+			fmt::print(stderr, "No closure chain for function using relocations '{}'\n", fn->debugName);
+			abort();
+		}
+
+		auto upvaluePackIter = m_functionUpvaluePacks.find(fn);
+		if (upvaluePackIter == m_functionUpvaluePacks.end()) {
+			fmt::print(stderr, "No upvalue pack for function using relocations '{}'\n", fn->debugName);
+			abort();
+		}
+		UpvaluePackDef *upvaluePack = upvaluePackIter->second.get();
+
+		// FIXME implement some check to make sure we don't try to relocate a function twice. Take this example:
+		//   myMethod() {
+		//     var a = 1
+		//     for (i in ...) {
+		//       var b = i
+		//       addClosure() { return a + b }
+		//     }
+		//   }
+		//  In this example, can't clear the linked list after each iteration through the for loop. However, we can't
+		//  relocate b for all functions - otherwise they'd all point to the last value of b. We need to have some way
+		//  to track which closures still need these relocations to be applied. Note that I think the list of closures
+		//  can be cleanly divided at a given point to those that have and haven't been relocated, so we shouldn't need
+		//  to walk the whole list of closures when closing b in the loop, we can bail out as soon as we find a single
+		//  closure that's already been processed for that variable.
+
+		// Find the pointer of the first closure in the linked list of this type of closure - this way we can check
+		// if we've actually used this function, because if not we don't have to relocate these variables (at least,
+		// not if another function isn't also using them).
+		VLocal *closureListPtr = AddTemporary("closure_chain_" + fn->debugName);
+		VLocal *closureListValue = AddTemporary("closure_first_" + fn->debugName);
+		snip->Add("%{} =l add %stack_locals, {}", closureListPtr->name, chainPos->second * sizeof(VLocal));
+		snip->Add("%{} =l loadl %{}", closureListValue->name, closureListPtr->name);
+
+		// And jump over the relocation code if the linked list is empty
+		std::string skipRelocations = MangleUniqueName("skip_reloc_" + fn->debugName, true);
+		std::string doRelocations = MangleUniqueName("do_reloc_" + fn->debugName, true);
+		snip->Add("jnz %{}, @{}, @{}", closureListValue->name, doRelocations, skipRelocations);
+		snip->Add("@{}", doRelocations);
+
+		// FIXME make this work if multiple closures use this same variable. We'll still want this implementation as
+		//  a fast-case for variables only used by a single closure, but for variables used by multiple closures we'll
+		//  have to handle it differently.
+
+		// Allocate storage for the upvalues, and copy them into the new storage
+		VLocal *relocatedStorage = AddTemporary("relocated_upvalues_" + fn->debugName);
+		snip->Add("%{} ={} call $wren_alloc_upvalue_storage(w {})", relocatedStorage->name, PTR_TYPE, fnRelocs.size());
+		int i = 0;
+		for (FnRelocInfo &fnRelocation : fnRelocs) {
+			RelocInfo &relocation = fnRelocation.info;
+
+			// Load the value from the stack
+			VLocal *valuePtr = AddTemporary("upvalue_ptr_" + relocation.local->name);
+			VLocal *value = AddTemporary("upvalue_" + relocation.local->name);
+			snip->Add("%{} ={} add %stack_locals, {}", valuePtr->name, PTR_TYPE,
+			          relocation.variableStackPos * sizeof(VLocal));
+			snip->Add("%{} =l loadl %{}", value->name, valuePtr->name);
+
+			// Store the value into the relocation memory
+			VLocal *newPtr = AddTemporary("new_upvalue_addr_" + relocation.local->name);
+			relocation.newStoragePtr = newPtr;
+			snip->Add("%{} ={} add %{}, {}", newPtr->name, PTR_TYPE, relocatedStorage->name, i * sizeof(Value));
+			snip->Add("storel %{}, %{}", value->name, newPtr->name);
+			i++;
+		}
+
+		// Loop through every instance of this closure,
+		std::string loopRelocateFn = MangleUniqueName("relocate_fn_loop_" + fn->debugName, true);
+		std::string loopRelocateFnBody = MangleUniqueName("relocate_fn_loop_body_" + fn->debugName, true);
+		snip->Add("@{}", loopRelocateFn);
+		snip->Add("jnz %{}, @{}, @{}", closureListValue->name, loopRelocateFnBody, skipRelocations);
+		snip->Add("@{}", loopRelocateFnBody);
+
+		// Load the pointer to the start of the upvalue pack - this is the value pointers telling the function where
+		// it's upvalues live.
+		VLocal *packPtr = AddTemporary("fn_upvalue_pack_" + fn->debugName);
+		snip->Add("%{} ={} call $wren_get_closure_upvalue_pack({} %{})", packPtr->name, PTR_TYPE, PTR_TYPE,
+		          closureListValue->name);
+
+		for (FnRelocInfo &relocation : fnRelocs) {
+			// Find the index of the value in the closure's relocation pack
+			auto idIter = upvaluePack->variableIds.find(relocation.upvalue);
+			if (idIter == upvaluePack->variableIds.end()) {
+				fmt::print(stderr, "No upvalue pack entry for variable '{}' in function using relocations '{}'\n",
+				           relocation.info.local->name, fn->debugName);
+				abort();
+			}
+
+			// Store the pointer to the new location in the closure's pack
+			VLocal *upvaluePtr = AddTemporary("fn_upvalue_ptr_" + relocation.info.local->name);
+			snip->Add("%{} ={} add %{}, {}", upvaluePtr->name, PTR_TYPE, packPtr->name, idIter->second * sizeof(Value));
+			snip->Add("storel %{}, %{}", relocation.info.newStoragePtr->name, upvaluePtr->name);
+		}
+
+		// Go to the next closure in the linked list, before jumping back to the start of the loop again
+		snip->Add("%{} ={} call $wren_get_closure_chain_next({} %{})", closureListValue->name, PTR_TYPE, PTR_TYPE,
+		          closureListValue->name);
+		snip->Add("jmp @{}", loopRelocateFn);
+
+		snip->Add("@{}", skipRelocations);
+	}
 
 	return snip;
 }

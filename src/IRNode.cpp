@@ -82,6 +82,7 @@ void StmtLabel::Accept(IRVisitor *visitor) { visitor->VisitStmtLabel(this); }
 void StmtJump::Accept(IRVisitor *visitor) { visitor->VisitStmtJump(this); }
 void StmtReturn::Accept(IRVisitor *visitor) { visitor->VisitStmtReturn(this); }
 void StmtLoadModule::Accept(IRVisitor *visitor) { visitor->VisitStmtLoadModule(this); }
+void StmtRelocateUpvalues::Accept(IRVisitor *visitor) { visitor->VisitStmtRelocateUpvalues(this); }
 
 // Expressions
 void ExprConst::Accept(IRVisitor *visitor) { visitor->VisitExprConst(this); }
@@ -143,6 +144,7 @@ void IRVisitor::VisitStmtLoadModule(StmtLoadModule *node) {
 	for (const StmtLoadModule::VarImport &import : node->variables)
 		VisitVar(import.bindTo);
 }
+void IRVisitor::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {}
 void IRVisitor::VisitExprConst(ExprConst *node) {}
 void IRVisitor::VisitExprLoad(ExprLoad *node) { VisitVar(node->var); }
 void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) {}
@@ -346,4 +348,10 @@ void IRPrinter::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node
 void IRPrinter::VisitExprClosure(ExprClosure *node) {
 	m_tagStack.back().header += " " + node->func->debugName;
 	IRVisitor::VisitExprClosure(node);
+}
+
+void IRPrinter::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {
+	for (LocalVariable *var : node->variables)
+		m_tagStack.back().header += " " + var->name;
+	IRVisitor::VisitStmtRelocateUpvalues(node);
 }
