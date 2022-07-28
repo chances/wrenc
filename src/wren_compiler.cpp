@@ -2310,8 +2310,18 @@ void infixSignature(Compiler *compiler, Signature *signature) {
 
 	// Parse the parameter name.
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after operator name.");
-	declareNamedVariable(compiler);
+	VarDecl *var = declareNamedVariable(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
+
+	// Mark it as function argument, to indicate this variable actually comes
+	// from the parameter list (in regular Wren this is implicit from the stack position).
+	LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+	if (!local) {
+		std::string name = var->Name();
+		error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
+	} else {
+		compiler->fn->parameters.push_back(local);
+	}
 }
 
 // Compiles a method signature for an unary operator (i.e. "!").
