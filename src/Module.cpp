@@ -8,7 +8,7 @@
 
 // Put the vtable here
 Module::Module() = default;
-Module::Module(std::string name) : m_name(std::move(name)) {}
+Module::Module(std::optional<std::string> name) : m_name(std::move(name)) {}
 Module::~Module() = default;
 
 IRGlobalDecl *Module::AddVariable(const std::string &name) {

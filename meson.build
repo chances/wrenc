@@ -53,7 +53,7 @@ rtlib_main_stub = executable('wren-rtlib-stub',
   link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
 )
 
-executable('wrencc',
+wrenc = executable('wrencc',
   'src/main.cpp',
   'src/wren_compiler.cpp',
   'src/RunProgramme.cpp',
@@ -82,6 +82,20 @@ executable('wrencc',
     'src',
   ],
   override_options: ['cpp_std=c++20'],
+)
+
+# Compile the Wren part of the main runtime library
+rtlib_wren_core = custom_target('wren-core',
+  output: ['wren_core.o'],
+  input: ['lib/wren-main/src/vm/wren_core.wren'],
+  command: [
+    wrenc,
+    '-c',
+    '-o', '@OUTPUT@',
+    '@INPUT@',
+    '--module=wren_core',
+    '--internal-build-core-lib',
+  ]
 )
 
 # For the runtime library, generate a file that contains functions for Wren to call that then call
@@ -120,6 +134,7 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjManaged.cpp',
   'rtsrc/CoreClasses.cpp',
   'rtsrc/WrenRuntime.cpp',
+  rtlib_wren_core,
   rtlib_bindings,
   include_directories: ['rtsrc'],
   override_options: ['cpp_std=c++20'],

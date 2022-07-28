@@ -16,7 +16,7 @@ class ClassInfo;
 class Module {
   public:
 	Module();
-	Module(std::string name);
+	Module(std::optional<std::string> name);
 	~Module();
 
 	const std::optional<std::string> &Name() const { return m_name; }

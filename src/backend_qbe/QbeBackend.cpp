@@ -108,9 +108,10 @@ std::string QbeBackend::Generate(Module *module) {
 
 	// Add a table describing all the closures, and pointers to data objects for them
 	for (IRFn *fn : module->GetClosures()) {
+		// Note: put the data table in .data instead of .rodata since it contains a relocation
 		std::string funcName = MangleUniqueName(fn->debugName, false);
 		Print("section \".bss\" data ${}{} = {{ {} 0 }}", SYM_CLOSURE_DESC_OBJ, GetClosureName(fn), PTR_TYPE);
-		Print("section \".rodata\" data ${}{} = {{ ", SYM_CLOSURE_DATA_TBL, GetClosureName(fn));
+		Print("section \".data\" data ${}{} = {{ ", SYM_CLOSURE_DATA_TBL, GetClosureName(fn));
 		Print("\t{} ${},", PTR_TYPE, funcName);
 		Print("\t{} {},", PTR_TYPE, GetStringPtr(fn->debugName));
 		Print("\tw {0}, w {1}, # arity={0} num_upvalues={1}", fn->arity, fn->upvalues.size());
@@ -151,6 +152,10 @@ std::string QbeBackend::Generate(Module *module) {
 
 	// Add pointers to the ObjClass instances for all the classes we've declared
 	for (IRClass *cls : module->GetClasses()) {
+		// System classes are defined in C++, and should only appear when compiling wren_core
+		if (cls->info->IsSystemClass())
+			continue;
+
 		Print("section \".data\" data $class_var_{} = {{ l {} }}", cls->info->name, NULL_VAL);
 	}
 
@@ -159,8 +164,18 @@ std::string QbeBackend::Generate(Module *module) {
 	// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
 	// we have to add it to the object pointer to get the fields area.
 	for (IRClass *cls : module->GetClasses()) {
+		if (cls->info->IsSystemClass())
+			continue;
+
 		// Make it word-sized, that'll be big enough and hopefully help with getting more into the cache
 		Print("section \".bss\" data ${}{} = {{ w {} }}", SYM_FIELD_OFFSET, cls->info->name, 0);
+	}
+
+	// Add the true and false value pointers
+	Print("section \".bss\" data $wren_sys_bool_false = {{ l 0 }}");
+	Print("section \".bss\" data $wren_sys_bool_true = {{ l 0 }}");
+	for (const auto &[name, _] : ExprSystemVar::SYSTEM_VAR_NAMES) {
+		Print("section \".bss\" data $wren_sys_var_{} = {{ l 0 }}", name);
 	}
 
 	// Write the signature table - it's used for error messages, when the runtime only knows the
@@ -171,12 +186,14 @@ std::string QbeBackend::Generate(Module *module) {
 	}
 	Print("b 0 }} # End with repeated zero");
 
-	// TODO only for main module:
-	// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
-	// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
-	// make a working executable, and it'll load this pointer when we link this object to it.
-	std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName, false);
-	Print("section \".rodata\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
+	if (defineStandaloneMainFunc) {
+		// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
+		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
+		// make a working executable, and it'll load this pointer when we link this object to it.
+		// Also, put it in .data not .rodata since it contains a relocation.
+		std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName, false);
+		Print("section \".data\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
+	}
 
 	return m_output.str();
 }
@@ -226,6 +243,12 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		std::string classNameSym = GetStringPtr(cls->info->name);
 		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{})", varName, PTR_TYPE, classNameSym, PTR_TYPE,
 		      cls->info->name);
+
+		// System classes are registered, but we don't do anything with the result - we're just telling C++ what
+		// methods exist on them.
+		if (cls->info->IsSystemClass())
+			continue;
+
 		Print("storel %{}, $class_var_{}", varName, cls->info->name);
 
 		// Read the field offset
@@ -247,6 +270,16 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 
 	Print("# Register signatures table");
 	Print("call $wren_register_signatures_table({} $signatures_table_{})", PTR_TYPE, moduleName);
+
+	Print("# Get true and false pointers, and system class pointers");
+	Print("%true_value =l call $wren_get_bool_value(w 1)");
+	Print("storel %true_value, $wren_sys_bool_true");
+	Print("%false_value =l call $wren_get_bool_value(w 0)");
+	Print("storel %false_value, $wren_sys_bool_false");
+	for (const auto &[name, id] : ExprSystemVar::SYSTEM_VAR_NAMES) {
+		Print("%sys_class_{} =l call $wren_get_core_class_value({} {})", name, PTR_TYPE, GetStringPtr(name));
+		Print("storel %sys_class_{}, $wren_sys_var_{}", name, name);
+	}
 
 	Print("ret");
 	m_inFunction = false;
@@ -327,6 +360,10 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 		args += fmt::format("l %{}, ", var->name);
 	}
 
+	// Export the main function
+	if (initFunction)
+		Print("export");
+
 	Print("function {} ${}({}) {{", PTR_TYPE, funcName, args);
 	Print("@start");
 	m_inFunction = true;
@@ -402,7 +439,8 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	// If this is a method, load the field offset. We're probably going to access our fields (if not, QBE should
 	// be able to remove this load?) so it's good to only have to load their offset once
 	// For more information about these offsets, see the comment on the code generating this symbol for more information
-	if (node->enclosingClass) {
+	// Also there's a special exception for core classes, which don't have fields defined in wren
+	if (node->enclosingClass && !node->enclosingClass->info->IsSystemClass()) {
 		Print("%this_ptr =l and %this, {}", CONTENT_MASK); // This is equivalent to get_object_value
 		Print("%this_field_start_offset =w loadw ${}{}", SYM_FIELD_OFFSET, node->enclosingClass->info->name);
 		Print("%this_field_start =l extuw %this_field_start_offset");   // Unsigned extend word->long

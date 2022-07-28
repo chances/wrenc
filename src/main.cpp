@@ -16,19 +16,25 @@ static const std::string QBE_PATH = "./lib/qbe-1.0/qbe_bin";
 
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
-static int runCompiler(const std::istream &input);
+static int runCompiler(const std::istream &input, const std::optional<std::string> &moduleName);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
 static std::string compilerInstallDir;
 
-const int DONT_ASSEMBLE = 1;
+static int globalDontAssemble = 0;
+static int globalBuildCoreLib = 0;
 
 static option options[] = {
     {"output", required_argument, 0, 'o'},
     {"compile-only", no_argument, 0, 'c'},
-    {"dont-assemble", no_argument, 0, DONT_ASSEMBLE},
+    {"module", required_argument, 0, 'm'},
+    {"dont-assemble", no_argument, &globalDontAssemble, true},
     {"help", no_argument, 0, 'h'},
+
+    // Intentionally undocumented options
+    {"internal-build-core-lib", no_argument, &globalBuildCoreLib, true}, // Build the wren_core module
+
     {0},
 };
 
@@ -54,11 +60,11 @@ int main(int argc, char **argv) {
 
 	bool needsHelp = false; // Print the help page?
 	bool compileOnly = false;
-	bool dontAssemble = false;
 	std::string outputFile;
+	std::optional<std::string> moduleName;
 
 	while (true) {
-		int opt = getopt_long(argc, argv, "o:ch", options, nullptr);
+		int opt = getopt_long(argc, argv, "o:m:ch", options, nullptr);
 
 		// -1 means we ran out of options
 		if (opt == -1)
@@ -74,13 +80,16 @@ int main(int argc, char **argv) {
 		case 'h':
 			needsHelp = true;
 			break;
-		case DONT_ASSEMBLE:
-			dontAssemble = true;
+		case 'm':
+			moduleName = optarg;
 			break;
 		case '?':
 			// Error message already printed by getopt
 			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
 			exit(1);
+		case 0:
+			// This option set a flag specified in the options table, we don't have to do anything
+			break;
 		default:
 			// This shouldn't happen, invalid options come back as '?'
 			fmt::print(stderr, "Unhandled option value '{}'\n", opt);
@@ -151,7 +160,7 @@ int main(int argc, char **argv) {
 		std::ifstream input;
 		try {
 			input.open(sourceFile);
-			int fd = runCompiler(input);
+			int fd = runCompiler(input, moduleName);
 			if (fd == -1) {
 				hitError = true;
 			} else {
@@ -169,7 +178,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (dontAssemble) {
+	if (globalDontAssemble) {
 		// Join all the assembly files together
 		std::ofstream output;
 		output.exceptions(std::ios::badbit | std::ios::failbit);
@@ -197,7 +206,7 @@ int main(int argc, char **argv) {
 	}
 }
 
-static int runCompiler(const std::istream &input) {
+static int runCompiler(const std::istream &input, const std::optional<std::string> &moduleName) {
 	std::string source;
 	{
 		// Quick way to read an entire stream
@@ -207,8 +216,8 @@ static int runCompiler(const std::istream &input) {
 	}
 
 	CompContext ctx;
-	Module mod; // TODO name the module
-	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false);
+	Module mod(moduleName);
+	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false, globalBuildCoreLib);
 
 	if (!rootFn)
 		return -1;
@@ -234,6 +243,8 @@ static int runCompiler(const std::istream &input) {
 	}
 
 	QbeBackend backend;
+	backend.compileWrenCore = globalBuildCoreLib;
+	backend.defineStandaloneMainFunc = !globalBuildCoreLib; // TODO only mark modules as main with a CLI option
 	std::string qbeIr = backend.Generate(&mod);
 
 	// fmt::print("Generated QBE IR:\n{}\n", qbeIr);

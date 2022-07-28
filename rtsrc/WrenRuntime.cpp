@@ -3,9 +3,15 @@
 //
 
 #include "WrenRuntime.h"
+#include "GenEntry.h"
 #include <malloc.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+extern "C" {
+// Defined in wren_core
+void wren_core_3a_3a__root_func();
+}
 
 WrenRuntime::WrenRuntime() {}
 WrenRuntime::~WrenRuntime() {}
@@ -22,4 +28,8 @@ void *WrenRuntime::AllocateMem(int size, int alignment) {
 		abort();
 	}
 	return mem;
+}
+
+void WrenRuntime::Initialise() {
+	wren_core_3a_3a__root_func();
 }

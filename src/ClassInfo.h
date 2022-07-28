@@ -24,6 +24,11 @@ class ClassInfo {
   public:
 	~ClassInfo();
 
+	// Returns whether this shares a name with a 'system class' line String implemented in C++
+	// In this case, it should be blocked with only the rare exception of when we're compiling the
+	// special wren_core module.
+	bool IsSystemClass() const;
+
 	// The name of the class.
 	std::string name;
 

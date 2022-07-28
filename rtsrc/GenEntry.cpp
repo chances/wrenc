@@ -28,19 +28,6 @@
 // These are the functions in question
 // NOLINTBEGIN(readability-identifier-naming)
 extern "C" {
-EXPORT Value wren_sys_var_Bool = NULL_VAL;
-EXPORT Value wren_sys_var_Object = NULL_VAL;
-EXPORT Value wren_sys_var_Class = NULL_VAL;
-EXPORT Value wren_sys_var_Fn = NULL_VAL;
-EXPORT Value wren_sys_var_Fiber = NULL_VAL;
-EXPORT Value wren_sys_var_List = NULL_VAL;
-EXPORT Value wren_sys_var_Num = NULL_VAL;
-EXPORT Value wren_sys_var_String = NULL_VAL;
-EXPORT Value wren_sys_var_System = NULL_VAL;
-
-EXPORT Value wren_sys_bool_false = NULL_VAL;
-EXPORT Value wren_sys_bool_true = NULL_VAL;
-
 EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
 EXPORT Value wren_init_string_literal(const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
@@ -52,6 +39,8 @@ EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHea
 EXPORT Value **wren_get_closure_upvalue_pack(ObjFn *closure);
 EXPORT ObjFn *wren_get_closure_chain_next(ObjFn *closure);
 EXPORT void *wren_alloc_upvalue_storage(int numClosures);
+EXPORT Value wren_get_bool_value(bool value);
+EXPORT Value wren_get_core_class_value(const char *name);
 }
 // NOLINTEND(readability-identifier-naming)
 
@@ -198,17 +187,33 @@ void *wren_alloc_upvalue_storage(int numClosures) {
 	return WrenRuntime::Instance().AllocateMem(sizeof(Value) * numClosures, 8);
 }
 
-EXPORT void setupGenEntry() {
-	wren_sys_var_Bool = ObjBool::Class()->ToValue();
-	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
-	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
-	wren_sys_var_Fn = ObjFn::Class()->ToValue();
-	wren_sys_var_Fiber = ObjFibre::Class()->ToValue();
-	wren_sys_var_List = ObjList::Class()->ToValue();
-	wren_sys_var_Num = ObjNumClass::Instance()->ToValue();
-	wren_sys_var_String = ObjString::Class()->ToValue();
-	wren_sys_var_System = CoreClasses::Instance()->System()->ToValue();
+Value wren_get_bool_value(bool value) { return encode_object(ObjBool::Get(value)); }
 
-	wren_sys_bool_true = ObjBool::Get(true)->ToValue();
-	wren_sys_bool_false = ObjBool::Get(false)->ToValue();
+Value wren_get_core_class_value(const char *name) {
+#define GET_CLASS(cls_name, obj)                                                                                       \
+	do {                                                                                                               \
+		if (strcmp(name, cls_name) == 0)                                                                               \
+			return (obj);                                                                                              \
+	} while (0)
+
+	GET_CLASS("Bool", ObjBool::Class()->ToValue());
+	GET_CLASS("Object", CoreClasses::Instance()->Object().ToValue());
+	GET_CLASS("Class", CoreClasses::Instance()->RootClass().ToValue());
+	GET_CLASS("Fn", ObjFn::Class()->ToValue());
+	GET_CLASS("Fiber", ObjFibre::Class()->ToValue());
+	GET_CLASS("List", ObjList::Class()->ToValue());
+	GET_CLASS("Num", ObjNumClass::Instance()->ToValue());
+	GET_CLASS("String", ObjString::Class()->ToValue());
+	GET_CLASS("System", CoreClasses::Instance()->System()->ToValue());
+
+	// TODO implement these classes
+	GET_CLASS("Range", NULL_VAL);
+	GET_CLASS("Null", NULL_VAL);
+	GET_CLASS("Map", NULL_VAL);
+	GET_CLASS("Sequence", NULL_VAL);
+
+	fprintf(stderr, "Module requested unknown system class '%s', aborting\n", name);
+	abort();
+
+#undef GET_CLASS
 }

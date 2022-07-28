@@ -223,6 +223,10 @@ struct Parser {
 
 	// If a syntax or compile error has occurred.
 	bool hasError;
+
+	// Whether we're allowed to compile wrenc-internal stuff, as part of building our
+	// runtime library.
+	bool compilingInternal = false;
 };
 
 struct CompilerUpvalue {
@@ -3129,6 +3133,10 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	classInfo.isForeign = isForeign;
 	classInfo.name = className;
 
+	if (classInfo.IsSystemClass() && !compiler->parser->compilingInternal) {
+		error(compiler, "Cannot compile class which shares a name with system class '%s'", className.c_str());
+	}
+
 	// Copy any existing attributes into the class
 	// TODO enable this when attributes are implemented
 	// copyAttributes(compiler, classInfo.classAttributes);
@@ -3301,7 +3309,7 @@ IRNode *definition(Compiler *compiler) {
 	return statement(compiler);
 }
 
-IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool isExpression) {
+IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool isExpression, bool compilingCore) {
 	// Skip the UTF-8 BOM if there is one.
 	if (strncmp(source, "\xEF\xBB\xBF", 3) == 0)
 		source += 3;
@@ -3310,6 +3318,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	parser.context = context;
 	parser.module = module;
 	parser.source = source;
+	parser.compilingInternal = compilingCore;
 
 	parser.tokenStart = source;
 	parser.currentChar = source;
@@ -3367,6 +3376,11 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 			// maintain the illusion of classes being regular objects, eg for putting them in lists.
 			IRClass *classDecl = dynamic_cast<IRClass *>(node);
 			if (classDecl) {
+				// If this is a system class, it's special and we don't have to define it
+				if (classDecl->info->IsSystemClass()) {
+					continue;
+				}
+
 				IRGlobalDecl *global = module->AddVariable(classDecl->info->name);
 
 				// If the variable was already defined, check if it was implicitly defined

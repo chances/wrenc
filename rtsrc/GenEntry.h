@@ -3,5 +3,3 @@
 //
 
 #pragma once
-
-void setupGenEntry();

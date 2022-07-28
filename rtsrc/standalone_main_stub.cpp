@@ -6,7 +6,7 @@
 // Created by znix on 21/07/22.
 //
 
-#include "GenEntry.h"
+#include "WrenRuntime.h"
 #include "common/common.h"
 
 #include <stdio.h>
@@ -20,8 +20,7 @@ extern "C" wren_main_func_t wrenStandaloneMainFunc;
 __attribute__((weak)) wren_main_func_t wrenStandaloneMainFunc = nullptr;
 
 int main(int argc, char **argv) {
-	// TODO all initialisation stuff to a single function
-	setupGenEntry();
+	WrenRuntime::Initialise();
 
 	printf("Main func: %p\n", wrenStandaloneMainFunc);
 	Value result = wrenStandaloneMainFunc();
