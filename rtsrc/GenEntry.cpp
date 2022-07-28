@@ -11,6 +11,7 @@
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
+#include "ObjFibre.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
 #include "ObjNum.h"
@@ -28,6 +29,7 @@ Value wren_sys_var_Bool = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Object = NULL_VAL; // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Class = NULL_VAL;  // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Fn = NULL_VAL;     // NOLINT(readability-identifier-naming)
+Value wren_sys_var_Fiber = NULL_VAL;  // NOLINT(readability-identifier-naming)
 Value wren_sys_var_List = NULL_VAL;   // NOLINT(readability-identifier-naming)
 Value wren_sys_var_Num = NULL_VAL;    // NOLINT(readability-identifier-naming)
 Value wren_sys_var_String = NULL_VAL; // NOLINT(readability-identifier-naming)
@@ -197,6 +199,7 @@ void setupGenEntry() {
 	wren_sys_var_Object = CoreClasses::Instance()->Object().ToValue();
 	wren_sys_var_Class = CoreClasses::Instance()->RootClass().ToValue();
 	wren_sys_var_Fn = ObjFn::Class()->ToValue();
+	wren_sys_var_Fiber = ObjFibre::Class()->ToValue();
 	wren_sys_var_List = ObjList::Class()->ToValue();
 	wren_sys_var_Num = ObjNumClass::Instance()->ToValue();
 	wren_sys_var_String = ObjString::Class()->ToValue();
