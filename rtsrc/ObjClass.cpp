@@ -10,6 +10,7 @@
 
 static std::unordered_map<uint64_t, std::string> signatureNames;
 
+ObjClass::~ObjClass() = default;
 ObjClass::ObjClass() : Obj(nullptr) {}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {

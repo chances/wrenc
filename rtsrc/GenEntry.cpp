@@ -13,7 +13,11 @@
 #include "ObjFn.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
+#include "ObjMap.h"
+#include "ObjNull.h"
 #include "ObjNum.h"
+#include "ObjRange.h"
+#include "ObjSequence.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
 #include "WrenRuntime.h"
@@ -108,10 +112,10 @@ Value wren_init_class(const char *name, uint8_t *dataBlock) {
 
 		ObjClass *cls = (ObjClass *)get_object_value(wren_get_core_class_value(name));
 
-		// FIXME once we've implemented all the core classes, don't tolerate nulls here.
-		// Until that point though, just ignore these classes
-		if (cls == nullptr)
-			return NULL_VAL;
+		if (cls == nullptr) {
+			fprintf(stderr, "Supposed system class '%s' has null C++ version!\n", name);
+			abort();
+		}
 
 		for (const ClassDescription::MethodDecl &method : spec->methods) {
 			ObjClass *target = method.isStatic ? cls->type : cls;
@@ -228,12 +232,10 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("Num", ObjNumClass::Instance()->ToValue());
 	GET_CLASS("String", ObjString::Class()->ToValue());
 	GET_CLASS("System", CoreClasses::Instance()->System()->ToValue());
-
-	// TODO implement these classes, and once they're gone make wren_init_class not tolerate nulls
-	GET_CLASS("Range", NULL_VAL);
-	GET_CLASS("Null", NULL_VAL);
-	GET_CLASS("Map", NULL_VAL);
-	GET_CLASS("Sequence", NULL_VAL);
+	GET_CLASS("Range", ObjRange::Class()->ToValue());
+	GET_CLASS("Null", ObjNull::Class()->ToValue());
+	GET_CLASS("Map", ObjMap::Class()->ToValue());
+	GET_CLASS("Sequence", ObjSequence::Class()->ToValue());
 
 	fprintf(stderr, "Module requested unknown system class '%s', aborting\n", name);
 	abort();

@@ -65,6 +65,8 @@ class FunctionTable {
 /// object classes in Wren / (see the diagram in the file header for more information)
 class ObjClass : public Obj {
   public:
+	virtual ~ObjClass() override;
+
 	/// Create a new ObjClass. It's parent class is left at nullptr which is invalid, you're
 	/// supposed to set that up after calling this.
 	ObjClass();
