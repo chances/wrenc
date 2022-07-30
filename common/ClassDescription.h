@@ -14,6 +14,7 @@ class ClassDescription {
 		END = 0,
 		ADD_METHOD,
 		ADD_FIELD,
+		MARK_SYSTEM_CLASS,
 	};
 
 	static constexpr uint32_t FLAG_NONE = 0;
@@ -31,6 +32,7 @@ class ClassDescription {
 
 	void Parse(uint8_t *data);
 
+	bool isSystemClass = false;
 	std::vector<MethodDecl> methods;
 	std::vector<FieldDecl> fields;
 };

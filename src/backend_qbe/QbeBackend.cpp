@@ -79,6 +79,11 @@ std::string QbeBackend::Generate(Module *module) {
 
 		Print("section \".data\" data $class_desc_{} = {{", cls->info->name);
 
+		// If this class is supposed to add methods to one of the C++ classes, set that up
+		if (cls->info->IsSystemClass()) {
+			Print("w {} {},", (int)Cmd::MARK_SYSTEM_CLASS, 0);
+		}
+
 		// Emit a block for each method
 		auto writeMethods = [this](const ClassInfo::MethodMap &methods, bool isStatic) {
 			for (const auto &[sig, method] : methods) {

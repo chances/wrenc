@@ -98,6 +98,29 @@ Value wren_init_class(const char *name, uint8_t *dataBlock) {
 	std::unique_ptr<ClassDescription> spec = std::make_unique<ClassDescription>();
 	spec->Parse(dataBlock);
 
+	// System classes poke their methods into the parent class
+	if (spec->isSystemClass) {
+		// Adding and using fields is off the table, as the class layout is defined in C++
+		if (!spec->fields.empty()) {
+			fprintf(stderr, "Supposed system class '%s' cannot add fields!\n", name);
+			abort();
+		}
+
+		ObjClass *cls = (ObjClass *)get_object_value(wren_get_core_class_value(name));
+
+		// FIXME once we've implemented all the core classes, don't tolerate nulls here.
+		// Until that point though, just ignore these classes
+		if (cls == nullptr)
+			return NULL_VAL;
+
+		for (const ClassDescription::MethodDecl &method : spec->methods) {
+			ObjClass *target = method.isStatic ? cls->type : cls;
+			// TODO don't overwrite functions defined in the C++ class, they should be preferred for performance
+			target->AddFunction(method.name, method.func);
+		}
+		return NULL_VAL;
+	}
+
 	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name, std::move(spec));
 
 	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
@@ -206,7 +229,7 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("String", ObjString::Class()->ToValue());
 	GET_CLASS("System", CoreClasses::Instance()->System()->ToValue());
 
-	// TODO implement these classes
+	// TODO implement these classes, and once they're gone make wren_init_class not tolerate nulls
 	GET_CLASS("Range", NULL_VAL);
 	GET_CLASS("Null", NULL_VAL);
 	GET_CLASS("Map", NULL_VAL);

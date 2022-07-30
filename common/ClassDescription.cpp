@@ -49,6 +49,10 @@ void ClassDescription::Parse(uint8_t *data) {
 			});
 			break;
 		}
+		case Command::MARK_SYSTEM_CLASS: {
+			isSystemClass = true;
+			break;
+		}
 		default:
 			fprintf(stderr, "Invalid class description command %d\n", (int)cmd->command);
 			abort();
