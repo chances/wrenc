@@ -243,11 +243,37 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	}
 
 	Print("# Register classes");
+
+	Print("# Get true and false pointers, and system class pointers");
+	Print("%true_value =l call $wren_get_bool_value(w 1)");
+	Print("storel %true_value, $wren_sys_bool_true");
+	Print("%false_value =l call $wren_get_bool_value(w 0)");
+	Print("storel %false_value, $wren_sys_bool_false");
+	for (const auto &[name, id] : ExprSystemVar::SYSTEM_VAR_NAMES) {
+		Print("%sys_class_{} =l call $wren_get_core_class_value({} {})", name, PTR_TYPE, GetStringPtr(name));
+		Print("storel %sys_class_{}, $wren_sys_var_{}", name, name);
+	}
+
+	// Load ObjClass once, since we'll probably use it quite a bit
+	VLocal *objClass = AddTemporary("obj_class");
+	Print("%{} =l loadl $wren_sys_var_Object", objClass->name);
+
 	for (IRClass *cls : module->GetClasses()) {
+		VLocal *supertypeLocal;
+		if (cls->info->parentClass) {
+			Snippet *supertypeSnippet = VisitExpr(cls->info->parentClass);
+			for (const std::string &line : supertypeSnippet->lines) {
+				Print("{}", line);
+			}
+			supertypeLocal = supertypeSnippet->result;
+		} else {
+			supertypeLocal = objClass;
+		}
+
 		std::string varName = fmt::format("tmp_class_{}", cls->info->name);
 		std::string classNameSym = GetStringPtr(cls->info->name);
-		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{})", varName, PTR_TYPE, classNameSym, PTR_TYPE,
-		      cls->info->name);
+		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{}, l %{})", varName, PTR_TYPE, classNameSym,
+		      PTR_TYPE, cls->info->name, supertypeLocal->name);
 
 		// System classes are registered, but we don't do anything with the result - we're just telling C++ what
 		// methods exist on them.
@@ -275,16 +301,6 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 
 	Print("# Register signatures table");
 	Print("call $wren_register_signatures_table({} $signatures_table_{})", PTR_TYPE, moduleName);
-
-	Print("# Get true and false pointers, and system class pointers");
-	Print("%true_value =l call $wren_get_bool_value(w 1)");
-	Print("storel %true_value, $wren_sys_bool_true");
-	Print("%false_value =l call $wren_get_bool_value(w 0)");
-	Print("storel %false_value, $wren_sys_bool_false");
-	for (const auto &[name, id] : ExprSystemVar::SYSTEM_VAR_NAMES) {
-		Print("%sys_class_{} =l call $wren_get_core_class_value({} {})", name, PTR_TYPE, GetStringPtr(name));
-		Print("storel %sys_class_{}, $wren_sys_var_{}", name, name);
-	}
 
 	Print("ret");
 	m_inFunction = false;

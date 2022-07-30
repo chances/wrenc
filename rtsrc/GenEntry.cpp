@@ -24,6 +24,7 @@
 #include "common.h"
 #include "common/ClassDescription.h"
 
+#include <inttypes.h>
 #include <string.h>
 #include <vector>
 
@@ -35,7 +36,7 @@ extern "C" {
 EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
 EXPORT Value wren_init_string_literal(const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
-EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock);
+EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue);
 EXPORT Value wren_alloc_obj(Value classVar);
 EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
@@ -98,9 +99,27 @@ void wren_register_signatures_table(const char *signatures) {
 	}
 }
 
-Value wren_init_class(const char *name, uint8_t *dataBlock) {
+Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue) {
 	std::unique_ptr<ClassDescription> spec = std::make_unique<ClassDescription>();
 	spec->Parse(dataBlock);
+
+	if (!is_object(parentClassValue)) {
+		fprintf(stderr, "Invalid non-object parent class for '%s': 0x%" PRIx64 "\n", name, (uint64_t)parentClassValue);
+		abort();
+	}
+
+	Obj *parentClassObj = get_object_value(parentClassValue);
+	if (!parentClassObj) {
+		fprintf(stderr, "Cannot inherit null parent class for '%s'\n", name);
+		abort();
+	}
+
+	ObjClass *parentClass = dynamic_cast<ObjClass *>(parentClassObj);
+	if (!parentClass) {
+		fprintf(stderr, "Cannot inherit from non-class object '%s' for '%s'\n", parentClassObj->type->name.c_str(),
+		        name);
+		abort();
+	}
 
 	// System classes poke their methods into the parent class
 	if (spec->isSystemClass) {
@@ -125,7 +144,7 @@ Value wren_init_class(const char *name, uint8_t *dataBlock) {
 		return NULL_VAL;
 	}
 
-	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name, std::move(spec));
+	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name, std::move(spec), parentClass);
 
 	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
 		ObjClass *target = method.isStatic ? cls->type : cls;

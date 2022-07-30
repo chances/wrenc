@@ -91,6 +91,15 @@ class ObjClass : public Obj {
 	/// For metaclasses, this always points to the root 'Class' class.
 	ObjClass *parentClass = nullptr;
 
+	/// Can this object be subclassed by a Wren object? This can only be safely set to true if
+	/// the C++ class doesn't have any custom fields, as the class will actually be stored in
+	/// memory as a ObjManaged instance, and wrongly casted to this type when a super method
+	/// is called.
+	/// Defaults to false, since this is quite a specialised thing to do.
+	/// Note that Obj can be safely subclassed, but this returns false by default to protect
+	/// any other classes from accidentally allowing this.
+	virtual bool CanScriptSubclass();
+
 	/// Find a virtual function in the virtual function table. Returns nullptr if it's not found.
 	FunctionTable::Entry *LookupMethod(SignatureId signature);
 

@@ -6,6 +6,8 @@
 
 #include "Obj.h"
 
+/// This doesn't have any special C++ functionality, it's just a common supertype that some C++ classes extend, and
+/// thus itself has to live in C++.
 class ObjSequence : public Obj {
   public:
 	static ObjClass *Class();

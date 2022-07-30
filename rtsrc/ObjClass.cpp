@@ -83,6 +83,8 @@ void ObjClass::AddFunction(const std::string &signature, void *funcPtr) {
 	definedFunctions.push_back(&entry);
 }
 
+bool ObjClass::CanScriptSubclass() { return false; }
+
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName, ObjClass *parent,
                                bool inheritParentMethods) {
 	parentClass = parent ? parent : &CoreClasses::Instance()->Object();

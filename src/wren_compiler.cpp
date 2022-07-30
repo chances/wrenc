@@ -3117,11 +3117,12 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	std::string className = compiler->parser->previous.contents;
 
 	// Load the superclass (if there is one).
+	IRExpr *parentTypeExpr;
 	if (match(compiler, TOKEN_IS)) {
-		parsePrecedence(compiler, PREC_CALL);
+		parentTypeExpr = parsePrecedence(compiler, PREC_CALL);
 	} else {
 		// Implicitly inherit from Object.
-		loadCoreVariable(compiler, "Object");
+		parentTypeExpr = nullptr;
 	}
 
 	// Push a local variable scope. Static fields in a class body are hoisted out
@@ -3132,6 +3133,7 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	ClassInfo &classInfo = *classNode->info;
 	classInfo.isForeign = isForeign;
 	classInfo.name = className;
+	classInfo.parentClass = parentTypeExpr;
 
 	if (classInfo.IsSystemClass() && !compiler->parser->compilingInternal) {
 		error(compiler, "Cannot compile class which shares a name with system class '%s'", className.c_str());

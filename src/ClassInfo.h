@@ -32,6 +32,9 @@ class ClassInfo {
 	// The name of the class.
 	std::string name;
 
+	// The variable storing the class's supertype, or nullptr for Object.
+	IRExpr *parentClass = nullptr;
+
 	// Attributes are currently not implemented, but this would be needed for them:
 	// // Attributes for the class itself
 	// ObjMap *classAttributes;

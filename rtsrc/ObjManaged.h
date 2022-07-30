@@ -34,7 +34,7 @@ class ObjManagedMetaClass : public ObjClass {
 /// Represents the class of an object defined in Wren
 class ObjManagedClass : public ObjClass {
   public:
-	ObjManagedClass(const std::string &name, std::unique_ptr<ClassDescription> spec, ObjManagedClass *parent = nullptr);
+	ObjManagedClass(const std::string &name, std::unique_ptr<ClassDescription> spec, ObjClass *parent);
 	~ObjManagedClass();
 
 	ObjManagedMetaClass meta;
