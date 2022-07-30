@@ -25,6 +25,8 @@ OPERATOR_TYPES = {
     "LessThanEq": "<=",
     "GreaterThan": ">",
     "GreaterThanEq": ">=",
+
+    "BoolNegate": "!",
 }
 NUMBER_CLASS = "ObjNumClass"
 

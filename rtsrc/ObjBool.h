@@ -21,6 +21,7 @@ class ObjBool : public Obj {
 	static ObjClass *Class();
 
 	WREN_METHOD(getter) std::string ToString();
+	WREN_METHOD(getter) bool OperatorBoolNegate();
 
   private:
 	ObjBool(bool value);

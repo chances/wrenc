@@ -18,3 +18,5 @@ ObjClass *ObjBool::Class() {
 }
 
 std::string ObjBool::ToString() { return m_value ? "true" : "false"; }
+
+bool ObjBool::OperatorBoolNegate() { return !m_value; }
