@@ -14,6 +14,8 @@ class ObjNumClass : public ObjNativeClass {
 	~ObjNumClass();
 	ObjNumClass();
 
+	bool InheritsMethods() override;
+
 	static ObjNumClass *Instance();
 
 	WREN_METHOD() bool Is(double receiver, ObjClass *cls);

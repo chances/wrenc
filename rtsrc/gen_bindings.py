@@ -29,6 +29,7 @@ OPERATOR_TYPES = {
     "BoolNegate": "!",
 }
 NUMBER_CLASS = "ObjNumClass"
+ROOT_CLASS = "Obj"
 
 
 @dataclass
@@ -266,6 +267,12 @@ def generate(output: TextIO, files: List[str]):
 
                     output.write(f"static Value {method.method_name()}_va{num}({args}) {'{'} {body} {'}'}\n")
 
+        # For Obj it's special and it's Bind call gets run after everything else, so it mustn't overwrite anything.
+        # This is achieved by supplying a third argument to AddFunction
+        overwrite = ""
+        if cls.name == ROOT_CLASS:
+            overwrite = ", false"
+
         output.write(f"static void register_{cls.name}(ObjClass *cls, bool isMeta) {'{'}\n")
         for method in cls.methods:
             if method.static:
@@ -274,7 +281,8 @@ def generate(output: TextIO, files: List[str]):
                 meta_requirement = "!isMeta"
             output.write(f"\tif ({meta_requirement})\n")
             if not method.special_type == 'variadic':
-                output.write(f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()});\n")
+                output.write(
+                    f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()}{overwrite});\n")
                 continue
 
             # Write out all the variadic functions
@@ -288,7 +296,8 @@ def generate(output: TextIO, files: List[str]):
                 signature += ",".join(["_"] * num)
                 signature += ")"  # Put the bracket back on
 
-                output.write(f"\t\tcls->AddFunction(\"{signature}\", (void*){method.method_name()}_va{num});\n")
+                output.write(
+                    f"\t\tcls->AddFunction(\"{signature}\", (void*){method.method_name()}_va{num}{overwrite});\n")
             output.write("\t}\n")
 
         output.write("}\n")

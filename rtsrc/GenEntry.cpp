@@ -136,10 +136,18 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 			abort();
 		}
 
+		// Set up the parent field, this is later used in WrenRuntime::Initialise to set up all the inherited functions
+		if (cls->parentClass != nullptr) {
+			fprintf(stderr, "System class '%s' already has a parent set!\n", name);
+			abort();
+		}
+		cls->parentClass = parentClass;
+
 		for (const ClassDescription::MethodDecl &method : spec->methods) {
 			ObjClass *target = method.isStatic ? cls->type : cls;
-			// TODO don't overwrite functions defined in the C++ class, they should be preferred for performance
-			target->AddFunction(method.name, method.func);
+			// Pass false so we don't overwrite functions defined in the C++ class, as they should
+			// be preferred for performance.
+			target->AddFunction(method.name, method.func, false);
 		}
 		return NULL_VAL;
 	}

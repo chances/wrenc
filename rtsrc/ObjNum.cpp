@@ -7,12 +7,14 @@
 ObjNumClass::~ObjNumClass() {}
 
 // Don't inherit methods from our parent, since we have the funny thing with the number receivers
-ObjNumClass::ObjNumClass() : ObjNativeClass("Num", "ObjNumClass", nullptr, false) {}
+ObjNumClass::ObjNumClass() : ObjNativeClass("Num", "ObjNumClass") {}
 
 ObjNumClass *ObjNumClass::Instance() {
 	static ObjNumClass cls;
 	return &cls;
 }
+
+bool ObjNumClass::InheritsMethods() { return false; }
 
 // Clang-tidy will think all these functions can be made static, which we don't want
 // NOLINTBEGIN(readability-convert-member-functions-to-static)

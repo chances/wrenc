@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 
+class WrenRuntime;
+
 /// Basically this forms a hashmap for all the function signatures.
 class FunctionTable {
   public:
@@ -100,11 +102,15 @@ class ObjClass : public Obj {
 	/// any other classes from accidentally allowing this.
 	virtual bool CanScriptSubclass();
 
+	/// Does this class inherit methods from it's parent class? Defaults to true, used by Num which
+	/// has it's own special members because it's generally just special.
+	virtual bool InheritsMethods();
+
 	/// Find a virtual function in the virtual function table. Returns nullptr if it's not found.
 	FunctionTable::Entry *LookupMethod(SignatureId signature);
 
 	/// Add a function to this class. This should only be used for initialising new classes.
-	void AddFunction(const std::string &signature, void *funcPtr);
+	void AddFunction(const std::string &signature, void *funcPtr, bool shouldOverride = true);
 
 	/// See [hash_util::findSignatureId].
 	/// This also registers the signature into our hash-to-name lookup table
@@ -115,6 +121,11 @@ class ObjClass : public Obj {
 	/// if we've never seen the / signature before and don't know what it's name is, it'll
 	/// be returned as a hex value. With allowUnknown not set, we'll crash if we don't know what it is.
 	static std::string LookupSignatureFromId(SignatureId id, bool allowUnknown);
+
+  protected:
+	/// Get a pointer to an entry in the function table. If this entry doesn't exist, the pointer to the
+	/// next unoccupied slot is returned.
+	FunctionTable::Entry *FindFunctionTableEntry(SignatureId signature);
 };
 
 /// Class used to define types in C++
@@ -126,8 +137,7 @@ class ObjNativeClass : public ObjClass {
 	/// @arg parent      The class to inherit from. Defaults to nullptr, which means Obj.
 	/// @arg inheritParentMethods  Whether or not to inherit methods from the parent class. Should almost always be
 	///                            left at the default value of true.
-	ObjNativeClass(const std::string &name, const std::string &bindingName, ObjClass *parent = nullptr,
-	               bool inheritParentMethods = true);
+	ObjNativeClass(const std::string &name, const std::string &bindingName);
 
   protected:
 	/// Bind all the auto-generated method adapters to this class. Call it with
@@ -138,4 +148,7 @@ class ObjNativeClass : public ObjClass {
 
   private:
 	ObjClass m_defaultMetaClass;
+
+	static void FinaliseSetup(); // Called by WrenRuntime once the wren_core setup code has run
+	friend WrenRuntime;
 };

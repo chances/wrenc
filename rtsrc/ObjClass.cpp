@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 static std::unordered_map<uint64_t, std::string> signatureNames;
+static std::vector<ObjNativeClass *> nativeClasses;
 
 ObjClass::~ObjClass() = default;
 ObjClass::ObjClass() : Obj(nullptr) {}
@@ -61,33 +62,47 @@ FunctionTable::Entry *ObjClass::LookupMethod(SignatureId signature) {
 	}
 }
 
-void ObjClass::AddFunction(const std::string &signature, void *funcPtr) {
+void ObjClass::AddFunction(const std::string &signature, void *funcPtr, bool shouldOverride) {
 	SignatureId id = FindSignatureId(signature);
 
+	// Insert the function into the function table, then point definedFunctions to that entry
+	// This function returns the slot of a function that already exists, so we can override methods with it.
+	FunctionTable::Entry *entry = FindFunctionTableEntry(id);
+
+	if (!shouldOverride && entry->func != nullptr)
+		return;
+
+	entry->func = funcPtr;
+	entry->signature = id;
+	definedFunctions.push_back(entry);
+}
+
+FunctionTable::Entry *ObjClass::FindFunctionTableEntry(SignatureId signature) {
 	// Put the function in the first free slot
-	uint64_t idx = id % FunctionTable::NUM_ENTRIES;
+	uint64_t idx = signature % FunctionTable::NUM_ENTRIES;
 	while (true) {
+		// If there is no matching entry, pick the first empty slot.
 		if (!functions.entries[idx].func)
 			break;
 
-		// TODO do this properly
+		// If there is a matching entry, pick it.
+		if (functions.entries[idx].signature == signature)
+			break;
+
+		// TODO wrap around to the start
 		idx++;
 		if (idx >= FunctionTable::NUM_ENTRIES)
 			abort();
 	}
 
-	FunctionTable::Entry &entry = functions.entries[idx];
-	entry.func = funcPtr;
-	entry.signature = id;
-
-	definedFunctions.push_back(&entry);
+	return &functions.entries[idx];
 }
 
 bool ObjClass::CanScriptSubclass() { return false; }
 
-ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName, ObjClass *parent,
-                               bool inheritParentMethods) {
-	parentClass = parent ? parent : &CoreClasses::Instance()->Object();
+bool ObjClass::InheritsMethods() { return true; }
+
+ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
 	type = &m_defaultMetaClass;
 	this->name = name;
 
@@ -95,16 +110,39 @@ ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindi
 	m_defaultMetaClass.parentClass = m_defaultMetaClass.type = &CoreClasses::Instance()->RootClass();
 	m_defaultMetaClass.isMetaClass = true;
 
-	// If we should inherit the methods from our parent, then copy them over.
-	// ObjClass doesn't automatically bind it's methods though, so in that case initialise them ourselves
-	if (inheritParentMethods) {
-		if (parentClass == &CoreClasses::Instance()->Object()) {
-			Bind(this, "Obj", false);
-		} else {
-			functions = parentClass->functions;
-		}
-	}
-
 	Bind(this, bindingName, false);
 	Bind(&m_defaultMetaClass, bindingName, true);
+
+	nativeClasses.push_back(this);
+}
+
+void ObjNativeClass::FinaliseSetup() {
+	// Guard against running twice
+	static bool initialised = false;
+	if (initialised)
+		abort();
+	initialised = true;
+
+	for (ObjNativeClass *cls : nativeClasses) {
+		if (!cls->InheritsMethods())
+			continue;
+
+		for (ObjClass *parent = cls->parentClass; parent; parent = parent->parentClass) {
+			for (FunctionTable::Entry *superEntry : parent->definedFunctions) {
+				// If this function hasn't already been defined, then copy in it's definition
+				// We do this starting from the parent and going in the direction of grandparents, so this will
+				// locate the best match. If A extends B and both need a method copied like this it doesn't
+				// matter what order they're finalised in, as A will either copy from B or use the same search
+				// logic to find the method from (eg) C instead.
+				FunctionTable::Entry *clsEntry = cls->FindFunctionTableEntry(superEntry->signature);
+				if (clsEntry->func == nullptr) {
+					*clsEntry = *superEntry;
+				}
+			}
+		}
+
+		// As a special case, last of all, bind the Obj methods
+		// These are special, in that they don't override methods already defined
+		Bind(cls, "Obj", false);
+	}
 }
