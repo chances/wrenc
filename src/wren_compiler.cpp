@@ -2261,7 +2261,7 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 
 	// If the condition is false, jump to the 2nd term
 	StmtJump *jumpToFalse = compiler->AddNew<StmtJump>(block);
-	jumpToFalse->condition = loadVariable(compiler, tmp);
+	jumpToFalse->condition = condition;
 	jumpToFalse->jumpOnFalse = true;
 
 	// Compile the then branch.
@@ -2277,7 +2277,8 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 	// Compile the else branch.
 	jumpToFalse->target = compiler->AddNew<StmtLabel>(block, "condition-start-to-else");
 
-	parsePrecedence(compiler, PREC_ASSIGNMENT);
+	IRExpr *falseValue = parsePrecedence(compiler, PREC_ASSIGNMENT);
+	compiler->AddNew<StmtAssign>(block, tmp, falseValue);
 
 	// Patch the jump over the else.
 	trueToEnd->target = compiler->AddNew<StmtLabel>(block, "condition-true-to-end");
