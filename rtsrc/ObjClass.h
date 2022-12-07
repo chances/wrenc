@@ -46,8 +46,8 @@ class WrenRuntime;
 class FunctionTable {
   public:
 	struct Entry {
-		void *func;
-		SignatureId signature;
+		void *func = nullptr;
+		SignatureId signature = {};
 	};
 
 	/// 256 entries sounds like a reasonable number, though we might need to add a way to tweak it later.
@@ -58,7 +58,7 @@ class FunctionTable {
 	/// 2. Check if entry->func is null, if so the function doesn't exist
 	/// 3. Check if entry->signatureId == signatureId, if so we've found the entry
 	/// 4. Advance to the next entry in the array (wrapping around) and go to step 2.
-	Entry entries[256];
+	Entry entries[256] = {};
 
 	static constexpr unsigned int NUM_ENTRIES = sizeof(entries) / sizeof(entries[0]);
 };

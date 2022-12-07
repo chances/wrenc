@@ -8,7 +8,7 @@
 #include <string>
 
 struct SignatureId {
-	uint64_t id;
+	uint64_t id = 0;
 
 	operator uint64_t() const { return id; }
 };
@@ -17,7 +17,8 @@ namespace hash_util {
 
 /// Setting p=1e-6 (one-in-a-million) gives us about six million signatures. This means that
 /// in a programme with six million signatures there's about a one-in-a-million chance of a
-/// collision. And for the collision to do anything, the colliding signatures
+/// collision. And for the collision to do anything, the colliding signatures must both be
+/// defined in a given class (or it's superclass).
 /// Find the hash of the signature, to get an ID to be used for identifying functions.
 /// To avoid having to build a global table of function-to-ID mappings (which would make
 /// compiling modules independently harder, or involve a special linking step) we hash the

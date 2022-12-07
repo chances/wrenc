@@ -57,6 +57,11 @@ std::string Obj::ToString(Value value) {
 bool Obj::OperatorEqualTo(Value other) { return other == encode_object(this); }
 bool Obj::OperatorNotEqual(Value other) { return !OperatorEqualTo(other); }
 
+bool Obj::OperatorBoolNegate() {
+	// Same as in Wren, see in wren_core.c: object_not
+	return false;
+}
+
 bool Obj::Is(ObjClass *cls) {
 	// Walk through the type hierarchy and see if we are or extend the specified class
 	ObjClass *iter = type;

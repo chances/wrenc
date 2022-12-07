@@ -10,7 +10,7 @@
 
 class ClassDescription {
   public:
-	enum class Command {
+	enum class Command : uint32_t {
 		END = 0,
 		ADD_METHOD,
 		ADD_FIELD,

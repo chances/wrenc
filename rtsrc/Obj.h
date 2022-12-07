@@ -44,6 +44,7 @@ class Obj {
 	// By default, compare identity
 	WREN_METHOD() bool OperatorEqualTo(Value other);
 	WREN_METHOD() bool OperatorNotEqual(Value other);
+	WREN_METHOD(getter) bool OperatorBoolNegate();
 	WREN_METHOD() bool Is(ObjClass *cls);
 
 	/// Helper method to make a virtual call to the toString function

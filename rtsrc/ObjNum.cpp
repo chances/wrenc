@@ -38,6 +38,12 @@ std::string ObjNumClass::ToString(double receiver) {
 
 double ObjNumClass::OperatorMinus(double receiver) { return -receiver; }
 
+bool ObjNumClass::OperatorBoolNegate(double receiver) {
+	// Also return false, since numbers are 'truthy' values (same as everything except (IIRC) null and false).
+	// Define here since Obj's methods aren't inherited.
+	return false;
+}
+
 double ObjNumClass::OperatorPlus(double receiver, double other) { return receiver + other; }
 double ObjNumClass::OperatorMinus(double receiver, double other) { return receiver - other; }
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }

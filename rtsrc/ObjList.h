@@ -17,9 +17,12 @@ class ObjList : public Obj {
 
 	static ObjClass *Class();
 
+	void ValidateIndex(int index);
+
 	WREN_METHOD() static ObjList *New();
 
 	WREN_METHOD() Value Add(Value toAdd);
+	WREN_METHOD() Value Insert(int index, Value toAdd);
 
 	WREN_METHOD() std::string Join();
 	WREN_METHOD() std::string Join(std::string joiner);
