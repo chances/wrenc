@@ -22,8 +22,6 @@ __attribute__((weak)) wren_main_func_t wrenStandaloneMainFunc = nullptr;
 int main(int argc, char **argv) {
 	WrenRuntime::Initialise();
 
-	printf("Main func: %p\n", wrenStandaloneMainFunc);
-	Value result = wrenStandaloneMainFunc();
-	printf("Result: %lx\n", result);
+	wrenStandaloneMainFunc();
 	return 0;
 }
