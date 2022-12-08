@@ -7,7 +7,9 @@
 
 ObjSystem::ObjSystem() : ObjNativeClass("System", "ObjSystem") {}
 
-void ObjSystem::Print(Value value) {
-	std::string str = Obj::ToString(value);
-	printf("System print: %s\n", str.c_str());
+void ObjSystem::WriteString_(std::string value) {
+	int result = write(1 /* stdout */, value.c_str(), value.size());
+	if (result != value.size()) {
+		abort();
+	}
 }
