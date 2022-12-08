@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <sstream>
 
-static const std::string QBE_PATH = "./lib/qbe-1.0/qbe_bin";
+static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
@@ -121,9 +121,9 @@ int main(int argc, char **argv) {
 			std::string shortOpt, longOpt, help;
 			std::tie(shortOpt, longOpt, help) = tuple;
 
-			while (shortOpt.size() < maxLengths[0])
+			while ((int)shortOpt.size() < maxLengths[0])
 				shortOpt.push_back(' ');
-			while (longOpt.size() < maxLengths[1])
+			while ((int)longOpt.size() < maxLengths[1])
 				longOpt.push_back(' ');
 
 			fmt::print(" {} {}  {}\n", shortOpt, longOpt, help);
@@ -274,9 +274,12 @@ static int runQbe(std::string qbeIr) {
 		fmt::print(stderr, "Cannot crate temporary QBE assembly file");
 	}
 
+	// Find the path to QBE, relative to this executable
+	std::string qbePath = compilerInstallDir + "/" + QBE_PATH;
+
 	// Run the programme
 	RunProgramme prog;
-	prog.args.push_back(QBE_PATH);
+	prog.args.push_back(qbePath);
 	prog.args.push_back("-o");
 	prog.args.push_back(filenameForFd(tmpFd));
 	prog.preservedFDs.push_back(tmpFd);
@@ -302,7 +305,7 @@ static void runAssembler(const std::vector<int> &assemblyFDs, const std::string 
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles) {
 	RunProgramme prog;
 	prog.args.push_back("/usr/bin/env");
-	prog.args.push_back("ld.gold"); // Not everyone has lld, and gold is fast enough for now
+	prog.args.push_back("ld"); // Using gold or lld would be good, but -lc seems to look for i386 libs on Gentoo/gold?
 	prog.args.push_back("-o");
 	prog.args.push_back(executableFile);
 
