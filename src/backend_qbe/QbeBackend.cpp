@@ -787,7 +787,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 		// Intentionally, we pass in the pointer to the list head, and not the value - the create closure function
 		// modifies the value on the stack in order to add this closure to the list.
 		listHead = AddTemporary("closure_list_head_" + node->func->debugName);
-		snip->Add("%{} =l add %stack_locals, {}", listHead->name, chainPos->second * sizeof(VLocal));
+		snip->Add("%{} =l add %stack_locals, {}", listHead->name, chainPos->second * sizeof(Value));
 	}
 
 	// And use the description object to request a new closure over it
@@ -907,7 +907,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues 
 			VLocal *valuePtr = AddTemporary("upvalue_ptr_" + relocation.local->name);
 			VLocal *value = AddTemporary("upvalue_" + relocation.local->name);
 			snip->Add("%{} ={} add %stack_locals, {}", valuePtr->name, PTR_TYPE,
-			          relocation.variableStackPos * sizeof(VLocal));
+			          relocation.variableStackPos * sizeof(Value));
 			snip->Add("%{} =l loadl %{}", value->name, valuePtr->name);
 
 			// Store the value into the relocation memory
