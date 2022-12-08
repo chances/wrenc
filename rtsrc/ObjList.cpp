@@ -3,6 +3,7 @@
 //
 
 #include "ObjList.h"
+#include "ObjBool.h"
 #include "ObjClass.h"
 #include "WrenRuntime.h"
 
@@ -61,8 +62,12 @@ std::string ObjList::Join(std::string joiner) {
 }
 
 Value ObjList::Iterate(Value current) {
-	if (current == NULL_VAL)
+	if (current == NULL_VAL) {
+		// Return zero to start iterating, but only if the list is not empty
+		if (items.empty())
+			return encode_object(ObjBool::Get(false));
 		return 0;
+	}
 
 	if (is_object(current)) {
 		// Already checked for null so this is safe
@@ -72,12 +77,18 @@ Value ObjList::Iterate(Value current) {
 	}
 
 	int i = get_number_value(current);
+
+	// If the index is invalid, we're supposed to return false. Only check the lower bound here, since
+	// we'll check the upper bound after incrementing.
+	if (i < 0)
+		return encode_object(ObjBool::Get(false));
+
 	i++;
 
-	// Returning null stops the loop. Do this after incrementing i since the value we return will be passed
+	// Returning false stops the loop. Do this after incrementing i since the value we return will be passed
 	// directly into items.at, which fails if i==items.size().
 	if (i >= (int)items.size())
-		return NULL_VAL;
+		return encode_object(ObjBool::Get(false));
 
 	return encode_number(i);
 }
