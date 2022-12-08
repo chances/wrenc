@@ -15,4 +15,6 @@ class ObjNull : public Obj {
 	ObjNull() = delete;
 
 	static ObjClass *Class();
+
+	WREN_METHOD(getter) std::string ToString();
 };

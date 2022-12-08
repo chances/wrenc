@@ -29,6 +29,7 @@ OPERATOR_TYPES = {
     "BoolNegate": "!",
 }
 NUMBER_CLASS = "ObjNumClass"
+NULL_CLASS = "ObjNull"
 ROOT_CLASS = "Obj"
 
 
@@ -188,8 +189,10 @@ def generate(output: TextIO, files: List[str]):
             debug_sig = cls.name + "." + method.signature()
             output.write(f"static Value {method.method_name()}({receiver_def}{args_str}) {'{'}\n")
 
-            # Convert the receiver (if not static or the number class)
-            if not method.static and not is_num_class:
+            # Convert the receiver (if not static or the null or number class)
+            if cls.name == NULL_CLASS:
+                output.write(f"\t{cls.name} *obj = nullptr;\n")
+            elif not method.static and not is_num_class:
                 output.write(f"\t{cls.name} *obj = checkReceiver<{cls.name}>(\"{debug_sig}\", receiver);\n")
 
             for i, arg in enumerate(method.args):

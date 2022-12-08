@@ -14,3 +14,5 @@ ObjClass *ObjNull::Class() {
 	static ObjNullClass cls;
 	return &cls;
 }
+
+std::string ObjNull::ToString() { return "null"; }

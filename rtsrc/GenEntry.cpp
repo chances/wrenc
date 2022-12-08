@@ -54,12 +54,11 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 	if (is_object(receiver)) {
 		Obj *object = (Obj *)get_object_value(receiver);
-		if (!object) {
-			std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-			fprintf(stderr, "Cannot call method '%s' on null receiver\n", name.c_str());
-			abort();
+		if (object) {
+			type = object->type;
+		} else {
+			type = ObjNull::Class();
 		}
-		type = object->type;
 	} else {
 		// If it's not an object it must be a number, so say the receiver's type happens to be that
 		type = ObjNumClass::Instance();
