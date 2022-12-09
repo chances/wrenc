@@ -22,9 +22,12 @@ ObjClass *ObjList::Class() {
 	return &cls;
 }
 
-void ObjList::ValidateIndex(int index) {
-	if (index < 0 || index >= (int)items.size())
+void ObjList::ValidateIndex(int index, const char *argName) {
+	if (index < 0 || index >= (int)items.size()) {
+		// TODO throw Wren error with this exact message
+		fprintf(stderr, "%s out of bounds.\n", argName);
 		abort();
+	}
 }
 
 ObjList *ObjList::New() { return WrenRuntime::Instance().New<ObjList>(); }
@@ -41,8 +44,8 @@ Value ObjList::Insert(int index, Value toAdd) {
 	}
 
 	// Inserting an item at the end is fine
-	if (items.size() != index)
-		ValidateIndex(index);
+	if ((int)items.size() != index)
+		ValidateIndex(index, "Index");
 
 	items.insert(items.begin() + index, toAdd);
 	return toAdd;

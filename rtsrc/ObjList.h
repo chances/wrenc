@@ -17,7 +17,7 @@ class ObjList : public Obj {
 
 	static ObjClass *Class();
 
-	void ValidateIndex(int index);
+	void ValidateIndex(int index, const char *argName);
 
 	WREN_METHOD() static ObjList *New();
 
