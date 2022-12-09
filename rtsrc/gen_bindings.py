@@ -28,6 +28,8 @@ OPERATOR_TYPES = {
 
     "BoolNegate": "!",
 }
+OPERATOR_SUBSCRIPT = "OperatorSubscript"
+OPERATOR_SUBSCRIPT_SET = "OperatorSubscriptSet"
 NUMBER_CLASS = "ObjNumClass"
 NULL_CLASS = "ObjNull"
 ROOT_CLASS = "Obj"
@@ -69,6 +71,22 @@ class Method:
     def signature(self) -> str:
         arg_part = ",".join(["_"] * self.arity())
         name = self.name
+
+        # Subscripts are special
+        if self.name == OPERATOR_SUBSCRIPT or self.name == OPERATOR_SUBSCRIPT_SET:
+            setter = self.name == OPERATOR_SUBSCRIPT_SET
+
+            # Getters take the form [_,_,_] and setters take the form [_,_,_]=(_) - thus calculate
+            # the number of arguments in the square brackets.
+            num_args = self.arity()
+            if setter:
+                num_args -= 1
+            index_part = ",".join(["_"] * num_args)
+
+            if setter:
+                return f"[{index_part}]=(_)"
+            else:
+                return f"[{index_part}]"
 
         # If this is an operator function, handle that appropriately
         if self.name.startswith(OPERATOR_PREFIX):

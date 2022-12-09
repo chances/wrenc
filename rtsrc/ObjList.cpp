@@ -97,3 +97,13 @@ Value ObjList::Iterate(Value current) {
 }
 
 Value ObjList::IteratorValue(int current) { return items.at(current); }
+
+Value ObjList::OperatorSubscript(int index) {
+	// Negative indices count backwards
+	if (index < 0) {
+		index += items.size();
+	}
+
+	ValidateIndex(index, "Subscript");
+	return items.at(index);
+}

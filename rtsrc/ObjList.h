@@ -30,5 +30,7 @@ class ObjList : public Obj {
 	WREN_METHOD() Value Iterate(Value current);
 	WREN_METHOD() Value IteratorValue(int current);
 
+	WREN_METHOD() Value OperatorSubscript(int index);
+
 	std::vector<Value> items;
 };
