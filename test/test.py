@@ -67,7 +67,8 @@ class Test:
         self.compile_errors = set()
         self.runtime_error_line = 0
         self.runtime_error_message = None
-        self.exit_code = 0
+        self.compile_error_expected = False
+        self.runtime_error_status_expected = False
         self.input_bytes = None
         self.failures = []
 
@@ -104,16 +105,14 @@ class Test:
                 if match:
                     self.compile_errors.add(line_num)
 
-                    # If we expect a compile error, it should exit with WREN_EX_DATAERR.
-                    self.exit_code = 65
+                    self.compile_error_expected = True
                     expectations += 1
 
                 match = EXPECT_ERROR_LINE_PATTERN.search(line)
                 if match:
                     self.compile_errors.add(int(match.group(1)))
 
-                    # If we expect a compile error, it should exit with WREN_EX_DATAERR.
-                    self.exit_code = 65
+                    self.compile_error_expected = True
                     expectations += 1
 
                 match = EXPECT_RUNTIME_ERROR_PATTERN.search(line)
@@ -122,7 +121,7 @@ class Test:
                     self.runtime_error_message = match.group(2)
                     # If the runtime error isn't handled, it should exit with WREN_EX_SOFTWARE.
                     if match.group(1) != "handled ":
-                        self.exit_code = 70
+                        self.runtime_error_status_expected = True
                     expectations += 1
 
                 match = STDIN_PATTERN.search(line)
@@ -295,10 +294,12 @@ class Test:
             self.failed('Missing expected error on line {0}.', line)
 
     def validate_exit_code(self, exit_code, error_lines):
-        if exit_code == self.exit_code: return
+        error_status = exit_code != 0
+        if error_status == self.runtime_error_status_expected:
+            return
 
-        self.failed('Expected return code {0} and got {1}. Stderr:',
-                    self.exit_code, exit_code)
+        self.failed('Expecting non-zero return code? {0}. Got {1}. Stderr:',
+                    self.runtime_error_status_expected, exit_code)
         self.failures += error_lines
 
     def validate_output(self, out):
