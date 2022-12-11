@@ -52,6 +52,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	void GenerateInitialiser();
 
 	llvm::Constant *GetStringConst(const std::string &str);
+	llvm::Value *GetManagedStringValue(const std::string &str);
 
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
@@ -81,6 +82,8 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::IRBuilder<> m_builder;
 	llvm::Module m_module;
 
+	llvm::Function *m_initFunc = nullptr;
+
 	llvm::FunctionCallee m_virtualMethodLookup;
 
 	llvm::Type *m_pointerType = nullptr;
@@ -91,6 +94,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	std::map<std::string, llvm::GlobalVariable *> m_systemVars;
 	std::map<std::string, llvm::GlobalVariable *> m_stringConstants;
+	std::map<std::string, llvm::GlobalVariable *> m_managedStrings;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -113,10 +117,16 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		                                                     llvm::GlobalVariable::InternalLinkage, m_nullValue, name);
 	}
 
+	llvm::FunctionType *initFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(m_context), false);
+	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
+
 	std::map<std::string, llvm::Function *> functions;
 	for (IRFn *func : module->GetFunctions()) {
 		functions[func->debugName] = GenerateFunc(func, func == module->GetMainFunction());
 	}
+
+	// Generate the initialiser last, when we know all the string constants etc
+	GenerateInitialiser();
 
 	// Identify this module as containing the main function - TODO with defineStandaloneMainFunc variable
 	if (true) {
@@ -199,7 +209,8 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	m_builder.SetInsertPoint(bb);
 
 	if (initialiser) {
-		GenerateInitialiser();
+		// Call the initialiser, which we'll generate later
+		m_builder.CreateCall(m_initFunc->getFunctionType(), m_initFunc);
 	}
 
 	VisitorContext ctx = {};
@@ -209,7 +220,11 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 }
 
 void LLVMBackendImpl::GenerateInitialiser() {
-	std::vector<llvm::Type *> argTypes = {};
+	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
+	m_builder.SetInsertPoint(bb);
+
+	// Load the variables for all the core values
+	std::vector<llvm::Type *> argTypes = {m_pointerType};
 	llvm::FunctionType *sysLookupType = llvm::FunctionType::get(m_valueType, argTypes, false);
 	llvm::FunctionCallee getSysVarFn = m_module.getOrInsertFunction("wren_get_core_class_value", sysLookupType);
 
@@ -220,6 +235,27 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		llvm::GlobalVariable *dest = m_systemVars[entry.first];
 		m_builder.CreateStore(result, dest);
 	}
+
+	// Create all the string constants
+
+	llvm::Type *int32Type = llvm::Type::getInt32Ty(m_context);
+	argTypes = {m_pointerType, int32Type};
+	llvm::FunctionType *newStringType = llvm::FunctionType::get(m_valueType, argTypes, false);
+	llvm::FunctionCallee newStringFn = m_module.getOrInsertFunction("wren_init_string_literal", newStringType);
+
+	for (const auto &entry : m_managedStrings) {
+		// Create a raw C string
+		llvm::Constant *strPtr = GetStringConst(entry.first);
+
+		// And construct a string object from it
+		std::vector<llvm::Value *> args = {strPtr, llvm::ConstantInt::get(int32Type, entry.first.size())};
+		llvm::Value *value = m_builder.CreateCall(newStringFn, args);
+
+		m_builder.CreateStore(value, entry.second);
+	}
+
+	// Functions must return!
+	m_builder.CreateRetVoid();
 }
 
 llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
@@ -235,6 +271,17 @@ llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
 	                                                     llvm::GlobalVariable::PrivateLinkage, constant, "str_" + str);
 
 	m_stringConstants[str] = var;
+	return var;
+}
+
+llvm::Value *LLVMBackendImpl::GetManagedStringValue(const std::string &str) {
+	auto iter = m_managedStrings.find(str);
+	if (iter != m_managedStrings.end())
+		return iter->second;
+
+	llvm::GlobalVariable *var = new llvm::GlobalVariable(
+	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "strobj_" + str);
+	m_managedStrings[str] = var;
 	return var;
 }
 
@@ -295,9 +342,12 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	case CcValue::NULL_TYPE:
 		value = m_nullValue;
 		break;
-	case CcValue::STRING:
-		abort();
+	case CcValue::STRING: {
+		llvm::Value *ptr = GetManagedStringValue(node->value.s);
+		// FIXME only use a short prefix of the string
+		value = m_builder.CreateLoad(m_valueType, ptr, "strobj_" + node->value.s);
 		break;
+	}
 	case CcValue::BOOL:
 		abort();
 		break;

@@ -30,6 +30,7 @@ llvm = dependency('llvm',
   required: get_option('use_llvm'),
   modules: [
     'core',
+    'all-targets', # Include target (eg amd64, aarch64) specific libraries for all available targets
   ],
 )
 
