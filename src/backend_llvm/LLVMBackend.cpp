@@ -164,7 +164,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	std::string features = "";
 
 	llvm::TargetOptions opt;
-	llvm::Optional<llvm::Reloc::Model> relocModel;
+	std::optional<llvm::Reloc::Model> relocModel;
 	llvm::TargetMachine *targetMachine = target->createTargetMachine(targetTriple, cpu, features, opt, relocModel);
 
 	m_module.setDataLayout(targetMachine->createDataLayout());
