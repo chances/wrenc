@@ -26,6 +26,21 @@ antlr_src = custom_target('gen_antlr',
   command: [java, '-jar', '@INPUT0@', '@INPUT1@', '-o', '@OUTDIR@', '-Dlanguage=Cpp', '-Xexact-output-dir', '-visitor'],
 )
 
+llvm = dependency('llvm',
+  required: get_option('use_llvm'),
+  modules: [
+    'core',
+  ],
+)
+
+conf_data = configuration_data()
+conf_data.set('USE_LLVM', llvm.found())
+configure_file(
+    input : 'common/wrencc_config.h.in',
+    output : 'wrencc_config.h',
+    configuration : conf_data,
+)
+
 # Common library shared by both the runtime and compiler
 common_lib = static_library('common-lib',
   'common/common.cpp',
@@ -69,12 +84,14 @@ wrenc = executable('wrencc',
   'src/IBackend.cpp',
   'src/passes/IRCleanup.cpp',
   'src/backend_qbe/QbeBackend.cpp',
+  'src/backend_llvm/LLVMBackend.cpp',
   antlr_src,
 
   dependencies: [
     antlr,
     fmt,
     common,
+    llvm,
   ],
   cpp_args: [
     '-fPIC', # Required for Qt on my system

@@ -1,0 +1,6 @@
+#pragma once
+
+// This file is read from config.h.in, and written back to config.h
+// Make sure you're editing the right one, config.h is overwritten by Meson!
+
+#mesondefine USE_LLVM

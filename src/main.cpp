@@ -2,6 +2,7 @@
 
 #include "IRNode.h"
 #include "RunProgramme.h"
+#include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
@@ -260,7 +261,17 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 		exit(1);
 	}
 
-	std::unique_ptr<IBackend> backend = std::unique_ptr<IBackend>(new QbeBackend());
+	std::unique_ptr<IBackend> backend;
+	if (getenv("USE_LLVM")) {
+#ifdef USE_LLVM
+		backend = LLVMBackend::Create();
+#else
+		fmt::print(stderr, "LLVM support is not included in this build, ensure Meson's use_llvm is enabled\n");
+		exit(1);
+#endif
+	} else {
+		backend = std::unique_ptr<IBackend>(new QbeBackend());
+	}
 
 	backend->compileWrenCore = globalBuildCoreLib;
 	backend->defineStandaloneMainFunc = !globalBuildCoreLib; // TODO only mark modules as main with a CLI option
