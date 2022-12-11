@@ -9,6 +9,7 @@
 #include "CompContext.h"
 #include "HashUtil.h"
 #include "LLVMBackend.h"
+#include "Scope.h"
 #include "common.h"
 
 #include <llvm/IR/Constants.h>
@@ -33,7 +34,21 @@
 // Wrap everything in a namespace to avoid any possibility of name collisions
 namespace wren_llvm_backend {
 
-struct VisitorContext {};
+struct VisitorContext {
+	/// For each local variable, stack memory is allocated for it (and later optimised away - we do this
+	/// to avoid having to deal with SSA, and this is also how Clang does it) and the value for that
+	/// stack address is stored here.
+	std::map<LocalVariable *, llvm::Value *> localAddresses;
+
+	llvm::Value *GetAddress(LocalVariable *var) const {
+		const auto iter = localAddresses.find(var);
+		if (iter != localAddresses.end())
+			return iter->second;
+
+		fmt::print(stderr, "Found unallocated local variable: '{}'\n", var->Name());
+		abort();
+	}
+};
 
 struct ExprRes {
 	llvm::Value *value = nullptr;
@@ -53,6 +68,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
+	llvm::Value *GetGlobalVariable(IRGlobalDecl *global);
 
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
@@ -95,6 +111,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::map<std::string, llvm::GlobalVariable *> m_systemVars;
 	std::map<std::string, llvm::GlobalVariable *> m_stringConstants;
 	std::map<std::string, llvm::GlobalVariable *> m_managedStrings;
+	std::map<IRGlobalDecl *, llvm::GlobalVariable *> m_globalVariables;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -214,6 +231,14 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	}
 
 	VisitorContext ctx = {};
+
+	for (LocalVariable *local : func->locals) {
+		ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+	}
+	for (LocalVariable *local : func->temporaries) {
+		ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+	}
+
 	VisitStmt(&ctx, func->body);
 
 	return function;
@@ -282,6 +307,17 @@ llvm::Value *LLVMBackendImpl::GetManagedStringValue(const std::string &str) {
 	llvm::GlobalVariable *var = new llvm::GlobalVariable(
 	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "strobj_" + str);
 	m_managedStrings[str] = var;
+	return var;
+}
+
+llvm::Value *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
+	auto iter = m_globalVariables.find(global);
+	if (iter != m_globalVariables.end())
+		return iter->second;
+
+	llvm::GlobalVariable *var = new llvm::GlobalVariable(
+	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "gbl_" + global->Name());
+	m_globalVariables[global] = var;
 	return var;
 }
 
@@ -366,9 +402,25 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
-	printf("error: not implemented: VisitExprLoad\n");
-	abort();
-	return {};
+	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
+	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
+
+	if (local) {
+		llvm::Value *ptr = ctx->GetAddress(local);
+		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
+		return {value};
+	} else if (upvalue) {
+		fprintf(stderr, "TODO load upvalue\n");
+		abort();
+	} else if (global) {
+		llvm::Value *ptr = GetGlobalVariable(global);
+		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
+		return {value};
+	} else {
+		fprintf(stderr, "Attempted to load non-local, non-global, non-upvalue variable %p\n", node->var);
+		abort();
+	}
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
 	printf("error: not implemented: VisitExprFieldLoad\n");
@@ -414,9 +466,12 @@ ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadRece
 	return {};
 }
 ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStatements *node) {
-	printf("error: not implemented: VisitExprRunStatements\n");
-	abort();
-	return {};
+	VisitStmt(ctx, node->statement);
+
+	llvm::Value *ptr = ctx->GetAddress(node->temporary);
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, "temp_value");
+
+	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, ExprAllocateInstanceMemory *node) {
 	printf("error: not implemented: VisitExprAllocateInstanceMemory\n");
@@ -437,8 +492,26 @@ ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassV
 // Statements
 
 StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) {
-	printf("error: not implemented: VisitStmtAssign\n");
-	abort();
+	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
+	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
+
+	llvm::Value *value = VisitExpr(ctx, node->expr).value;
+
+	if (local) {
+		llvm::Value *ptr = ctx->GetAddress(local);
+		m_builder.CreateStore(value, ptr);
+	} else if (upvalue) {
+		fprintf(stderr, "TODO assign upvalue\n");
+		abort();
+	} else if (global) {
+		llvm::Value *ptr = GetGlobalVariable(global);
+		m_builder.CreateStore(value, ptr);
+	} else {
+		fprintf(stderr, "Attempted to store to non-local, non-global, non-upvalue variable %p\n", node->var);
+		abort();
+	}
+
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssign *node) {
