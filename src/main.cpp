@@ -16,7 +16,7 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
-static int runCompiler(const std::istream &input, const std::optional<std::string> &moduleName);
+static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
@@ -160,11 +160,29 @@ int main(int argc, char **argv) {
 		std::ifstream input;
 		try {
 			input.open(sourceFile);
-			int fd = runCompiler(input, moduleName);
-			if (fd == -1) {
+			CompilationResult result = runCompiler(input, moduleName);
+			if (!result.successful) {
 				hitError = true;
-			} else {
-				assemblyFiles.push_back(fd);
+				continue;
+			}
+			switch (result.format) {
+			case CompilationResult::OBJECT:
+				if (result.tempFilename.empty()) {
+					fmt::print(stderr, "Cannot process non-tempfile assembly compilation result for {}\n", sourceFile);
+					exit(1);
+				}
+				objectFiles.push_back(result.tempFilename);
+				break;
+			case CompilationResult::ASSEMBLY:
+				if (result.fd == -1) {
+					fmt::print(stderr, "Cannot process non-FD assembly compilation result for {}\n", sourceFile);
+					exit(1);
+				}
+				assemblyFiles.push_back(result.fd);
+				break;
+			default:
+				fmt::print(stderr, "Unsupported compilation result format {} for {}\n", result.format, sourceFile);
+				exit(1);
 			}
 		} catch (const std::fstream::failure &ex) {
 			fmt::print(stderr, "Failed to read source file {}: {}\n", sourceFile, ex.what());
@@ -206,7 +224,7 @@ int main(int argc, char **argv) {
 	}
 }
 
-static int runCompiler(const std::istream &input, const std::optional<std::string> &moduleName) {
+static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName) {
 	std::string source;
 	{
 		// Quick way to read an entire stream
@@ -220,7 +238,7 @@ static int runCompiler(const std::istream &input, const std::optional<std::strin
 	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false, globalBuildCoreLib);
 
 	if (!rootFn)
-		return -1;
+		return CompilationResult{.successful = false};
 
 	IRCleanup cleanup;
 	for (IRFn *fn : mod.GetFunctions())
@@ -242,11 +260,26 @@ static int runCompiler(const std::istream &input, const std::optional<std::strin
 		exit(1);
 	}
 
-	QbeBackend backend;
-	backend.compileWrenCore = globalBuildCoreLib;
-	backend.defineStandaloneMainFunc = !globalBuildCoreLib; // TODO only mark modules as main with a CLI option
-	std::string qbeIr = backend.Generate(&mod);
+	std::unique_ptr<IBackend> backend = std::unique_ptr<IBackend>(new QbeBackend());
 
+	backend->compileWrenCore = globalBuildCoreLib;
+	backend->defineStandaloneMainFunc = !globalBuildCoreLib; // TODO only mark modules as main with a CLI option
+	CompilationResult result = backend->Generate(&mod);
+
+	if (!result.successful) {
+		fmt::print(stderr, "Failed to compile module, backend was unsuccessful.\n");
+		exit(1);
+	}
+
+	if (result.format != CompilationResult::QBE_IR)
+		return result;
+
+	if (result.fd != -1) {
+		fmt::print(stderr, "Cannot compile non-array QBE IR\n");
+		exit(1);
+	}
+
+	std::string qbeIr(result.data.begin(), result.data.end());
 	// fmt::print("Generated QBE IR:\n{}\n", qbeIr);
 
 	std::ofstream output;
@@ -261,7 +294,11 @@ static int runCompiler(const std::istream &input, const std::optional<std::strin
 	}
 
 	int assemblyFileFd = runQbe(qbeIr);
-	return assemblyFileFd;
+	return CompilationResult{
+	    .successful = true,
+	    .fd = assemblyFileFd,
+	    .format = CompilationResult::ASSEMBLY,
+	};
 }
 
 std::string filenameForFd(int fd) { return fmt::format("/dev/fd/{}", fd); }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "ArenaAllocator.h"
+#include "IBackend.h"
 #include "IRNode.h"
 #include "Module.h"
 
@@ -14,20 +15,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
-class QbeBackend {
+class QbeBackend : public IBackend {
   public:
 	QbeBackend();
 	~QbeBackend();
 
-	std::string Generate(Module *module);
-
-	/// Very special case flag for compiling Wren 'standard library' stuff, like the methods for List and String.
-	/// This makes things behave a bit... weird, disabling some parts of the class generation so we can cleanly
-	/// add the methods onto core types defined in C++.
-	bool compileWrenCore = false;
-
-	/// If true, this generates the wrenStandaloneMainFunc symbol. This should only be enabled for a single module.
-	bool defineStandaloneMainFunc = false;
+	CompilationResult Generate(Module *module);
 
   private:
 	/// Information about a local variable

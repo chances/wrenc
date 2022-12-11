@@ -33,7 +33,7 @@ static const std::string SYM_CLOSURE_DESC_OBJ = "closure_obj_";
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
-std::string QbeBackend::Generate(Module *module) {
+CompilationResult QbeBackend::Generate(Module *module) {
 	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"), false);
 
 	// Make the upvalue pack for each function that needs them
@@ -200,7 +200,12 @@ std::string QbeBackend::Generate(Module *module) {
 		Print("section \".data\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
 	}
 
-	return m_output.str();
+	std::string result = m_output.str();
+	return CompilationResult{
+	    .successful = true,
+	    .data = std::vector<uint8_t>(result.begin(), result.end()),
+	    .format = CompilationResult::QBE_IR,
+	};
 }
 
 template <typename... Args> void QbeBackend::Print(fmt::format_string<Args...> fmtStr, Args &&...args) {
