@@ -102,11 +102,13 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::FunctionCallee m_virtualMethodLookup;
 
-	llvm::Type *m_pointerType = nullptr;
+	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
 	llvm::IntegerType *m_valueType = nullptr;
+	llvm::IntegerType *m_int32Type = nullptr;
 
 	llvm::ConstantInt *m_nullValue = nullptr;
+	llvm::Constant *m_nullPointer = nullptr;
 
 	std::map<std::string, llvm::GlobalVariable *> m_systemVars;
 	std::map<std::string, llvm::GlobalVariable *> m_stringConstants;
@@ -118,8 +120,10 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_valueType = llvm::Type::getInt64Ty(m_context);
 	m_signatureType = llvm::Type::getInt64Ty(m_context);
 	m_pointerType = llvm::PointerType::get(m_context, 0);
+	m_int32Type = llvm::Type::getInt32Ty(m_context);
 
 	m_nullValue = llvm::ConstantInt::get(m_valueType, encode_object(nullptr));
+	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
 
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
 	llvm::FunctionType *fnLookupType = llvm::FunctionType::get(m_pointerType, fnLookupArgs, false);
@@ -263,8 +267,7 @@ void LLVMBackendImpl::GenerateInitialiser() {
 
 	// Create all the string constants
 
-	llvm::Type *int32Type = llvm::Type::getInt32Ty(m_context);
-	argTypes = {m_pointerType, int32Type};
+	argTypes = {m_pointerType, m_int32Type};
 	llvm::FunctionType *newStringType = llvm::FunctionType::get(m_valueType, argTypes, false);
 	llvm::FunctionCallee newStringFn = m_module.getOrInsertFunction("wren_init_string_literal", newStringType);
 
@@ -273,7 +276,7 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		llvm::Constant *strPtr = GetStringConst(entry.first);
 
 		// And construct a string object from it
-		std::vector<llvm::Value *> args = {strPtr, llvm::ConstantInt::get(int32Type, entry.first.size())};
+		std::vector<llvm::Value *> args = {strPtr, llvm::ConstantInt::get(m_int32Type, entry.first.size())};
 		llvm::Value *value = m_builder.CreateCall(newStringFn, args);
 
 		m_builder.CreateStore(value, entry.second);
