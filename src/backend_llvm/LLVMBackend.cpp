@@ -101,11 +101,13 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Function *m_initFunc = nullptr;
 
 	llvm::FunctionCallee m_virtualMethodLookup;
+	llvm::FunctionCallee m_createClosure;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
 	llvm::IntegerType *m_valueType = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
+	llvm::StructType *m_closureSpecType = nullptr;
 
 	llvm::ConstantInt *m_nullValue = nullptr;
 	llvm::Constant *m_nullPointer = nullptr;
@@ -114,6 +116,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::map<std::string, llvm::GlobalVariable *> m_stringConstants;
 	std::map<std::string, llvm::GlobalVariable *> m_managedStrings;
 	std::map<IRGlobalDecl *, llvm::GlobalVariable *> m_globalVariables;
+
+	std::map<IRFn *, llvm::Function *> m_generatedFunctions;
+	std::map<IRFn *, llvm::GlobalVariable *> m_closureSpecs;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -122,12 +127,18 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_pointerType = llvm::PointerType::get(m_context, 0);
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
 
+	m_closureSpecType = llvm::StructType::get(m_context, {m_pointerType, m_pointerType, m_int32Type, m_int32Type});
+
 	m_nullValue = llvm::ConstantInt::get(m_valueType, encode_object(nullptr));
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
 
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
 	llvm::FunctionType *fnLookupType = llvm::FunctionType::get(m_pointerType, fnLookupArgs, false);
 	m_virtualMethodLookup = m_module.getOrInsertFunction("wren_virtual_method_lookup", fnLookupType);
+
+	std::vector<llvm::Type *> newClosureArgs = {m_pointerType, m_pointerType, m_pointerType};
+	llvm::FunctionType *newClosureTypes = llvm::FunctionType::get(m_valueType, newClosureArgs, false);
+	m_createClosure = m_module.getOrInsertFunction("wren_create_closure", newClosureTypes);
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *module) {
@@ -141,9 +152,15 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	llvm::FunctionType *initFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(m_context), false);
 	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
 
-	std::map<std::string, llvm::Function *> functions;
+	for (IRFn *func : module->GetClosures()) {
+		// Make a global variable for the ClosureSpec
+		m_closureSpecs[func] =
+		    new llvm::GlobalVariable(m_module, m_pointerType, false, llvm::GlobalVariable::InternalLinkage,
+		                             m_nullPointer, "spec_" + func->debugName);
+	}
+
 	for (IRFn *func : module->GetFunctions()) {
-		functions[func->debugName] = GenerateFunc(func, func == module->GetMainFunction());
+		m_generatedFunctions[func] = GenerateFunc(func, func == module->GetMainFunction());
 	}
 
 	// Generate the initialiser last, when we know all the string constants etc
@@ -155,7 +172,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		llvm::Function *main = functions.at(module->GetMainFunction()->debugName);
+		// Const-casating is ugly, but it works.
+		llvm::Function *main = m_generatedFunctions.at(const_cast<IRFn *>(module->GetMainFunction()));
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
 		                         "wrenStandaloneMainFunc");
 	}
@@ -280,6 +298,35 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		llvm::Value *value = m_builder.CreateCall(newStringFn, args);
 
 		m_builder.CreateStore(value, entry.second);
+	}
+
+	// Register the upvalues, creating ClosureSpec-s for each closure
+	argTypes = {m_pointerType};
+	llvm::FunctionType *newClosureType = llvm::FunctionType::get(m_pointerType, argTypes, false);
+	llvm::FunctionCallee newClosureFn = m_module.getOrInsertFunction("wren_register_closure", newClosureType);
+	for (const auto &entry : m_closureSpecs) {
+		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
+		// is then used to closure objects wrapping this function.
+
+		llvm::Function *impl = m_generatedFunctions.at(entry.first);
+
+		// Generate the spec table
+		std::vector<llvm::Constant *> structContent = {
+		    impl,                                   // function pointer
+		    GetStringConst(entry.first->debugName), // name C string
+		    llvm::ConstantInt::get(m_int32Type, 0), // Arity
+		    llvm::ConstantInt::get(m_int32Type, 0), // Upvalue count
+		};
+		llvm::Constant *constant = llvm::ConstantStruct::get(m_closureSpecType, structContent);
+
+		llvm::GlobalVariable *specData =
+		    new llvm::GlobalVariable(m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage,
+		                             constant, "closure_spec_" + entry.first->debugName);
+
+		// And generate the registration code
+		std::vector<llvm::Value *> args = {specData};
+		llvm::Value *spec = m_builder.CreateCall(newClosureFn, args, entry.first->debugName);
+		m_builder.CreateStore(spec, entry.second);
 	}
 
 	// Functions must return!
@@ -459,9 +506,17 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	return {result};
 }
 ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node) {
-	printf("error: not implemented: VisitExprClosure\n");
-	abort();
-	return {};
+	if (!node->func->upvalues.empty()) {
+		printf("error: not implemented: VisitExprClosure with upvalues\n");
+		abort();
+	}
+
+	llvm::Value *specObj =
+	    m_builder.CreateLoad(m_pointerType, m_closureSpecs.at(node->func), "closure_spec_" + node->func->debugName);
+	std::vector<llvm::Value *> args = {specObj, m_nullPointer, m_nullPointer};
+	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
+
+	return {closure};
 }
 ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadReceiver *node) {
 	printf("error: not implemented: VisitExprLoadReceiver\n");
