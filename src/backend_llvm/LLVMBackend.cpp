@@ -117,6 +117,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::map<std::string, llvm::GlobalVariable *> m_managedStrings;
 	std::map<IRGlobalDecl *, llvm::GlobalVariable *> m_globalVariables;
 
+	// A set of all the system variables used in the code. Any other system variables will be removed.
+	std::set<llvm::GlobalVariable *> m_usedSystemVars;
+
 	std::map<IRFn *, llvm::Function *> m_generatedFunctions;
 	std::map<IRFn *, llvm::GlobalVariable *> m_closureSpecs;
 };
@@ -270,17 +273,25 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
+	// Remove any unused system variables, for ease of reading the LLVM IR
+	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
+		llvm::GlobalVariable *var = m_systemVars.at(entry.first);
+		if (m_usedSystemVars.contains(var))
+			continue;
+		m_systemVars.erase(entry.first);
+		m_module.getGlobalList().erase(var);
+	}
+
 	// Load the variables for all the core values
 	std::vector<llvm::Type *> argTypes = {m_pointerType};
 	llvm::FunctionType *sysLookupType = llvm::FunctionType::get(m_valueType, argTypes, false);
 	llvm::FunctionCallee getSysVarFn = m_module.getOrInsertFunction("wren_get_core_class_value", sysLookupType);
 
-	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
+	for (const auto &entry : m_systemVars) {
 		std::vector<llvm::Value *> args = {GetStringConst(entry.first)};
 		llvm::Value *result = m_builder.CreateCall(getSysVarFn, args, "var_" + entry.first);
 
-		llvm::GlobalVariable *dest = m_systemVars[entry.first];
-		m_builder.CreateStore(result, dest);
+		m_builder.CreateStore(result, entry.second);
 	}
 
 	// Create all the string constants
@@ -537,7 +548,8 @@ ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, Ex
 	return {};
 }
 ExprRes LLVMBackendImpl::VisitExprSystemVar(VisitorContext *ctx, ExprSystemVar *node) {
-	llvm::Value *global = m_systemVars.at(node->name);
+	llvm::GlobalVariable *global = m_systemVars.at(node->name);
+	m_usedSystemVars.insert(global);
 	llvm::Value *value = m_builder.CreateLoad(m_valueType, global, "gbl_" + node->name);
 	return {value};
 }
