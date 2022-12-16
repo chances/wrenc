@@ -56,6 +56,11 @@ struct ExprRes {
 
 struct StmtRes {};
 
+struct FnData {
+	llvm::Function *llvmFunc = nullptr;
+	llvm::GlobalVariable *closureSpec = nullptr;
+};
+
 class LLVMBackendImpl : public LLVMBackend {
   public:
 	LLVMBackendImpl();
@@ -120,8 +125,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	// A set of all the system variables used in the code. Any other system variables will be removed.
 	std::set<llvm::GlobalVariable *> m_usedSystemVars;
 
-	std::map<IRFn *, llvm::Function *> m_generatedFunctions;
-	std::map<IRFn *, llvm::GlobalVariable *> m_closureSpecs;
+	std::map<IRFn *, FnData> m_fnData;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -157,13 +161,13 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 
 	for (IRFn *func : module->GetClosures()) {
 		// Make a global variable for the ClosureSpec
-		m_closureSpecs[func] =
+		m_fnData[func].closureSpec =
 		    new llvm::GlobalVariable(m_module, m_pointerType, false, llvm::GlobalVariable::InternalLinkage,
 		                             m_nullPointer, "spec_" + func->debugName);
 	}
 
 	for (IRFn *func : module->GetFunctions()) {
-		m_generatedFunctions[func] = GenerateFunc(func, func == module->GetMainFunction());
+		m_fnData[func].llvmFunc = GenerateFunc(func, func == module->GetMainFunction());
 	}
 
 	// Generate the initialiser last, when we know all the string constants etc
@@ -176,7 +180,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
 		// Const-casating is ugly, but it works.
-		llvm::Function *main = m_generatedFunctions.at(const_cast<IRFn *>(module->GetMainFunction()));
+		llvm::Function *main = m_fnData.at(const_cast<IRFn *>(module->GetMainFunction())).llvmFunc;
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
 		                         "wrenStandaloneMainFunc");
 	}
@@ -315,16 +319,21 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	argTypes = {m_pointerType};
 	llvm::FunctionType *newClosureType = llvm::FunctionType::get(m_pointerType, argTypes, false);
 	llvm::FunctionCallee newClosureFn = m_module.getOrInsertFunction("wren_register_closure", newClosureType);
-	for (const auto &entry : m_closureSpecs) {
+	for (const auto &entry : m_fnData) {
+		IRFn *fn = entry.first;
+		const FnData &fnData = entry.second;
+
+		// Only produce ClosureSpecs for closures
+		if (fnData.closureSpec == nullptr)
+			continue;
+
 		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
 		// is then used to closure objects wrapping this function.
 
-		llvm::Function *impl = m_generatedFunctions.at(entry.first);
-
 		// Generate the spec table
 		std::vector<llvm::Constant *> structContent = {
-		    impl,                                   // function pointer
-		    GetStringConst(entry.first->debugName), // name C string
+		    fnData.llvmFunc,                        // function pointer
+		    GetStringConst(fn->debugName),          // name C string
 		    llvm::ConstantInt::get(m_int32Type, 0), // Arity
 		    llvm::ConstantInt::get(m_int32Type, 0), // Upvalue count
 		};
@@ -332,12 +341,12 @@ void LLVMBackendImpl::GenerateInitialiser() {
 
 		llvm::GlobalVariable *specData =
 		    new llvm::GlobalVariable(m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage,
-		                             constant, "closure_spec_" + entry.first->debugName);
+		                             constant, "closure_spec_" + fn->debugName);
 
 		// And generate the registration code
 		std::vector<llvm::Value *> args = {specData};
-		llvm::Value *spec = m_builder.CreateCall(newClosureFn, args, entry.first->debugName);
-		m_builder.CreateStore(spec, entry.second);
+		llvm::Value *spec = m_builder.CreateCall(newClosureFn, args, fn->debugName);
+		m_builder.CreateStore(spec, fnData.closureSpec);
 	}
 
 	// Functions must return!
@@ -522,8 +531,8 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 		abort();
 	}
 
-	llvm::Value *specObj =
-	    m_builder.CreateLoad(m_pointerType, m_closureSpecs.at(node->func), "closure_spec_" + node->func->debugName);
+	llvm::Value *closureSpec = m_fnData.at(node->func).closureSpec;
+	llvm::Value *specObj = m_builder.CreateLoad(m_pointerType, closureSpec, "closure_spec_" + node->func->debugName);
 	std::vector<llvm::Value *> args = {specObj, m_nullPointer, m_nullPointer};
 	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
 
