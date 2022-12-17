@@ -21,6 +21,8 @@ from typing import Optional
 parser = ArgumentParser()
 parser.add_argument('--suffix', default='')
 parser.add_argument('suite', nargs='?')
+parser.add_argument('--show-passes', '-p', action='store_true', help='list the tests that pass')
+parser.add_argument('--static-output', '-s', action='store_true', help="don't overwrite the status lines")
 
 args = parser.parse_args(sys.argv[1:])
 
@@ -375,8 +377,8 @@ def walk(path: Path, callback, ignored=None):
             callback(nfile)
 
 
-def print_line(line=None):
-    erase = False
+def print_line(line=None, keep=False):
+    erase = not args.static_output
     if erase:
         # Erase the line.
         print('\033[2K', end='')
@@ -387,7 +389,7 @@ def print_line(line=None):
         print(line, end='')
         sys.stdout.flush()
 
-    if not erase:
+    if not erase or keep:
         # If we're not going to overwrite the same line, we need to write
         # each message on it's own line.
         print("")
@@ -426,10 +428,11 @@ def run_script(app, path: Path, type):
     # Display the results.
     if len(test.failures) == 0:
         passed += 1
+        if args.show_passes:
+            print_line(green('PASS') + ': ' + rel_path, keep=True)
     else:
         failed += 1
-        print_line(red('FAIL') + ': ' + rel_path)
-        print('')
+        print_line(red('FAIL') + ': ' + rel_path, keep=True)
         for failure in test.failures:
             print('      ' + pink(failure))
         print('')
