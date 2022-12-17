@@ -119,7 +119,7 @@ CompilationResult QbeBackend::Generate(Module *module) {
 		Print("section \".data\" data ${}{} = {{ ", SYM_CLOSURE_DATA_TBL, GetClosureName(fn));
 		Print("\t{} ${},", PTR_TYPE, funcName);
 		Print("\t{} {},", PTR_TYPE, GetStringPtr(fn->debugName));
-		Print("\tw {0}, w {1}, # arity={0} num_upvalues={1}", fn->arity, fn->upvalues.size());
+		Print("\tw {0}, w {1}, # arity={0} num_upvalues={1}", fn->parameters.size(), fn->upvalues.size());
 
 		// Keep track of how many words are written so we can keep the section qword-aligned
 		int words = 0;

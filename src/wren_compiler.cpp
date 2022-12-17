@@ -1755,8 +1755,6 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 			consume(compiler, TOKEN_PIPE, "Expect '|' after function parameters.");
 		}
 
-		fnCompiler.fn->arity = fnSignature.arity;
-
 		fnCompiler.fn->body = finishBody(&fnCompiler);
 
 		// Name the function based on the method its passed to.
@@ -3075,7 +3073,6 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 
 		IRFn *fn = compiler->New<IRFn>();
 		compiler->parser->module->AddNode(fn);
-		fn->arity = signature->arity;
 		fn->enclosingClass = classNode;
 		fn->debugName = method->fn->debugName + "::alloc";
 		alloc->fn = fn;

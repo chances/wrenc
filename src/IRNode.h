@@ -77,9 +77,6 @@ class IRFn : public IRNode {
 	// The closure functions defined inside this function. This is mainly for upvalue processing.
 	std::vector<IRFn *> closures;
 
-	// The arity, or number of arguments, of the function/method (not including the receiver)
-	int arity = 0;
-
 	// The thing that gets run when this function is called
 	IRStmt *body = nullptr;
 

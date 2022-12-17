@@ -338,7 +338,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	}
 
 	// The 'regular' arguments, that the user would see
-	funcArgs.insert(funcArgs.end(), func->arity, m_valueType);
+	funcArgs.insert(funcArgs.end(), func->parameters.size(), m_valueType);
 
 	llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
 
@@ -498,10 +498,10 @@ void LLVMBackendImpl::GenerateInitialiser() {
 
 		// Generate the spec table
 		std::vector<llvm::Constant *> structContent = {
-		    fnData.llvmFunc,                     // function pointer
-		    GetStringConst(fn->debugName),       // name C string
-		    CInt::get(m_int32Type, fn->arity),   // Arity
-		    CInt::get(m_int32Type, numUpvalues), // Upvalue count
+		    fnData.llvmFunc,                               // function pointer
+		    GetStringConst(fn->debugName),                 // name C string
+		    CInt::get(m_int32Type, fn->parameters.size()), // Arity
+		    CInt::get(m_int32Type, numUpvalues),           // Upvalue count
 		};
 		for (UpvalueVariable *upvalue : upvaluePack->variables) {
 			IRFn *parentFn = fn->parent;
