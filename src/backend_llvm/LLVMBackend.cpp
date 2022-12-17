@@ -20,6 +20,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Host.h>
@@ -224,6 +225,12 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 
 	// Test it
 	m_module.print(llvm::outs(), nullptr);
+
+	// Verify the IR, to make sure we haven't done something strange
+	if (llvm::verifyModule(m_module, &llvm::outs())) {
+		fprintf(stderr, "LLVM IR Validation failed!\n");
+		exit(1);
+	}
 
 	// Compile it - FIXME is this going to constantly re-initialise everything?
 	llvm::InitializeAllTargetInfos();
