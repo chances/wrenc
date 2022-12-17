@@ -381,6 +381,13 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 		ctx.upvaluePackPtr = function->getArg(nextArg++);
 		ctx.upvaluePackPtr->setName("upvalue_pack");
 	}
+	for (LocalVariable *arg : func->parameters) {
+		// Load the arguments
+		llvm::Value *destPtr = GetLocalPointer(&ctx, arg);
+		llvm::Value *value = function->getArg(nextArg++);
+		value->setName(arg->Name());
+		m_builder.CreateStore(value, destPtr);
+	}
 
 	VisitStmt(&ctx, func->body);
 
