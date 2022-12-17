@@ -920,7 +920,7 @@ StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelo
 
 		llvm::Value *upvaluePack = m_builder.CreateCall(m_getUpvaluePack, thisObj);
 		for (size_t j = 0; j < pack->variables.size(); j++) {
-			UpvalueVariable *upvalue = pack->variables.at(i);
+			UpvalueVariable *upvalue = pack->variables.at(j);
 			LocalVariable *parent = dynamic_cast<LocalVariable *>(upvalue->parent);
 
 			if (!heapPtrs.contains(parent))
