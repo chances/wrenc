@@ -61,6 +61,8 @@ struct VisitorContext {
 	/// The array of closable variables
 	llvm::Value *closableVariables = nullptr;
 
+	llvm::Value *receiver = nullptr;
+
 	/// The function's upvalue pack, used to reference upvalues from this closure's parent function.
 	UpvaluePackDef *upvaluePack = nullptr;
 
@@ -331,7 +333,10 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	// Set up the function arguments
 	std::vector<llvm::Type *> funcArgs;
-	// TODO receiver
+	if (func->enclosingClass) {
+		// The receiver ('this') value.
+		funcArgs.push_back(m_valueType);
+	}
 	if (takesUpvaluePack) {
 		// If this function uses upvalues, they're passed as an argument
 		funcArgs.push_back(m_pointerType);
@@ -393,7 +398,10 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	// Load the upvalue pack
 	int nextArg = 0;
-	// TODO 'this' arg
+	if (func->enclosingClass) {
+		ctx.receiver = function->getArg(nextArg++);
+		ctx.receiver->setName("this");
+	}
 	if (takesUpvaluePack) {
 		ctx.upvaluePack = fnData.upvaluePackDef.get();
 		ctx.upvaluePackPtr = function->getArg(nextArg++);
@@ -790,9 +798,12 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 	return {closure};
 }
 ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadReceiver *node) {
-	printf("error: not implemented: VisitExprLoadReceiver\n");
-	abort();
-	return {};
+	if (!ctx->receiver) {
+		fmt::print(stderr, "Found VisitExprLoadReceiver in function {} without receiver!\n",
+		           ctx->currentFunc->getName());
+		abort();
+	}
+	return {ctx->receiver};
 }
 ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStatements *node) {
 	VisitStmt(ctx, node->statement);
