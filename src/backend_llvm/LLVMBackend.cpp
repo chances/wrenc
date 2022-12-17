@@ -226,8 +226,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	// Generate the initialiser last, when we know all the string constants etc
 	GenerateInitialiser();
 
-	// Identify this module as containing the main function - TODO with defineStandaloneMainFunc variable
-	if (true) {
+	// Identify this module as containing the main function
+	if (defineStandaloneMainFunc) {
 		// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
@@ -238,8 +238,11 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		                         "wrenStandaloneMainFunc");
 	}
 
-	// Test it
-	m_module.print(llvm::outs(), nullptr);
+	// Print out the LLVM IR for debugging
+	const char *dumpIrStr = getenv("DUMP_LLVM_IR");
+	if (dumpIrStr && dumpIrStr == std::string("1")) {
+		m_module.print(llvm::outs(), nullptr);
+	}
 
 	// Verify the IR, to make sure we haven't done something strange
 	if (llvm::verifyModule(m_module, &llvm::outs())) {

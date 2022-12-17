@@ -22,7 +22,7 @@ ObjClass *ObjList::Class() {
 	return &cls;
 }
 
-void ObjList::ValidateIndex(int index, const char *argName) {
+void ObjList::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)items.size()) {
 		// TODO throw Wren error with this exact message
 		fprintf(stderr, "%s out of bounds.\n", argName);

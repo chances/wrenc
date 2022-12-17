@@ -42,7 +42,9 @@ struct SpecialSpan {
 
 	size_t Size() const { return remaining.size() + (first.has_value() ? 1 : 0); }
 };
-template <int i, typename To> struct MapArg { using Result = To; };
+template <int i, typename To> struct MapArg {
+	using Result = To;
+};
 template <size_t idx> Value listGet(const SpecialSpan &span) { return span.remaining[idx - 1]; }
 template <> Value listGet<0>(const SpecialSpan &span) { return span.first.value(); }
 template <size_t... arg_indices>
@@ -75,7 +77,7 @@ template <int max_arg_count> std::optional<Value> invokePtr(void *func, const Sp
 template <> std::optional<Value> invokePtr<-1>(void *func, const SpecialSpan &values) { return std::optional<Value>(); }
 
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
-	if (values.size() != spec->arity) {
+	if ((int)values.size() != spec->arity) {
 		fprintf(stderr, "Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
 		        (int)values.size(), spec->arity);
 		abort();
