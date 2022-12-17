@@ -49,7 +49,7 @@ EXPECT_PATTERN = re.compile(r'// expect: ?(.*)')
 EXPECT_ERROR_PATTERN = re.compile(r'// expect error(?! line)')
 EXPECT_ERROR_LINE_PATTERN = re.compile(r'// expect error line (\d+)')
 EXPECT_RUNTIME_ERROR_PATTERN = re.compile(r'// expect (handled )?runtime error: (.+)')
-ERROR_PATTERN = re.compile(r'\[.* line (\d+)] Error')
+ERROR_PATTERN = re.compile(r'WrenCC at [^:]*:(\d+) - Error')
 STACK_TRACE_PATTERN = re.compile(r'(?:\[\./)?test/.* line (\d+)] in')
 STDIN_PATTERN = re.compile(r'// stdin: (.*)')
 SKIP_PATTERN = re.compile(r'// skip: (.*)')
@@ -202,16 +202,19 @@ class Test:
         )
         out, err = proc.communicate(None)
 
-        # TODO handle with the standard compile error handling stuff
-        if out:
-            print("Compiler output: " + out.strip())
-        if err:
-            print("Compiler error: " + err.strip())
+        # Ignore stderr, all the errors are written to stdout
+
+        lines = out.replace('\r\n', '\n').split('\n')
+        self.validate_compile_errors(lines)
+
+        compile_failed = proc.returncode != 0
+        if compile_failed and not self.compile_error_expected:
+            self.failed("Compiler exited with non-zero return code")
+        if not compile_failed and self.compile_error_expected:
+            self.failed("Compiler succeeded when it was expected to fail")
 
         if proc.returncode != 0:
-            self.failed("Compiler exited with non-zero return code")
             return None
-
         return dest_file
 
     def validate(self, is_example, exit_code, out, err):
@@ -230,8 +233,6 @@ class Test:
         # Validate that an expected runtime error occurred.
         if self.runtime_error_message:
             self.validate_runtime_error(error_lines)
-        else:
-            self.validate_compile_errors(error_lines)
 
         self.validate_exit_code(exit_code, error_lines)
 
