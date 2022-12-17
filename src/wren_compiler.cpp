@@ -1742,6 +1742,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		initCompiler(&fnCompiler, compiler->parser, compiler, false);
 		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
 		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
+		fnCompiler.fn->parent = compiler->fn;
 		compiler->parser->module->AddNode(fnCompiler.fn);
 		compiler->fn->closures.push_back(fnCompiler.fn);
 

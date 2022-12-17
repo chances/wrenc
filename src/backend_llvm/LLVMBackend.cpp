@@ -34,20 +34,34 @@
 // Wrap everything in a namespace to avoid any possibility of name collisions
 namespace wren_llvm_backend {
 
+struct UpvaluePackDef {
+	// All the variables bound to upvalues in the relevant closure
+	std::vector<UpvalueVariable *> variables;
+
+	// The positions of the variables in the upvalue pack, the inverse of variables
+	std::unordered_map<UpvalueVariable *, int> variableIds;
+};
+
 struct VisitorContext {
 	/// For each local variable, stack memory is allocated for it (and later optimised away - we do this
 	/// to avoid having to deal with SSA, and this is also how Clang does it) and the value for that
 	/// stack address is stored here.
+	///
+	/// This does not contain entries for variables used by closures.
 	std::map<LocalVariable *, llvm::Value *> localAddresses;
 
-	llvm::Value *GetAddress(LocalVariable *var) const {
-		const auto iter = localAddresses.find(var);
-		if (iter != localAddresses.end())
-			return iter->second;
+	/// For each variable that some closure uses, they're stored in a single large array. This contains
+	/// the position of each of them in that array.
+	std::map<LocalVariable *, int> closedAddressPositions;
 
-		fmt::print(stderr, "Found unallocated local variable: '{}'\n", var->Name());
-		abort();
-	}
+	/// The array of closable variables
+	llvm::Value *closableVariables = nullptr;
+
+	/// The function's upvalue pack, used to reference upvalues from this closure's parent function.
+	UpvaluePackDef *upvaluePack = nullptr;
+
+	/// The array of upvalue value pointers.
+	llvm::Value *upvaluePackPtr = nullptr;
 };
 
 struct ExprRes {
@@ -59,6 +73,10 @@ struct StmtRes {};
 struct FnData {
 	llvm::Function *llvmFunc = nullptr;
 	llvm::GlobalVariable *closureSpec = nullptr;
+	std::unique_ptr<UpvaluePackDef> upvaluePackDef;
+
+	/// Same meaning as VisitorContext.closedAddressPositions
+	std::map<LocalVariable *, int> closedAddressPositions;
 };
 
 class LLVMBackendImpl : public LLVMBackend {
@@ -74,6 +92,8 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
 	llvm::Value *GetGlobalVariable(IRGlobalDecl *global);
+	llvm::Value *GetLocalPointer(VisitorContext *ctx, LocalVariable *local);
+	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
 
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
@@ -112,7 +132,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Type *m_signatureType = nullptr;
 	llvm::IntegerType *m_valueType = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
-	llvm::StructType *m_closureSpecType = nullptr;
+	llvm::IntegerType *m_int64Type = nullptr;
 
 	llvm::ConstantInt *m_nullValue = nullptr;
 	llvm::Constant *m_nullPointer = nullptr;
@@ -133,8 +153,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_signatureType = llvm::Type::getInt64Ty(m_context);
 	m_pointerType = llvm::PointerType::get(m_context, 0);
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
-
-	m_closureSpecType = llvm::StructType::get(m_context, {m_pointerType, m_pointerType, m_int32Type, m_int32Type});
+	m_int64Type = llvm::Type::getInt64Ty(m_context);
 
 	m_nullValue = llvm::ConstantInt::get(m_valueType, encode_object(nullptr));
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
@@ -164,6 +183,22 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		m_fnData[func].closureSpec =
 		    new llvm::GlobalVariable(m_module, m_pointerType, false, llvm::GlobalVariable::InternalLinkage,
 		                             m_nullPointer, "spec_" + func->debugName);
+
+		// Make the upvalue pack for each function that needs them
+		std::unique_ptr<UpvaluePackDef> pack = std::make_unique<UpvaluePackDef>();
+
+		for (const auto &entry : func->upvalues) {
+			// Assign an increasing series of IDs for each variable in an arbitrary order
+			pack->variables.push_back(entry.second);
+			pack->variableIds[entry.second] = pack->variables.size() - 1; // -1 to get the index of the last entry
+		}
+
+		// If this pack doesn't have any upvalues, then don't register it's pack. This means it's signature
+		// won't include the upvalue pack as the first argument, which should slightly improve performance.
+		if (pack->variableIds.empty())
+			continue;
+
+		m_fnData[func].upvaluePackDef = std::move(pack);
 	}
 
 	for (IRFn *func : module->GetFunctions()) {
@@ -247,7 +282,19 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 }
 
 llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
-	std::vector<llvm::Type *> funcArgs(func->arity, m_valueType);
+	FnData &fnData = m_fnData[func];
+
+	// Set up the function arguments
+	std::vector<llvm::Type *> funcArgs;
+	// TODO receiver
+	if (fnData.upvaluePackDef) {
+		// If this function uses upvalues, they're passed as an argument
+		funcArgs.push_back(m_pointerType);
+	}
+
+	// The 'regular' arguments, that the user would see
+	funcArgs.insert(funcArgs.end(), func->arity, m_valueType);
+
 	llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
 
 	llvm::Function *function = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, func->debugName, &m_module);
@@ -261,11 +308,37 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	VisitorContext ctx = {};
 
+	std::vector<LocalVariable *> closables;
+
 	for (LocalVariable *local : func->locals) {
-		ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+		if (local->upvalues.empty()) {
+			// Normal local variable
+			ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+		} else {
+			// This variable is accessed by closures, so it gets stored in the array of closable variables.
+			ctx.closedAddressPositions[local] = closables.size();
+			closables.push_back(local);
+		}
 	}
 	for (LocalVariable *local : func->temporaries) {
 		ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+	}
+
+	if (!closables.empty()) {
+		ctx.closableVariables =
+		    m_builder.CreateAlloca(m_valueType, llvm::ConstantInt::get(m_int32Type, closables.size()), "closables");
+	}
+
+	// Copy across the position data, as it's used to generate the closure specs
+	fnData.closedAddressPositions = ctx.closedAddressPositions;
+
+	// Load the upvalue pack
+	int nextArg = 0;
+	// TODO 'this' arg
+	if (fnData.upvaluePackDef) {
+		ctx.upvaluePack = fnData.upvaluePackDef.get();
+		ctx.upvaluePackPtr = function->getArg(nextArg++);
+		ctx.upvaluePackPtr->setName("upvalue_pack");
 	}
 
 	VisitStmt(&ctx, func->body);
@@ -330,14 +403,42 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
 		// is then used to closure objects wrapping this function.
 
+		UpvaluePackDef *upvaluePack = fnData.upvaluePackDef.get();
+		int numUpvalues = upvaluePack->variables.size();
+
+		std::vector<llvm::Type *> specTypes = {m_pointerType, m_pointerType, m_int32Type, m_int32Type};
+		specTypes.insert(specTypes.end(), numUpvalues, m_int64Type); // Add the upvalue indices
+		llvm::StructType *closureSpecType = llvm::StructType::get(m_context, specTypes);
+
 		// Generate the spec table
 		std::vector<llvm::Constant *> structContent = {
-		    fnData.llvmFunc,                        // function pointer
-		    GetStringConst(fn->debugName),          // name C string
-		    llvm::ConstantInt::get(m_int32Type, 0), // Arity
-		    llvm::ConstantInt::get(m_int32Type, 0), // Upvalue count
+		    fnData.llvmFunc,                                  // function pointer
+		    GetStringConst(fn->debugName),                    // name C string
+		    llvm::ConstantInt::get(m_int32Type, fn->arity),   // Arity
+		    llvm::ConstantInt::get(m_int32Type, numUpvalues), // Upvalue count
 		};
-		llvm::Constant *constant = llvm::ConstantStruct::get(m_closureSpecType, structContent);
+		for (UpvalueVariable *upvalue : upvaluePack->variables) {
+			IRFn *parentFn = fn->parent;
+			FnData &parentData = m_fnData.at(parentFn);
+
+			LocalVariable *target = dynamic_cast<LocalVariable *>(upvalue->parent);
+			if (!target) {
+				fmt::print(stderr, "Upvalue {} has non-local parent scope {}.\n", upvalue->Name(),
+				           upvalue->parent->Scope());
+				abort();
+			}
+
+			if (!parentData.closedAddressPositions.contains(target)) {
+				fmt::print(stderr, "Function {} doesn't have closeable local {}, used by closure {}.\n",
+				           parentFn->debugName, target->Name(), fn->debugName);
+				abort();
+			}
+			int index = parentData.closedAddressPositions.at(target);
+
+			structContent.push_back(llvm::ConstantInt::get(m_int64Type, index));
+		}
+
+		llvm::Constant *constant = llvm::ConstantStruct::get(closureSpecType, structContent);
 
 		llvm::GlobalVariable *specData =
 		    new llvm::GlobalVariable(m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage,
@@ -389,6 +490,50 @@ llvm::Value *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
 	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "gbl_" + global->Name());
 	m_globalVariables[global] = var;
 	return var;
+}
+
+llvm::Value *LLVMBackendImpl::GetLocalPointer(VisitorContext *ctx, LocalVariable *local) {
+	const auto iter = ctx->localAddresses.find(local);
+	if (iter != ctx->localAddresses.end())
+		return iter->second;
+
+	// Check if it's a closed-over variable
+	const auto iter2 = ctx->closedAddressPositions.find(local);
+	if (iter2 != ctx->closedAddressPositions.end()) {
+		std::vector<llvm::Value *> indices = {
+		    // Select the item we're interested in.
+		    llvm::ConstantInt::get(m_int32Type, iter2->second),
+		};
+		return m_builder.CreateGEP(m_valueType, ctx->closableVariables, indices, "lv_ptr_" + local->Name());
+	}
+
+	fmt::print(stderr, "Found unallocated local variable: '{}'\n", local->Name());
+	abort();
+}
+
+llvm::Value *LLVMBackendImpl::GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue) {
+	if (!ctx->upvaluePack) {
+		fmt::print(stderr, "Found UpvalueVariable without an upvalue pack!\n");
+		abort();
+	}
+
+	auto upvalueIter = ctx->upvaluePack->variableIds.find(upvalue);
+	if (upvalueIter == ctx->upvaluePack->variableIds.end()) {
+		fmt::print(stderr, "Could not find upvalue in current pack for variable {}\n", upvalue->parent->Name());
+		abort();
+	}
+	int position = upvalueIter->second;
+
+	// Get a pointer pointing to the position in the upvalue pack where this variable is.
+	// Recall the upvalue pack is an array of pointers, each one pointing to a value.
+	std::vector<llvm::Value *> args = {llvm::ConstantInt::get(m_int32Type, position)};
+	llvm::Value *varPtrPtr =
+	    m_builder.CreateGEP(m_pointerType, ctx->upvaluePackPtr, args, "uv_pptr_" + upvalue->Name());
+
+	// The upvalue pack stores pointers, so at this point our variable is a Value** and we have to dereference
+	// it twice. In the future we should store never-modified variables directly, so this would be Value*.
+	// This chases the pointer in-place, that is in the same variable, to avoid the bother of declaring another one.
+	return m_builder.CreateLoad(m_pointerType, varPtrPtr, "uv_ptr_" + upvalue->Name());
 }
 
 // Visitors
@@ -477,12 +622,13 @@ ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
 	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
 
 	if (local) {
-		llvm::Value *ptr = ctx->GetAddress(local);
+		llvm::Value *ptr = GetLocalPointer(ctx, local);
 		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
 		return {value};
 	} else if (upvalue) {
-		fprintf(stderr, "TODO load upvalue\n");
-		abort();
+		llvm::Value *ptr = GetUpvaluePointer(ctx, upvalue);
+		llvm::Value *var = m_builder.CreateLoad(m_valueType, ptr, "uv_" + upvalue->Name());
+		return {var};
 	} else if (global) {
 		llvm::Value *ptr = GetGlobalVariable(global);
 		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
@@ -526,14 +672,14 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	return {result};
 }
 ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node) {
+	llvm::Value *closables = m_nullPointer;
 	if (!node->func->upvalues.empty()) {
-		printf("error: not implemented: VisitExprClosure with upvalues\n");
-		abort();
+		closables = ctx->closableVariables;
 	}
 
 	llvm::Value *closureSpec = m_fnData.at(node->func).closureSpec;
 	llvm::Value *specObj = m_builder.CreateLoad(m_pointerType, closureSpec, "closure_spec_" + node->func->debugName);
-	std::vector<llvm::Value *> args = {specObj, m_nullPointer, m_nullPointer};
+	std::vector<llvm::Value *> args = {specObj, closables, m_nullPointer};
 	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
 
 	return {closure};
@@ -546,7 +692,7 @@ ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadRece
 ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStatements *node) {
 	VisitStmt(ctx, node->statement);
 
-	llvm::Value *ptr = ctx->GetAddress(node->temporary);
+	llvm::Value *ptr = GetLocalPointer(ctx, node->temporary);
 	llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, "temp_value");
 
 	return {value};
@@ -578,11 +724,11 @@ StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) 
 	llvm::Value *value = VisitExpr(ctx, node->expr).value;
 
 	if (local) {
-		llvm::Value *ptr = ctx->GetAddress(local);
+		llvm::Value *ptr = GetLocalPointer(ctx, local);
 		m_builder.CreateStore(value, ptr);
 	} else if (upvalue) {
-		fprintf(stderr, "TODO assign upvalue\n");
-		abort();
+		llvm::Value *ptr = GetUpvaluePointer(ctx, upvalue);
+		m_builder.CreateStore(value, ptr);
 	} else if (global) {
 		llvm::Value *ptr = GetGlobalVariable(global);
 		m_builder.CreateStore(value, ptr);
@@ -629,8 +775,8 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
-	printf("error: not implemented: VisitStmtRelocateUpvalues\n");
-	abort();
+	// FIXME implement
+	printf("warning: not implemented: VisitStmtRelocateUpvalues - upvalues will not close!\n");
 	return {};
 }
 

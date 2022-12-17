@@ -90,6 +90,9 @@ class IRFn : public IRNode {
 	// have a normal receiver etc).
 	IRClass *enclosingClass = nullptr;
 
+	// If this function is a closure, then this is the function containing it.
+	IRFn *parent = nullptr;
+
 	// The name of this node, as it's used for debugging
 	std::string debugName = "<unknown_func>";
 };
