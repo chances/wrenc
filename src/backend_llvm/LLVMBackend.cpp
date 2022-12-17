@@ -72,6 +72,10 @@ struct VisitorContext {
 	/// moved to heap storage.
 	std::map<IRFn *, llvm::Value *> closureInstanceLists;
 
+	/// The BasicBlock that each label represents. These are created whenever they're first needed, but aren't
+	/// added to the function until the StmtLabel is encountered in the AST.
+	std::map<StmtLabel *, llvm::BasicBlock *> labelBlocks;
+
 	llvm::Function *currentFunc = nullptr;
 };
 
@@ -105,6 +109,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Value *GetGlobalVariable(IRGlobalDecl *global);
 	llvm::Value *GetLocalPointer(VisitorContext *ctx, LocalVariable *local);
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
+	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
 
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
@@ -614,6 +619,18 @@ llvm::Value *LLVMBackendImpl::GetUpvaluePointer(VisitorContext *ctx, UpvalueVari
 	return m_builder.CreateLoad(m_pointerType, varPtrPtr, "uv_ptr_" + upvalue->Name());
 }
 
+llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel *label) {
+	if (ctx->labelBlocks.contains(label))
+		return ctx->labelBlocks.at(label);
+
+	// Don't supply the function - we'll add it when we find the StmtLabel, so it'll be in the proper order
+	// when read manually. The order of the BBs shouldn't matter (AFAIK) to the compiler.
+	llvm::BasicBlock *block = llvm::BasicBlock::Create(m_context, "lbl_" + label->debugName);
+
+	ctx->labelBlocks[label] = block;
+	return block;
+}
+
 // Visitors
 ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
 #define DISPATCH(func, type)                                                                                           \
@@ -840,13 +857,50 @@ StmtRes LLVMBackendImpl::VisitBlock(VisitorContext *ctx, StmtBlock *node) {
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtLabel(VisitorContext *ctx, StmtLabel *node) {
-	printf("error: not implemented: VisitStmtLabel\n");
-	abort();
+	llvm::BasicBlock *block = GetLabelBlock(ctx, node);
+
+	// Create the fallthrough branch
+	m_builder.CreateBr(block);
+
+	// Add in the new block
+	block->insertInto(ctx->currentFunc);
+	m_builder.SetInsertPoint(block);
+
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *node) {
-	printf("error: not implemented: VisitStmtJump\n");
-	abort();
+	if (node->condition) {
+		ExprRes res = VisitExpr(ctx, node->condition);
+		llvm::Value *toCheck = res.value;
+
+		// We have to create a fallthrough block, since our jump node falls through if the condition is false
+		llvm::BasicBlock *fallthrough = llvm::BasicBlock::Create(m_context, "fallthrough", ctx->currentFunc);
+
+		// Find the value of 'false'
+		llvm::Value *falseValue = m_builder.CreateLoad(m_valueType, m_valueFalsePtr, "false_value");
+
+		// This can be either null or false, which unfortunately is a bit of a pain
+		llvm::Value *isNull = m_builder.CreateICmpEQ(toCheck, m_nullValue, "is_null");
+		llvm::Value *isFalse = m_builder.CreateICmpEQ(toCheck, falseValue, "is_false");
+		llvm::Value *isFalseyValue = m_builder.CreateOr(isNull, isFalse);
+
+		llvm::BasicBlock *trueBB = GetLabelBlock(ctx, node->target);
+		llvm::BasicBlock *falseBB = fallthrough;
+		if (node->jumpOnFalse) {
+			std::swap(trueBB, falseBB);
+		}
+
+		// Note the arguments for CreateCondBr is in the order trueBlock,falseBlock. However since we're checking if
+		// our value is false, the 'true' condition will get called for a null/false value.
+		m_builder.CreateCondBr(isFalseyValue, falseBB, trueBB);
+
+		// Switch to our newly-made fallthrough block
+		m_builder.SetInsertPoint(fallthrough);
+	} else {
+		// Unconditional branch, very easy :)
+		m_builder.CreateBr(GetLabelBlock(ctx, node->target));
+	}
+
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtReturn(VisitorContext *ctx, StmtReturn *node) {
