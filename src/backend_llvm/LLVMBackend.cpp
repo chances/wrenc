@@ -145,6 +145,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
 	llvm::IntegerType *m_valueType = nullptr;
+	llvm::IntegerType *m_int8Type = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
 	llvm::IntegerType *m_int64Type = nullptr;
 
@@ -156,6 +157,8 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::map<std::string, llvm::GlobalVariable *> m_managedStrings;
 	std::map<IRGlobalDecl *, llvm::GlobalVariable *> m_globalVariables;
 
+	llvm::GlobalVariable *m_valueFalsePtr = nullptr, *m_valueTruePtr = nullptr;
+
 	// A set of all the system variables used in the code. Any other system variables will be removed.
 	std::set<llvm::GlobalVariable *> m_usedSystemVars;
 
@@ -166,6 +169,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_valueType = llvm::Type::getInt64Ty(m_context);
 	m_signatureType = llvm::Type::getInt64Ty(m_context);
 	m_pointerType = llvm::PointerType::get(m_context, 0);
+	m_int8Type = llvm::Type::getInt8Ty(m_context);
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
 	m_int64Type = llvm::Type::getInt64Ty(m_context);
 
@@ -197,6 +201,11 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		m_systemVars[entry.first] = new llvm::GlobalVariable(m_module, m_valueType, false,
 		                                                     llvm::GlobalVariable::InternalLinkage, m_nullValue, name);
 	}
+
+	m_valueTruePtr = new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage,
+	                                          m_nullValue, "gbl_trueValue");
+	m_valueFalsePtr = new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage,
+	                                           m_nullValue, "gbl_falseValue");
 
 	llvm::FunctionType *initFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(m_context), false);
 	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
@@ -432,6 +441,14 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		m_builder.CreateStore(result, entry.second);
 	}
 
+	// Load the boolean values
+	llvm::FunctionType *getBoolType = llvm::FunctionType::get(m_valueType, {m_int8Type}, false);
+	llvm::FunctionCallee getBoolFn = m_module.getOrInsertFunction("wren_get_bool_value", getBoolType, pureFunc);
+	llvm::Value *trueValue = m_builder.CreateCall(getBoolFn, {CInt::get(m_int8Type, true)}, "true_value");
+	m_builder.CreateStore(trueValue, m_valueTruePtr);
+	llvm::Value *falseValue = m_builder.CreateCall(getBoolFn, {CInt::get(m_int8Type, false)}, "false_value");
+	m_builder.CreateStore(falseValue, m_valueFalsePtr);
+
 	// Create all the string constants
 
 	argTypes = {m_pointerType, m_int32Type};
@@ -660,9 +677,12 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 		value = m_builder.CreateLoad(m_valueType, ptr, "strobj_" + node->value.s);
 		break;
 	}
-	case CcValue::BOOL:
-		abort();
+	case CcValue::BOOL: {
+		llvm::Value *ptr = node->value.b ? m_valueTruePtr : m_valueFalsePtr;
+		std::string name = node->value.b ? "const_true" : "const_false";
+		value = m_builder.CreateLoad(m_valueType, ptr, name);
 		break;
+	}
 	case CcValue::INT:
 		value = CInt::get(m_valueType, encode_number(node->value.i));
 		break;
