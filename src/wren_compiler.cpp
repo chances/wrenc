@@ -3061,7 +3061,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 
 	if (signature->type == SIG_INITIALIZER) {
 		// Also define a matching constructor method on the metaclass.
-		// Constructors have to parts, kinda like C++'s destructors: one initialises the
+		// Constructors have two parts, kinda like C++'s destructors: one initialises the
 		// memory and runs the user's code, and that's of type SIG_INITIALISER.
 		// There's a regular static method with (aside from being SIG_METHOD) the same signature,
 		// which first allocates the memory to store the object then calls the initialiser.

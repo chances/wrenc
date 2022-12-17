@@ -158,6 +158,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_allocObject;
 	llvm::FunctionCallee m_initClass;
 	llvm::FunctionCallee m_getClassFieldOffset;
+	llvm::FunctionCallee m_registerSignatureTable;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
@@ -165,6 +166,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::IntegerType *m_int8Type = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
 	llvm::IntegerType *m_int64Type = nullptr;
+	llvm::Type *m_voidType = nullptr;
 
 	llvm::ConstantInt *m_nullValue = nullptr;
 	llvm::Constant *m_nullPointer = nullptr;
@@ -179,6 +181,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	// A set of all the system variables used in the code. Any other system variables will be removed.
 	std::set<llvm::GlobalVariable *> m_usedSystemVars;
 
+	// All the signatures we've ever used, for the signatures table
+	std::set<std::string> m_signatures;
+
 	std::map<IRFn *, FnData> m_fnData;
 	std::map<IRClass *, ClassData> m_classData;
 };
@@ -190,6 +195,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_int8Type = llvm::Type::getInt8Ty(m_context);
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
 	m_int64Type = llvm::Type::getInt64Ty(m_context);
+	m_voidType = llvm::Type::getVoidTy(m_context);
 
 	m_nullValue = CInt::get(m_valueType, encode_object(nullptr));
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
@@ -220,6 +226,9 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 	llvm::FunctionType *getFieldOffsetType = llvm::FunctionType::get(m_int32Type, {m_valueType}, false);
 	m_getClassFieldOffset = m_module.getOrInsertFunction("wren_class_get_field_offset", getFieldOffsetType);
+
+	llvm::FunctionType *registerSigTableType = llvm::FunctionType::get(m_voidType, {m_pointerType}, false);
+	m_registerSignatureTable = m_module.getOrInsertFunction("wren_register_signatures_table", registerSigTableType);
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *module) {
@@ -663,6 +672,23 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		m_builder.CreateStore(fieldOffsetValue, data.fieldOffset);
 	}
 
+	// Register the signatures table
+	// This is just a concatenated list of null-terminated strings, with one last null at the end.
+	{
+		std::vector<uint8_t> sigTable;
+
+		for (const std::string &str : m_signatures) {
+			sigTable.insert(sigTable.end(), str.begin(), str.end());
+			sigTable.push_back(0);
+		}
+		sigTable.push_back(0);
+
+		llvm::Constant *constant = llvm::ConstantDataArray::get(m_context, sigTable);
+		llvm::GlobalVariable *var = new llvm::GlobalVariable(
+		    m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage, constant, "signatures_table");
+		m_builder.CreateCall(m_registerSignatureTable, {var});
+	}
+
 	// Functions must return!
 	m_builder.CreateRetVoid();
 }
@@ -882,7 +908,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	}
 
 	std::string name = node->signature->ToString();
-	// TODO put in signature list
+	m_signatures.insert(name);
 	SignatureId signature = hash_util::findSignatureId(name);
 	llvm::Value *sigValue = CInt::get(m_signatureType, signature.id);
 
