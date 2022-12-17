@@ -4,6 +4,7 @@
 
 #include "ObjClass.h"
 #include "CoreClasses.h"
+#include "Errors.h"
 #include "binding_utils.h" // Useful for the manually-written ObjClass getters
 
 #include <inttypes.h>
@@ -79,8 +80,7 @@ FunctionTable::Entry *ObjClass::LookupMethod(SignatureId signature) {
 
 		// Should never get all the way around without finding an empty space
 		if (index == startIndex) {
-			printf("Function table in class %s full!", type->name.c_str());
-			abort();
+			errors::wrenAbort("Function table in class %s full!", type->name.c_str());
 		}
 	}
 }
@@ -114,8 +114,9 @@ FunctionTable::Entry *ObjClass::FindFunctionTableEntry(SignatureId signature) {
 
 		// TODO wrap around to the start
 		idx++;
-		if (idx >= FunctionTable::NUM_ENTRIES)
-			abort();
+		if (idx >= FunctionTable::NUM_ENTRIES) {
+			errors::wrenAbort("Function table overflow for class %s", name.c_str());
+		}
 	}
 
 	return &functions.entries[idx];
@@ -142,8 +143,9 @@ ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindi
 void ObjNativeClass::FinaliseSetup() {
 	// Guard against running twice
 	static bool initialised = false;
-	if (initialised)
-		abort();
+	if (initialised) {
+		errors::wrenAbort("Cannot run ObjNativeClass::FinaliseSetup twice!");
+	}
 	initialised = true;
 
 	for (ObjNativeClass *cls : nativeClasses) {

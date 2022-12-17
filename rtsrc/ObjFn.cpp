@@ -4,6 +4,7 @@
 
 #include "ObjFn.h"
 #include "ObjClass.h"
+#include "Errors.h"
 
 #include <optional>
 #include <span>
@@ -78,9 +79,8 @@ template <> std::optional<Value> invokePtr<-1>(void *func, const SpecialSpan &va
 
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	if ((int)values.size() != spec->arity) {
-		fprintf(stderr, "Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
+		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
 		        (int)values.size(), spec->arity);
-		abort();
 	}
 
 	SpecialSpan span;
@@ -98,9 +98,8 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 
 	std::optional<Value> result = invokePtr<16>(spec->funcPtr, span);
 	if (!result) {
-		fprintf(stderr, "Cannot call closure '%s': internal call failure, could not find call impl (arity %d)\n",
+		errors::wrenAbort("Cannot call closure '%s': internal call failure, could not find call impl (arity %d)\n",
 		        spec->name.c_str(), (int)values.size());
-		abort();
 	}
 
 	return result.value();

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Errors.h"
 #include "Obj.h"
 #include "ObjClass.h"
 #include "ObjString.h"
@@ -19,20 +20,17 @@ std::string checkString(const char *method, int arg, Value value);
 
 template <typename T> T *checkReceiver(const char *method, Value value) {
 	if (!is_object(value)) {
-		fprintf(stderr, "Native function %s: receiver is not an object!\n", method);
-		abort();
+		errors::wrenAbort("Native function %s: receiver is not an object!\n", method);
 	}
 
 	Obj *obj = (Obj *)get_object_value(value);
 	if (!obj) {
-		fprintf(stderr, "Native function %s: receiver is null!\n", method);
-		abort();
+		errors::wrenAbort("Native function %s: receiver is null!\n", method);
 	}
 
 	T *casted = dynamic_cast<T *>(obj);
 	if (!casted) {
-		fprintf(stderr, "Native function %s: receiver is invalid type '%s'!\n", method, obj->type->name.c_str());
-		abort();
+		errors::wrenAbort("Native function %s: receiver is invalid type '%s'!\n", method, obj->type->name.c_str());
 	}
 
 	return casted;
@@ -40,23 +38,20 @@ template <typename T> T *checkReceiver(const char *method, Value value) {
 
 template <typename T> T *checkArg(const char *method, int arg, Value value, bool nullable) {
 	if (!is_object(value)) {
-		fprintf(stderr, "Native function %s: argument %d is not an object!\n", method, arg);
-		abort();
+		errors::wrenAbort("Native function %s: argument %d is not an object!\n", method, arg);
 	}
 
 	Obj *obj = (Obj *)get_object_value(value);
 	if (!obj) {
 		if (nullable)
 			return nullptr;
-		fprintf(stderr, "Native function %s: argument %d is null!\n", method, arg);
-		abort();
+		errors::wrenAbort("Native function %s: argument %d is null!\n", method, arg);
 	}
 
 	T *casted = dynamic_cast<T *>(obj);
 	if (!casted) {
-		fprintf(stderr, "Native function %s: argument %d is invalid type '%s'!\n", method, arg,
-		        obj->type->name.c_str());
-		abort();
+		errors::wrenAbort("Native function %s: argument %d is invalid type '%s'!\n", method, arg,
+		                  obj->type->name.c_str());
 	}
 
 	return casted;
@@ -72,8 +67,7 @@ std::string checkString(const char *method, int arg, Value value) {
 
 double checkDouble(const char *method, int arg, Value value) {
 	if (!is_value_float(value)) {
-		fprintf(stderr, "Native function %s: argument %d is not a number!\n", method, arg);
-		abort();
+		errors::wrenAbort("Native function %s: argument %d is not a number!\n", method, arg);
 	}
 
 	return get_number_value(value);
@@ -83,10 +77,9 @@ double checkInt(const char *method, int arg, Value value) {
 	double num = checkDouble(method, arg, value);
 	int intValue = floor(num);
 	if (intValue != num) {
-		fprintf(stderr,
-		        "Native function %s: argument %d is a floating point value '%f', not an integer or is too large\n",
-		        method, arg, num);
-		abort();
+		errors::wrenAbort(
+		    "Native function %s: argument %d is a floating point value '%f', not an integer or is too large\n", method,
+		    arg, num);
 	}
 
 	return intValue;

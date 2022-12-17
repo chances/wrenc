@@ -3,6 +3,7 @@
 //
 
 #include "Obj.h"
+#include "Errors.h"
 #include "ObjClass.h"
 #include "ObjNum.h"
 #include "ObjString.h"
@@ -21,8 +22,7 @@ std::string Obj::ConvertToString() {
 	const static SignatureId SIG = ObjClass::FindSignatureId("toString");
 	FunctionTable::Entry *entry = type->LookupMethod(SIG);
 	if (!entry) {
-		fprintf(stderr, "Object '%s' is missing mandatory toString method!\n", type->name.c_str());
-		abort();
+		errors::wrenAbort("Object '%s' is missing mandatory toString method!\n", type->name.c_str());
 	}
 
 	typedef Value (*toStringFunc_t)(Value);
@@ -31,15 +31,14 @@ std::string Obj::ConvertToString() {
 	Value stringValue = toStringFunc(encode_object(this));
 
 	if (!is_object(stringValue)) {
-		fprintf(stderr, "Object '%s' toString returned non-object value\n", type->name.c_str());
-		abort();
+		errors::wrenAbort("Object '%s' toString returned non-object value\n", type->name.c_str());
 	}
 
 	Obj *obj = (Obj *)get_object_value(stringValue);
 	ObjString *str = dynamic_cast<ObjString *>(obj);
 	if (!str) {
-		fprintf(stderr, "Object '%s' toString returned non-string object type '%s'\n", type->name.c_str(),
-		        obj->type->name.c_str());
+		errors::wrenAbort("Object '%s' toString returned non-string object type '%s'\n", type->name.c_str(),
+		                  obj->type->name.c_str());
 	}
 
 	return str->m_value;

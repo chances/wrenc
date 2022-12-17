@@ -4,6 +4,7 @@
 
 #include "ObjManaged.h"
 #include "CoreClasses.h"
+#include "Errors.h"
 #include "common/ClassDescription.h"
 
 ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {}
@@ -22,9 +23,8 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 	// Note the root-level ObjClass returns false, but it can be safely subclassed anyway (read the
 	// comment on CanScriptSubclass to see why).
 	if (!parentClass->CanScriptSubclass() && parentClass != &CoreClasses::Instance()->Object()) {
-		fprintf(stderr, "Class '%s' extends C++ type '%s' which cannot be subclassed in Wren\n", name.c_str(),
-		        parentClass->name.c_str());
-		abort();
+		errors::wrenAbort("Class '%s' extends C++ type '%s' which cannot be subclassed in Wren\n", name.c_str(),
+		                  parentClass->name.c_str());
 	}
 
 	// If we're extending a Wren class, we need to know how many fields it uses so we can leave

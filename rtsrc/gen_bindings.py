@@ -331,8 +331,7 @@ def generate(output: TextIO, files: List[str]):
         output.write(f"\t\tregister_{cls.name}(cls, isMeta);\n")
         output.write(f"\t\treturn;\n")
         output.write("\t}\n")
-    output.write("\tfprintf(stderr, \"Unknown bindings class '%s'\\n\", type.c_str());\n")
-    output.write("\tabort();\n")
+    output.write("\terrors::wrenAbort(\"Unknown bindings class '%s'\\n\", type.c_str());\n")
     output.write("}\n")
 
 

@@ -3,6 +3,7 @@
 //
 
 #include "ObjList.h"
+#include "Errors.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "WrenRuntime.h"
@@ -25,8 +26,7 @@ ObjClass *ObjList::Class() {
 void ObjList::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)items.size()) {
 		// TODO throw Wren error with this exact message
-		fprintf(stderr, "%s out of bounds.\n", argName);
-		abort();
+		errors::wrenAbort("%s out of bounds.\n", argName);
 	}
 }
 
@@ -75,8 +75,7 @@ Value ObjList::Iterate(Value current) {
 	if (is_object(current)) {
 		// Already checked for null so this is safe
 		std::string type = get_object_value(current)->type->name;
-		fprintf(stderr, "Cannot supply object type %s to List.iterate(_)", type.c_str());
-		abort();
+		errors::wrenAbort("Cannot supply object type %s to List.iterate(_)", type.c_str());
 	}
 
 	int i = get_number_value(current);

@@ -143,6 +143,7 @@ rtlib_bindings = custom_target(
 
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/GenEntry.cpp',
+  'rtsrc/Errors.cpp',
   'rtsrc/Obj.cpp',
   'rtsrc/ObjString.cpp',
   'rtsrc/ObjMap.cpp',

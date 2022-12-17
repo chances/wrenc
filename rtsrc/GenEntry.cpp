@@ -7,6 +7,7 @@
 
 #include "GenEntry.h"
 #include "CoreClasses.h"
+#include "Errors.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFibre.h"
@@ -69,8 +70,7 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 	if (!func) {
 		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-		fprintf(stderr, "On receiver of type %s, could not find method %s\n", type->name.c_str(), name.c_str());
-		abort();
+		errors::wrenAbort("On receiver of type %s, could not find method %s\n", type->name.c_str(), name.c_str());
 	}
 
 	// printf("On receiver of type %s invoke %lx func %p\n", object->type->name.c_str(), signature, func->func);
@@ -80,15 +80,13 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signature, bool isStatic) {
 	if (!is_object(receiver)) {
-		fprintf(stderr, "Cannot lookup super method on numbers - maybe this is memory corruption?\n");
-		abort();
+		errors::wrenAbort("Cannot lookup super method on numbers - maybe this is memory corruption?\n");
 	}
 
 	Obj *obj = get_object_value(thisClass);
 	ObjClass *cls = dynamic_cast<ObjManagedClass *>(obj);
 	if (!cls) {
-		fprintf(stderr, "Attempted to lookup super method on something other than a managed class.\n");
-		abort();
+		errors::wrenAbort("Attempted to lookup super method on something other than a managed class.\n");
 	}
 
 	// Normally, calls to static methods get dispatched properly as the receiver is the ObjClass. However, since
@@ -103,9 +101,7 @@ void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signatu
 
 	if (!func) {
 		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-		fprintf(stderr, "On super lookup from type %s (super %s), could not find method %s\n", cls->name.c_str(),
-		        cls->parentClass->name.c_str(), name.c_str());
-		abort();
+		errors::wrenAbort("%s does not implement '%s'.", cls->parentClass->name.c_str(), name.c_str());
 	}
 
 	return func->func;
@@ -137,42 +133,37 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 	spec->Parse(dataBlock);
 
 	if (!is_object(parentClassValue)) {
-		fprintf(stderr, "Invalid non-object parent class for '%s': 0x%" PRIx64 "\n", name, (uint64_t)parentClassValue);
-		abort();
+		errors::wrenAbort("Invalid non-object parent class for '%s': 0x%" PRIx64 "\n", name,
+		                  (uint64_t)parentClassValue);
 	}
 
 	Obj *parentClassObj = get_object_value(parentClassValue);
 	if (!parentClassObj) {
-		fprintf(stderr, "Cannot inherit null parent class for '%s'\n", name);
-		abort();
+		errors::wrenAbort("Cannot inherit null parent class for '%s'\n", name);
 	}
 
 	ObjClass *parentClass = dynamic_cast<ObjClass *>(parentClassObj);
 	if (!parentClass) {
-		fprintf(stderr, "Cannot inherit from non-class object '%s' for '%s'\n", parentClassObj->type->name.c_str(),
-		        name);
-		abort();
+		errors::wrenAbort("Cannot inherit from non-class object '%s' for '%s'\n", parentClassObj->type->name.c_str(),
+		                  name);
 	}
 
 	// System classes poke their methods into the parent class
 	if (spec->isSystemClass) {
 		// Adding and using fields is off the table, as the class layout is defined in C++
 		if (!spec->fields.empty()) {
-			fprintf(stderr, "Supposed system class '%s' cannot add fields!\n", name);
-			abort();
+			errors::wrenAbort("Supposed system class '%s' cannot add fields!\n", name);
 		}
 
 		ObjClass *cls = (ObjClass *)get_object_value(wren_get_core_class_value(name));
 
 		if (cls == nullptr) {
-			fprintf(stderr, "Supposed system class '%s' has null C++ version!\n", name);
-			abort();
+			errors::wrenAbort("Supposed system class '%s' has null C++ version!\n", name);
 		}
 
 		// Set up the parent field, this is later used in WrenRuntime::Initialise to set up all the inherited functions
 		if (cls->parentClass != nullptr) {
-			fprintf(stderr, "System class '%s' already has a parent set!\n", name);
-			abort();
+			errors::wrenAbort("System class '%s' already has a parent set!\n", name);
 		}
 		cls->parentClass = parentClass;
 
@@ -197,14 +188,12 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 
 Value wren_alloc_obj(Value classVar) {
 	if (!is_object(classVar)) {
-		fprintf(stderr, "Cannot call wren_alloc_object with number argument\n");
-		abort();
+		errors::wrenAbort("Cannot call wren_alloc_object with number argument\n");
 	}
 
 	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
 	if (!cls) {
-		fprintf(stderr, "Cannot call wren_alloc_object with null or non-ObjManagedClass type\n");
-		abort();
+		errors::wrenAbort("Cannot call wren_alloc_object with null or non-ObjManagedClass type\n");
 	}
 
 	// We have to allocate managed objects specially, to account for their variable-sized field area
@@ -223,14 +212,12 @@ Value wren_alloc_obj(Value classVar) {
 
 int wren_class_get_field_offset(Value classVar) {
 	if (!is_object(classVar)) {
-		fprintf(stderr, "Cannot call wren_class_get_field_offset with number argument\n");
-		abort();
+		errors::wrenAbort("Cannot call wren_class_get_field_offset with number argument\n");
 	}
 
 	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
 	if (!cls) {
-		fprintf(stderr, "Cannot call wren_class_get_field_offset with null or non-ObjManagedClass type\n");
-		abort();
+		errors::wrenAbort("Cannot call wren_class_get_field_offset with null or non-ObjManagedClass type\n");
 	}
 
 	return cls->fieldOffset;
@@ -243,8 +230,7 @@ ClosureSpec *wren_register_closure(void *specData) {
 
 Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead) {
 	if (spec == nullptr) {
-		fprintf(stderr, "Cannot pass null spec to wren_create_closure\n");
-		abort();
+		errors::wrenAbort("Cannot pass null spec to wren_create_closure\n");
 	}
 
 	// Stack may be null if we have no upvalues
@@ -297,8 +283,7 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("Map", ObjMap::Class()->ToValue());
 	GET_CLASS("Sequence", ObjSequence::Class()->ToValue());
 
-	fprintf(stderr, "Module requested unknown system class '%s', aborting\n", name);
-	abort();
+	errors::wrenAbort("Module requested unknown system class '%s', aborting\n", name);
 
 #undef GET_CLASS
 }

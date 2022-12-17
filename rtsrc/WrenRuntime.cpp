@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "Errors.h"
 #include "GenEntry.h"
 #include "ObjClass.h"
 #include "WrenRuntime.h"
@@ -26,8 +27,7 @@ WrenRuntime &WrenRuntime::Instance() {
 void *WrenRuntime::AllocateMem(int size, int alignment) {
 	void *mem = malloc(size);
 	if ((uint64_t)mem % alignment) {
-		fprintf(stderr, "Bad alignment requirement for allocation: %d for %d and got %p\n", alignment, size, mem);
-		abort();
+		errors::wrenAbort("Bad alignment requirement for allocation: %d for %d and got %p\n", alignment, size, mem);
 	}
 	return mem;
 }
