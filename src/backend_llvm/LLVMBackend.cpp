@@ -31,6 +31,8 @@
 
 #include <map>
 
+using CInt = llvm::ConstantInt;
+
 // Wrap everything in a namespace to avoid any possibility of name collisions
 namespace wren_llvm_backend {
 
@@ -155,7 +157,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
 	m_int64Type = llvm::Type::getInt64Ty(m_context);
 
-	m_nullValue = llvm::ConstantInt::get(m_valueType, encode_object(nullptr));
+	m_nullValue = CInt::get(m_valueType, encode_object(nullptr));
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
 
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
@@ -326,7 +328,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	if (!closables.empty()) {
 		ctx.closableVariables =
-		    m_builder.CreateAlloca(m_valueType, llvm::ConstantInt::get(m_int32Type, closables.size()), "closables");
+		    m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, closables.size()), "closables");
 	}
 
 	// Copy across the position data, as it's used to generate the closure specs
@@ -382,7 +384,7 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		llvm::Constant *strPtr = GetStringConst(entry.first);
 
 		// And construct a string object from it
-		std::vector<llvm::Value *> args = {strPtr, llvm::ConstantInt::get(m_int32Type, entry.first.size())};
+		std::vector<llvm::Value *> args = {strPtr, CInt::get(m_int32Type, entry.first.size())};
 		llvm::Value *value = m_builder.CreateCall(newStringFn, args);
 
 		m_builder.CreateStore(value, entry.second);
@@ -412,10 +414,10 @@ void LLVMBackendImpl::GenerateInitialiser() {
 
 		// Generate the spec table
 		std::vector<llvm::Constant *> structContent = {
-		    fnData.llvmFunc,                                  // function pointer
-		    GetStringConst(fn->debugName),                    // name C string
-		    llvm::ConstantInt::get(m_int32Type, fn->arity),   // Arity
-		    llvm::ConstantInt::get(m_int32Type, numUpvalues), // Upvalue count
+		    fnData.llvmFunc,                     // function pointer
+		    GetStringConst(fn->debugName),       // name C string
+		    CInt::get(m_int32Type, fn->arity),   // Arity
+		    CInt::get(m_int32Type, numUpvalues), // Upvalue count
 		};
 		for (UpvalueVariable *upvalue : upvaluePack->variables) {
 			IRFn *parentFn = fn->parent;
@@ -435,7 +437,7 @@ void LLVMBackendImpl::GenerateInitialiser() {
 			}
 			int index = parentData.closedAddressPositions.at(target);
 
-			structContent.push_back(llvm::ConstantInt::get(m_int64Type, index));
+			structContent.push_back(CInt::get(m_int64Type, index));
 		}
 
 		llvm::Constant *constant = llvm::ConstantStruct::get(closureSpecType, structContent);
@@ -502,7 +504,7 @@ llvm::Value *LLVMBackendImpl::GetLocalPointer(VisitorContext *ctx, LocalVariable
 	if (iter2 != ctx->closedAddressPositions.end()) {
 		std::vector<llvm::Value *> indices = {
 		    // Select the item we're interested in.
-		    llvm::ConstantInt::get(m_int32Type, iter2->second),
+		    CInt::get(m_int32Type, iter2->second),
 		};
 		return m_builder.CreateGEP(m_valueType, ctx->closableVariables, indices, "lv_ptr_" + local->Name());
 	}
@@ -526,7 +528,7 @@ llvm::Value *LLVMBackendImpl::GetUpvaluePointer(VisitorContext *ctx, UpvalueVari
 
 	// Get a pointer pointing to the position in the upvalue pack where this variable is.
 	// Recall the upvalue pack is an array of pointers, each one pointing to a value.
-	std::vector<llvm::Value *> args = {llvm::ConstantInt::get(m_int32Type, position)};
+	std::vector<llvm::Value *> args = {CInt::get(m_int32Type, position)};
 	llvm::Value *varPtrPtr =
 	    m_builder.CreateGEP(m_pointerType, ctx->upvaluePackPtr, args, "uv_pptr_" + upvalue->Name());
 
@@ -603,10 +605,10 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 		abort();
 		break;
 	case CcValue::INT:
-		value = llvm::ConstantInt::get(m_valueType, encode_number(node->value.i));
+		value = CInt::get(m_valueType, encode_number(node->value.i));
 		break;
 	case CcValue::NUM:
-		value = llvm::ConstantInt::get(m_valueType, encode_number(node->value.n));
+		value = CInt::get(m_valueType, encode_number(node->value.n));
 		break;
 	default:
 		fprintf(stderr, "Invalid constant node type %d\n", (int)node->value.type);
@@ -656,7 +658,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	std::string name = node->signature->ToString();
 	// TODO put in signature list
 	SignatureId signature = hash_util::findSignatureId(name);
-	llvm::Value *sigValue = llvm::ConstantInt::get(m_signatureType, signature.id);
+	llvm::Value *sigValue = CInt::get(m_signatureType, signature.id);
 
 	// Call the lookup function
 	std::vector<llvm::Value *> lookupArgs = {receiver.value, sigValue};
