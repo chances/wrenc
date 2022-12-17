@@ -4,6 +4,7 @@
 
 #include "ObjClass.h"
 #include "CoreClasses.h"
+#include "binding_utils.h" // Useful for the manually-written ObjClass getters
 
 #include <inttypes.h>
 #include <unordered_map>
@@ -12,7 +13,29 @@ static std::unordered_map<uint64_t, std::string> signatureNames;
 static std::vector<ObjNativeClass *> nativeClasses;
 
 ObjClass::~ObjClass() = default;
-ObjClass::ObjClass() : Obj(nullptr) {}
+ObjClass::ObjClass() : Obj(nullptr) {
+	// Manually bind our getters
+	typedef Value (*getter_t)(Value receiver);
+
+	getter_t getName = [](Value receiver) -> Value {
+		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.name", receiver);
+		return encode_object(ObjString::New(cls->name));
+	};
+	getter_t getSupertype = [](Value receiver) -> Value {
+		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.supertype", receiver);
+		return encode_object(cls->parentClass);
+	};
+	getter_t toString = [](Value receiver) -> Value {
+		// Same as getName, bar the name passed to checkReceiver
+		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.toString", receiver);
+		return encode_object(ObjString::New(cls->name));
+	};
+
+	AddFunction("name", (void *)getName);
+	AddFunction("supertype", (void *)getSupertype);
+	AddFunction("toString", (void *)toString);
+	// We need an 'attributes' getter when that gets implemented
+}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {
 	SignatureId id = hash_util::findSignatureId(name);

@@ -13,6 +13,10 @@
 
 #include <math.h>
 
+double checkInt(const char *method, int arg, Value value);
+double checkDouble(const char *method, int arg, Value value);
+std::string checkString(const char *method, int arg, Value value);
+
 template <typename T> T *checkReceiver(const char *method, Value value) {
 	if (!is_object(value)) {
 		fprintf(stderr, "Native function %s: receiver is not an object!\n", method);
@@ -58,6 +62,9 @@ template <typename T> T *checkArg(const char *method, int arg, Value value, bool
 	return casted;
 }
 
+// Put the implementations into the generated file, so they can be inlined
+#ifdef BINDINGS_GEN
+
 std::string checkString(const char *method, int arg, Value value) {
 	ObjString *str = checkArg<ObjString>(method, arg, value, false);
 	return str->m_value;
@@ -84,3 +91,5 @@ double checkInt(const char *method, int arg, Value value) {
 
 	return intValue;
 }
+
+#endif

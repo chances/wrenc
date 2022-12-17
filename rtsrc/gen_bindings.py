@@ -179,6 +179,7 @@ def generate(output: TextIO, files: List[str]):
             classes += parse_file(fi)
 
     output.write("// Auto-generated file (from gen_bindings.py), DO NOT EDIT MANUALLY\n")
+    output.write("#define BINDINGS_GEN\n")
     output.write("#include \"binding_utils.h\"\n")
 
     output.write("\n// Includes for referenced files:\n")
