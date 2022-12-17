@@ -262,7 +262,8 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	}
 
 	std::unique_ptr<IBackend> backend;
-	if (getenv("USE_LLVM")) {
+	const char *envUseLLVM = getenv("USE_LLVM");
+	if (envUseLLVM && envUseLLVM == std::string("1")) {
 #ifdef USE_LLVM
 		backend = LLVMBackend::Create();
 #else
