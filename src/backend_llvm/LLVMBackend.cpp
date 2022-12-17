@@ -207,7 +207,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_virtualMethodLookup = m_module.getOrInsertFunction("wren_virtual_method_lookup", fnLookupType);
 
 	llvm::FunctionType *superLookupType =
-	    llvm::FunctionType::get(m_pointerType, {m_valueType, m_valueType, m_int64Type}, false);
+	    llvm::FunctionType::get(m_pointerType, {m_valueType, m_valueType, m_int64Type, m_int8Type}, false);
 	m_superMethodLookup = m_module.getOrInsertFunction("wren_super_method_lookup", superLookupType);
 
 	std::vector<llvm::Type *> newClosureArgs = {m_pointerType, m_pointerType, m_pointerType};
@@ -974,7 +974,10 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 		llvm::GlobalVariable *classVar = m_classData.at(cls).object;
 		llvm::Value *thisClass = m_builder.CreateLoad(m_valueType, classVar, "super_cls_" + cls->info->name);
 
-		func = m_builder.CreateCall(m_superMethodLookup, {receiver.value, thisClass, sigValue}, "vptr_" + name);
+		llvm::Value *isStatic = CInt::get(m_int8Type, ctx->currentWrenFunc->methodInfo->isStatic);
+
+		std::vector<llvm::Value *> lookupArgs = {receiver.value, thisClass, sigValue, isStatic};
+		func = m_builder.CreateCall(m_superMethodLookup, lookupArgs, "vptr_" + name);
 	}
 
 	// Make the function type - TODO cache

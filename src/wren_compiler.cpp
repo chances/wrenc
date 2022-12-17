@@ -3055,6 +3055,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		methodCompiler.fn->body = finishBody(&methodCompiler);
 		method->fn = methodCompiler.fn;
 		method->fn->enclosingClass = classNode;
+		method->fn->methodInfo = method;
 		endCompiler(&methodCompiler, signature->ToString());
 		compiler->parser->module->AddNode(method->fn);
 	}
@@ -3074,6 +3075,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		IRFn *fn = compiler->New<IRFn>();
 		compiler->parser->module->AddNode(fn);
 		fn->enclosingClass = classNode;
+		fn->methodInfo = alloc;
 		fn->debugName = method->fn->debugName + "::alloc";
 		alloc->fn = fn;
 

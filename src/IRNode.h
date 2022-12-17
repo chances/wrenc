@@ -22,6 +22,7 @@ class FieldVariable;   // From SymbolTable.h
 class Signature;       // From CompContext.h
 class Compiler;        // From wren_compiler.cpp
 class ClassInfo;       // From ClassInfo.h
+class MethodInfo;      // From ClassInfo.h
 class IRVisitor;
 class IRPrinter;
 
@@ -86,6 +87,9 @@ class IRFn : public IRNode {
 	// Note this is also true for static methods (they are instance methods of the class object, and
 	// have a normal receiver etc).
 	IRClass *enclosingClass = nullptr;
+
+	// If this is a method, this contains the information about that method.
+	MethodInfo *methodInfo = nullptr;
 
 	// If this function is a closure, then this is the function containing it.
 	IRFn *parent = nullptr;

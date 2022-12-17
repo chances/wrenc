@@ -34,7 +34,7 @@
 // NOLINTBEGIN(readability-identifier-naming)
 extern "C" {
 EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
-EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature);
+EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature, bool isStatic);
 EXPORT Value wren_init_string_literal(const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
 EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue);
@@ -78,17 +78,23 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	return func->func;
 }
 
-void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signature) {
+void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signature, bool isStatic) {
 	if (!is_object(receiver)) {
 		fprintf(stderr, "Cannot lookup super method on numbers - maybe this is memory corruption?\n");
 		abort();
 	}
 
 	Obj *obj = get_object_value(thisClass);
-	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(obj);
+	ObjClass *cls = dynamic_cast<ObjManagedClass *>(obj);
 	if (!cls) {
 		fprintf(stderr, "Attempted to lookup super method on something other than a managed class.\n");
 		abort();
+	}
+
+	// Normally, calls to static methods get dispatched properly as the receiver is the ObjClass. However, since
+	// we're doing our own lookup that has to be handled specially.
+	if (isStatic) {
+		cls = cls->type;
 	}
 
 	// We've been passed the class of the method that's making the call. It's trying to call a method
