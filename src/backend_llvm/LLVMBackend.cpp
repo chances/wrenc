@@ -24,6 +24,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Host.h>
+#include <llvm/Support/ModRef.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
@@ -398,6 +399,17 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
+	// Make an attribute list that represents a pure function, which the optimiser can move around, duplicate or
+	// remove calls to.
+	llvm::MemoryEffects inaccessibleRead(llvm::MemoryEffects::InaccessibleMem, llvm::ModRefInfo::Ref);
+	llvm::Attribute inaccReadAttr = llvm::Attribute::getWithMemoryEffects(m_context, inaccessibleRead);
+	std::vector<std::pair<unsigned int, llvm::Attribute>> pureAttrs = {
+	    {llvm::AttributeList::FunctionIndex, inaccReadAttr},
+	    {llvm::AttributeList::FunctionIndex, llvm::Attribute::get(m_context, llvm::Attribute::NoUnwind)},
+	    {llvm::AttributeList::FunctionIndex, llvm::Attribute::get(m_context, llvm::Attribute::WillReturn)},
+	};
+	llvm::AttributeList pureFunc = llvm::AttributeList::get(m_context, pureAttrs);
+
 	// Remove any unused system variables, for ease of reading the LLVM IR
 	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		llvm::GlobalVariable *var = m_systemVars.at(entry.first);
@@ -410,7 +422,8 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	// Load the variables for all the core values
 	std::vector<llvm::Type *> argTypes = {m_pointerType};
 	llvm::FunctionType *sysLookupType = llvm::FunctionType::get(m_valueType, argTypes, false);
-	llvm::FunctionCallee getSysVarFn = m_module.getOrInsertFunction("wren_get_core_class_value", sysLookupType);
+	llvm::FunctionCallee getSysVarFn =
+	    m_module.getOrInsertFunction("wren_get_core_class_value", sysLookupType, pureFunc);
 
 	for (const auto &entry : m_systemVars) {
 		std::vector<llvm::Value *> args = {GetStringConst(entry.first)};
