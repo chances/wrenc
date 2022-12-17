@@ -115,6 +115,9 @@ class IRGlobalDecl : public IRNode, public VarDecl {
 	/// be declared later in the file in the global scope) then this is set to the line number of the first
 	/// line where it was used.
 	std::optional<int> undeclaredLineUsed;
+
+	/// If this global was created by declaring a class, this points to that class.
+	IRClass *targetClass = nullptr;
 };
 
 /// Represents importing a given module. This forces the given module to be parsed and compiled.

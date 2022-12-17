@@ -3400,6 +3400,8 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 					continue;
 				}
 
+				global->targetClass = classDecl;
+
 				ExprGetClassVar *classVar = compiler.New<ExprGetClassVar>();
 				classVar->cls = classDecl;
 

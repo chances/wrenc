@@ -659,8 +659,39 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		    new llvm::GlobalVariable(m_module, dataBlockType, true, llvm::GlobalVariable::PrivateLinkage, dataConstant,
 		                             "class_data_" + cls->info->name);
 
-		// TODO other supertypes
+		// Inherits from Object by default
 		llvm::Value *supertype = objValue;
+		if (cls->info->parentClass) {
+			// Be a bit limiting here, and only allow explicitly inheriting from other classes in the same module
+			// So for example, this won't work:
+			//   class A { }
+			//   var B = A
+			//   class C is B {}
+			// TODO improve this
+
+			ExprLoad *classVar = dynamic_cast<ExprLoad *>(cls->info->parentClass);
+			if (!classVar) {
+				fmt::print(stderr, "Complicated superclasses for class {} are not yet supported in the LLVM backend.\n",
+				           cls->info->name);
+				abort();
+			}
+
+			IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(classVar->var);
+			if (!global) {
+				fmt::print(stderr, "Cannot use a local variable as the supertype of class {}\n", cls->info->name);
+				abort();
+			}
+
+			IRClass *superclass = global->targetClass;
+			if (!superclass) {
+				fmt::print(stderr, "Class {} cannot extend a variable that is not statically known to be a class\n",
+				           cls->info->name);
+				abort();
+			}
+
+			const ClassData &supertypeData = m_classData.at(superclass);
+			supertype = m_builder.CreateLoad(m_valueType, supertypeData.object, "supertype_" + superclass->info->name);
+		}
 
 		llvm::Constant *className = GetStringConst(cls->info->name);
 		llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, classDataBlock, supertype});

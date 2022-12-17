@@ -37,6 +37,8 @@ class ObjManagedClass : public ObjClass {
 	ObjManagedClass(const std::string &name, std::unique_ptr<ClassDescription> spec, ObjClass *parent);
 	~ObjManagedClass();
 
+	bool CanScriptSubclass() override;
+
 	ObjManagedMetaClass meta;
 
 	std::unique_ptr<ClassDescription> spec;

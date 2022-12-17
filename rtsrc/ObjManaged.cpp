@@ -48,6 +48,8 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 }
 ObjManagedClass::~ObjManagedClass() {}
 
+bool ObjManagedClass::CanScriptSubclass() { return true; }
+
 ObjManagedMetaClass::ObjManagedMetaClass() {
 	parentClass = type = &CoreClasses::Instance()->RootClass();
 	isMetaClass = true;
