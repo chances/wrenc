@@ -6,6 +6,8 @@
 
 #ifdef USE_LLVM
 
+#include "ClassDescription.h"
+#include "ClassInfo.h"
 #include "CompContext.h"
 #include "HashUtil.h"
 #include "LLVMBackend.h"
@@ -96,6 +98,11 @@ struct FnData {
 	std::map<LocalVariable *, int> closedAddressPositions;
 };
 
+struct ClassData {
+	llvm::GlobalVariable *object = nullptr;
+	llvm::GlobalVariable *fieldOffset = nullptr;
+};
+
 class LLVMBackendImpl : public LLVMBackend {
   public:
 	LLVMBackendImpl();
@@ -148,6 +155,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_allocUpvalueStorage;
 	llvm::FunctionCallee m_getUpvaluePack;
 	llvm::FunctionCallee m_getNextClosure;
+	llvm::FunctionCallee m_allocObject;
+	llvm::FunctionCallee m_initClass;
+	llvm::FunctionCallee m_getClassFieldOffset;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
@@ -170,6 +180,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::set<llvm::GlobalVariable *> m_usedSystemVars;
 
 	std::map<IRFn *, FnData> m_fnData;
+	std::map<IRClass *, ClassData> m_classData;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -199,6 +210,16 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 	llvm::FunctionType *getNextClosureType = llvm::FunctionType::get(m_pointerType, {m_pointerType}, false);
 	m_getNextClosure = m_module.getOrInsertFunction("wren_get_closure_chain_next", getNextClosureType);
+
+	llvm::FunctionType *allocObjectType = llvm::FunctionType::get(m_valueType, {m_valueType}, false);
+	m_allocObject = m_module.getOrInsertFunction("wren_alloc_obj", allocObjectType);
+
+	llvm::FunctionType *initClassType =
+	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType, m_valueType}, false);
+	m_initClass = m_module.getOrInsertFunction("wren_init_class", initClassType);
+
+	llvm::FunctionType *getFieldOffsetType = llvm::FunctionType::get(m_int32Type, {m_valueType}, false);
+	m_getClassFieldOffset = m_module.getOrInsertFunction("wren_class_get_field_offset", getFieldOffsetType);
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *module) {
@@ -234,6 +255,30 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 
 		// Note we always have to register an upvalue pack definition, even if it's empty - it's required for closures.
 		m_fnData[func].upvaluePackDef = std::move(pack);
+	}
+
+	// Add pointers to the ObjClass instances for all the classes we've declared
+	for (IRClass *cls : module->GetClasses()) {
+		// System classes are defined in C++, and should only appear when compiling wren_core
+		if (cls->info->IsSystemClass())
+			continue;
+
+		llvm::GlobalVariable *classObj =
+		    new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage, m_nullValue,
+		                             "class_obj_" + cls->info->name);
+
+		// Add fields to store the offset of the member fields in each class. This is required since we
+		// can currently have classes extending from classes in another file, and they don't know how
+		// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
+		// we have to add it to the object pointer to get the fields area.
+		llvm::GlobalVariable *memberOffset =
+		    new llvm::GlobalVariable(m_module, m_int32Type, false, llvm::GlobalVariable::InternalLinkage,
+		                             CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
+
+		m_classData[cls] = ClassData{
+		    .object = classObj,
+		    .fieldOffset = memberOffset,
+		};
 	}
 
 	for (IRFn *func : module->GetFunctions()) {
@@ -436,9 +481,10 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	llvm::AttributeList pureFunc = llvm::AttributeList::get(m_context, pureAttrs);
 
 	// Remove any unused system variables, for ease of reading the LLVM IR
+	// Make an exception for Obj, since it's used below for the class declaration stuff
 	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		llvm::GlobalVariable *var = m_systemVars.at(entry.first);
-		if (m_usedSystemVars.contains(var))
+		if (m_usedSystemVars.contains(var) || entry.first == "Object")
 			continue;
 		m_systemVars.erase(entry.first);
 		m_module.getGlobalList().erase(var);
@@ -542,6 +588,79 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		std::vector<llvm::Value *> args = {specData};
 		llvm::Value *spec = m_builder.CreateCall(newClosureFn, args, fn->debugName);
 		m_builder.CreateStore(spec, fnData.closureSpec);
+	}
+
+	// Load the Obj type once, since we'll likely use it a lot since it's the default supertype
+	llvm::Value *objValue = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
+
+	for (const auto &entry : m_classData) {
+		using CD = ClassDescription;
+		using Cmd = ClassDescription::Command;
+
+		IRClass *cls = entry.first;
+		const ClassData &data = entry.second;
+
+		// Build the data as a list of i64s
+		std::vector<llvm::Constant *> values;
+
+		auto addCmdFlag = [this, &values](Cmd cmd, int flags) {
+			// This is the same (with little-endian) as two i32s: <ADD_METHOD> <flags>
+			uint64_t cmdFlag = (uint64_t)cmd + ((uint64_t)flags << 32);
+			values.push_back(CInt::get(m_int64Type, cmdFlag));
+		};
+
+		// Emit a block for each method
+		auto writeMethods = [&](const ClassInfo::MethodMap &methods, bool isStatic) {
+			for (const auto &[sig, method] : methods) {
+				int flags = 0;
+				if (isStatic)
+					flags |= CD::FLAG_STATIC;
+				addCmdFlag(Cmd::ADD_METHOD, flags);
+
+				llvm::Constant *strConst = GetStringConst(sig->ToString());
+				values.push_back(llvm::ConstantExpr::getPtrToInt(strConst, m_int64Type));
+
+				if (!m_fnData.contains(method->fn)) {
+					fmt::print(
+					    stderr,
+					    "Function {} doesn't have any function data, found when writing data block for class {}.\n",
+					    method->fn->debugName, cls->info->name);
+					abort();
+				}
+				const FnData &fnData = m_fnData.at(method->fn);
+
+				values.push_back(llvm::ConstantExpr::getPtrToInt(fnData.llvmFunc, m_int64Type));
+			}
+		};
+
+		writeMethods(cls->info->methods, false);
+		writeMethods(cls->info->staticMethods, true);
+
+		for (const std::unique_ptr<FieldVariable> &var : cls->info->fields.fields) {
+			addCmdFlag(Cmd::ADD_FIELD, CD::FLAG_NONE);
+			llvm::Constant *strConst = GetStringConst(var->Name());
+			values.push_back(llvm::ConstantExpr::getPtrToInt(strConst, m_int64Type));
+		}
+
+		addCmdFlag(Cmd::END, CD::FLAG_NONE); // Signal the end of the class description
+
+		llvm::ArrayType *dataBlockType = llvm::ArrayType::get(m_int64Type, values.size());
+		llvm::Constant *dataConstant = llvm::ConstantArray::get(dataBlockType, values);
+		llvm::GlobalVariable *classDataBlock =
+		    new llvm::GlobalVariable(m_module, dataBlockType, true, llvm::GlobalVariable::PrivateLinkage, dataConstant,
+		                             "class_data_" + cls->info->name);
+
+		// TODO other supertypes
+		llvm::Value *supertype = objValue;
+
+		llvm::Constant *className = GetStringConst(cls->info->name);
+		llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, classDataBlock, supertype});
+		m_builder.CreateStore(classValue, data.object);
+
+		// Look up the field offset
+		llvm::Value *fieldOffsetValue =
+		    m_builder.CreateCall(m_getClassFieldOffset, {classValue}, "field_offset_" + cls->info->name);
+		m_builder.CreateStore(fieldOffsetValue, data.fieldOffset);
 	}
 
 	// Functions must return!
@@ -814,9 +933,18 @@ ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStat
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, ExprAllocateInstanceMemory *node) {
-	printf("error: not implemented: VisitExprAllocateInstanceMemory\n");
-	abort();
-	return {};
+	std::string name = node->target->info->name;
+
+	if (!m_classData.contains(node->target)) {
+		fmt::print(stderr, "Found VisitExprAllocateInstanceMemory for class {} without class data!\n", name);
+		abort();
+	}
+	ClassData &cd = m_classData.at(node->target);
+
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd.object, "cls_" + name);
+	llvm::Value *newObj = m_builder.CreateCall(m_allocObject, {value}, "new_obj_" + name);
+
+	return {newObj};
 }
 ExprRes LLVMBackendImpl::VisitExprSystemVar(VisitorContext *ctx, ExprSystemVar *node) {
 	llvm::GlobalVariable *global = m_systemVars.at(node->name);
@@ -825,9 +953,14 @@ ExprRes LLVMBackendImpl::VisitExprSystemVar(VisitorContext *ctx, ExprSystemVar *
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassVar *node) {
-	printf("error: not implemented: VisitExprGetClassVar\n");
-	abort();
-	return {};
+	if (!m_classData.contains(node->cls)) {
+		fmt::print(stderr, "Found ExprGetClassVar for class {} without class data!\n", node->cls->info->name);
+		abort();
+	}
+
+	ClassData &cd = m_classData.at(node->cls);
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd.object, "cls_" + node->cls->info->name);
+	return {value};
 }
 
 // Statements
