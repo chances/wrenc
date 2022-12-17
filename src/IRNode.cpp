@@ -269,6 +269,9 @@ void IRPrinter::VisitExprConst(ExprConst *node) {
 }
 
 void IRPrinter::VisitExprFuncCall(ExprFuncCall *node) {
+	if (node->super) {
+		m_tagStack.back().header += " SUPER";
+	}
 	m_tagStack.back().header += " " + node->signature->ToString();
 	IRVisitor::VisitExprFuncCall(node);
 }

@@ -34,6 +34,7 @@
 // NOLINTBEGIN(readability-identifier-naming)
 extern "C" {
 EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
+EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature);
 EXPORT Value wren_init_string_literal(const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
 EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue);
@@ -73,6 +74,33 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	}
 
 	// printf("On receiver of type %s invoke %lx func %p\n", object->type->name.c_str(), signature, func->func);
+
+	return func->func;
+}
+
+void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signature) {
+	if (!is_object(receiver)) {
+		fprintf(stderr, "Cannot lookup super method on numbers - maybe this is memory corruption?\n");
+		abort();
+	}
+
+	Obj *obj = get_object_value(thisClass);
+	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(obj);
+	if (!cls) {
+		fprintf(stderr, "Attempted to lookup super method on something other than a managed class.\n");
+		abort();
+	}
+
+	// We've been passed the class of the method that's making the call. It's trying to call a method
+	// from it's parent, so here we use parentClass.
+	FunctionTable::Entry *func = cls->parentClass->LookupMethod(SignatureId{signature});
+
+	if (!func) {
+		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
+		fprintf(stderr, "On super lookup from type %s (super %s), could not find method %s\n", cls->name.c_str(),
+		        cls->parentClass->name.c_str(), name.c_str());
+		abort();
+	}
 
 	return func->func;
 }

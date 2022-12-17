@@ -81,6 +81,7 @@ struct VisitorContext {
 	std::map<StmtLabel *, llvm::BasicBlock *> labelBlocks;
 
 	llvm::Function *currentFunc = nullptr;
+	IRFn *currentWrenFunc = nullptr;
 };
 
 struct ExprRes {
@@ -151,6 +152,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Function *m_initFunc = nullptr;
 
 	llvm::FunctionCallee m_virtualMethodLookup;
+	llvm::FunctionCallee m_superMethodLookup;
 	llvm::FunctionCallee m_createClosure;
 	llvm::FunctionCallee m_allocUpvalueStorage;
 	llvm::FunctionCallee m_getUpvaluePack;
@@ -203,6 +205,10 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
 	llvm::FunctionType *fnLookupType = llvm::FunctionType::get(m_pointerType, fnLookupArgs, false);
 	m_virtualMethodLookup = m_module.getOrInsertFunction("wren_virtual_method_lookup", fnLookupType);
+
+	llvm::FunctionType *superLookupType =
+	    llvm::FunctionType::get(m_pointerType, {m_valueType, m_valueType, m_int64Type}, false);
+	m_superMethodLookup = m_module.getOrInsertFunction("wren_super_method_lookup", superLookupType);
 
 	std::vector<llvm::Type *> newClosureArgs = {m_pointerType, m_pointerType, m_pointerType};
 	llvm::FunctionType *newClosureTypes = llvm::FunctionType::get(m_valueType, newClosureArgs, false);
@@ -412,6 +418,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	VisitorContext ctx = {};
 	ctx.currentFunc = function;
+	ctx.currentWrenFunc = func;
 
 	std::vector<LocalVariable *> closables;
 
@@ -944,8 +951,31 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	llvm::Value *sigValue = CInt::get(m_signatureType, signature.id);
 
 	// Call the lookup function
-	std::vector<llvm::Value *> lookupArgs = {receiver.value, sigValue};
-	llvm::CallInst *func = m_builder.CreateCall(m_virtualMethodLookup, lookupArgs, "vptr_" + name);
+	llvm::CallInst *func;
+	if (!node->super) {
+		std::vector<llvm::Value *> lookupArgs = {receiver.value, sigValue};
+		func = m_builder.CreateCall(m_virtualMethodLookup, lookupArgs, "vptr_" + name);
+	} else {
+		// Super lookups are special - we pass in the class this method is declared on, so the lookup function
+		// can find the correct method.
+		IRClass *cls = ctx->currentWrenFunc->enclosingClass;
+		if (!cls) {
+			fmt::print(stderr, "error: Found super call to {} from {}, which is not a method!\n", name,
+			           ctx->currentWrenFunc->debugName);
+			abort();
+		}
+
+		if (dynamic_cast<ExprLoadReceiver *>(node->receiver) == nullptr) {
+			fmt::print(stderr, "error: Found super call to {} from {}, on non-ExprLoadReceiver receiver!\n", name,
+			           ctx->currentWrenFunc->debugName);
+			abort();
+		}
+
+		llvm::GlobalVariable *classVar = m_classData.at(cls).object;
+		llvm::Value *thisClass = m_builder.CreateLoad(m_valueType, classVar, "super_cls_" + cls->info->name);
+
+		func = m_builder.CreateCall(m_superMethodLookup, {receiver.value, thisClass, sigValue}, "vptr_" + name);
+	}
 
 	// Make the function type - TODO cache
 	std::vector<llvm::Type *> argTypes(args.size(), m_valueType);
