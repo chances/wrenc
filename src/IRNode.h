@@ -376,7 +376,7 @@ class ExprSystemVar : public IRExpr {
 class ExprGetClassVar : public IRExpr {
   public:
 	void Accept(IRVisitor *visitor) override;
-	std::string name;
+	IRClass *cls = nullptr;
 };
 
 // //////////////////// //

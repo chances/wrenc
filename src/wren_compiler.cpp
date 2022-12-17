@@ -3401,7 +3401,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 				}
 
 				ExprGetClassVar *classVar = compiler.New<ExprGetClassVar>();
-				classVar->name = classDecl->info->name;
+				classVar->cls = classDecl;
 
 				block->Add(compiler.New<StmtAssign>(global, classVar));
 			}

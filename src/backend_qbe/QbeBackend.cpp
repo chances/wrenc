@@ -593,8 +593,9 @@ QbeBackend::Snippet *QbeBackend::VisitExprSystemVar(ExprSystemVar *node) {
 
 QbeBackend::Snippet *QbeBackend::VisitExprGetClassVar(ExprGetClassVar *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
-	snip->result = AddTemporary("class_" + node->name);
-	snip->Add("%{} =l loadl $class_var_{}", snip->result->name, node->name);
+	std::string name = node->cls->info->name;
+	snip->result = AddTemporary("class_" + name);
+	snip->Add("%{} =l loadl $class_var_{}", snip->result->name, name);
 	return snip;
 }
 

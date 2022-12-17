@@ -310,7 +310,7 @@ void IRPrinter::VisitExprSystemVar(ExprSystemVar *node) {
 }
 
 void IRPrinter::VisitExprGetClassVar(ExprGetClassVar *node) {
-	m_tagStack.back().header += " " + node->name;
+	m_tagStack.back().header += " " + node->cls->info->name;
 	IRVisitor::VisitExprGetClassVar(node);
 }
 
