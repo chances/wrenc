@@ -230,6 +230,10 @@ class Test:
 
         error_lines = err.split('\n')
 
+        # If there is no output, consider that to be no lines rather than a single blank one
+        if error_lines == ['']:
+            error_lines = []
+
         # Validate that an expected runtime error occurred.
         if self.runtime_error_message:
             self.validate_runtime_error(error_lines)
@@ -242,7 +246,7 @@ class Test:
         self.validate_output(out)
 
     def validate_runtime_error(self, error_lines):
-        if len(error_lines) < 2:
+        if len(error_lines) < 1:
             self.failed('Expected runtime error "{0}" and got none.',
                         self.runtime_error_message)
             return
@@ -257,6 +261,11 @@ class Test:
             self.failed('Expected runtime error "{0}" and got:',
                         self.runtime_error_message)
             self.failed(error_lines[line])
+
+        # Skip the stack trace handling, since we don't actually have them yet.
+        # TODO re-enable once stacktraces are supported
+        if True:
+            return
 
         # Make sure the stack trace has the right line. Skip over any lines that
         # come from builtin libraries.

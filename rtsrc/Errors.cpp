@@ -18,6 +18,6 @@ using namespace errors;
 	va_end(args);
 
 	// TODO print a stack trace
-	fprintf(stderr, "Runtime error: %s\n", buffer);
+	fprintf(stderr, "%s\n", buffer);
 	abort();
 }
