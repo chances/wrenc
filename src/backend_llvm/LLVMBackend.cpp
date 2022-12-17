@@ -373,6 +373,9 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 				ctx.closureInstanceLists[closure] =
 				    m_builder.CreateAlloca(m_pointerType, nullptr, "closure_list_" + closure->debugName);
+
+				// Zero-initialise
+				m_builder.CreateStore(m_nullPointer, ctx.closureInstanceLists[closure]);
 			}
 		}
 	}
