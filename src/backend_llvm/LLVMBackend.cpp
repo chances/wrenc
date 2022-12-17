@@ -196,11 +196,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 			pack->variableIds[entry.second] = pack->variables.size() - 1; // -1 to get the index of the last entry
 		}
 
-		// If this pack doesn't have any upvalues, then don't register it's pack. This means it's signature
-		// won't include the upvalue pack as the first argument, which should slightly improve performance.
-		if (pack->variableIds.empty())
-			continue;
-
+		// Note we always have to register an upvalue pack definition, even if it's empty - it's required for closures.
 		m_fnData[func].upvaluePackDef = std::move(pack);
 	}
 
@@ -293,10 +289,13 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	FnData &fnData = m_fnData[func];
 
+	// Only take an upvalue pack argument if we actually need it
+	bool takesUpvaluePack = fnData.upvaluePackDef && !fnData.upvaluePackDef->variables.empty();
+
 	// Set up the function arguments
 	std::vector<llvm::Type *> funcArgs;
 	// TODO receiver
-	if (fnData.upvaluePackDef) {
+	if (takesUpvaluePack) {
 		// If this function uses upvalues, they're passed as an argument
 		funcArgs.push_back(m_pointerType);
 	}
@@ -344,7 +343,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	// Load the upvalue pack
 	int nextArg = 0;
 	// TODO 'this' arg
-	if (fnData.upvaluePackDef) {
+	if (takesUpvaluePack) {
 		ctx.upvaluePack = fnData.upvaluePackDef.get();
 		ctx.upvaluePackPtr = function->getArg(nextArg++);
 		ctx.upvaluePackPtr->setName("upvalue_pack");
