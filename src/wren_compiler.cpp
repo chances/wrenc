@@ -1195,12 +1195,12 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 				current->undeclaredLineUsed = std::optional<int>();
 				global = current;
 			}
-		}
 
-		// If it was already explicitly defined, throw an error
-		if (global == nullptr) {
-			error(compiler, "Module variable is already defined.");
-			return nullptr;
+			// If it was already explicitly defined, throw an error
+			if (global == nullptr) {
+				error(compiler, "Module variable is already defined.");
+				return current; // Return something, so the compiler can continue
+			}
 		}
 
 		compiler->parser->module->AddNode(global);
@@ -1217,7 +1217,9 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 	// parent scope, it's not a problem as we shadow it.
 	if (!var) {
 		error(compiler, "Variable is already declared in this scope.");
-		return nullptr;
+
+		// Return the other variable, so the compiler can continue
+		return compiler->locals.Lookup(token->contents);
 	}
 
 	// It's no issue for us to support an arbitrary number of locals, but implementing this to avoid
