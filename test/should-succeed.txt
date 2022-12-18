@@ -1,0 +1,6 @@
+# This is a list of tests that are supposed to fail, but should succeed
+# This is mostly for tests that probe an internal limitation, like the number of
+# local variables. Since our compiler can often handle more of these than Wren
+# can, it's not a problem for these tests to succeed.
+
+test/language/variable/too_many_locals.wren

@@ -14,7 +14,7 @@ import sys
 from threading import Timer
 from pathlib import Path
 import platform
-from typing import Optional
+from typing import Optional, Set
 
 # Runs the tests.
 
@@ -55,6 +55,9 @@ STDIN_PATTERN = re.compile(r'// stdin: (.*)')
 SKIP_PATTERN = re.compile(r'// skip: (.*)')
 NONTEST_PATTERN = re.compile(r'// nontest')
 
+# This lists tests that should succeed even if they're supposed to fail
+OVERRIDE_SHOULD_SUCCEED: Set[str] = set()
+
 passed = 0
 failed = 0
 num_skipped = 0
@@ -82,6 +85,10 @@ class Test:
         input_lines = []
         line_num = 1
 
+        # Check if this test is supposed to succeed in wrencc
+        rel_path = str(self.path.relative_to(WREN_DIR))
+        override_success = rel_path in OVERRIDE_SHOULD_SUCCEED
+
         # Note #1: we have unicode tests that require utf-8 decoding.
         # Note #2: python `open` on 3.x modifies contents regarding newlines.
         # To prevent this, we specify newline='' and we don't use the
@@ -104,21 +111,21 @@ class Test:
                     expectations += 1
 
                 match = EXPECT_ERROR_PATTERN.search(line)
-                if match:
+                if match and not override_success:
                     self.compile_errors.add(line_num)
 
                     self.compile_error_expected = True
                     expectations += 1
 
                 match = EXPECT_ERROR_LINE_PATTERN.search(line)
-                if match:
+                if match and not override_success:
                     self.compile_errors.add(int(match.group(1)))
 
                     self.compile_error_expected = True
                     expectations += 1
 
                 match = EXPECT_RUNTIME_ERROR_PATTERN.search(line)
-                if match:
+                if match and not override_success:
                     self.runtime_error_line = line_num
                     self.runtime_error_message = match.group(2)
                     # If the runtime error isn't handled, it should exit with WREN_EX_SOFTWARE.
@@ -478,7 +485,23 @@ def run_example(path: Path):
     run_script(WREN_APP, path, "example")
 
 
+def load_list(path: Path) -> Set[str]:
+    items = set()
+    with open(path, 'r') as fi:
+        for line in fi:
+            line = line.split('#')[0]  # Comments
+            line = line.strip()
+            if not line:
+                continue
+            items.add(line)
+
+    return items
+
+
 def main():
+    # Load the override list
+    OVERRIDE_SHOULD_SUCCEED.update(load_list(WRENCC_DIR / 'test' / 'should-succeed.txt'))
+
     walk(WREN_DIR / 'test', run_test, ignored=['api', 'benchmark'])
     walk(WREN_DIR / 'test' / 'api', run_api_test)
     walk(WREN_DIR / 'example', run_example)
