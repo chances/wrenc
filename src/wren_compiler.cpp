@@ -1498,6 +1498,9 @@ static IRNode *finishBlock(Compiler *compiler) {
 
 	// Compile the definition list.
 	do {
+		// Grab the next token, so we can print an error at the correct token if this definition isn't allowed
+		Token definitionToken = compiler->parser->next;
+
 		IRNode *node = definition(compiler);
 		consumeLine(compiler, "Expect newline after statement.");
 
@@ -1506,7 +1509,11 @@ static IRNode *finishBlock(Compiler *compiler) {
 
 		// Don't support classes declared in blocks etc
 		IRStmt *stmt = dynamic_cast<IRStmt *>(node);
-		ASSERT(stmt, "Only statements are supported inside non-expression functions");
+		if (!stmt) {
+			compiler->parser->previous = definitionToken;
+			error(compiler, "Only statements are supported inside blocks");
+			continue;
+		}
 		block->Add(stmt);
 	} while (peek(compiler) != TOKEN_RIGHT_BRACE && peek(compiler) != TOKEN_EOF);
 
