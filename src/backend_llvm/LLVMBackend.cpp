@@ -1083,8 +1083,15 @@ StmtRes LLVMBackendImpl::VisitBlock(VisitorContext *ctx, StmtBlock *node) {
 StmtRes LLVMBackendImpl::VisitStmtLabel(VisitorContext *ctx, StmtLabel *node) {
 	llvm::BasicBlock *block = GetLabelBlock(ctx, node);
 
-	// Create the fallthrough branch
-	m_builder.CreateBr(block);
+	// Create the fallthrough branch, but only if the last instruction wasn't a terminator
+	bool isTerminator = false;
+	if (!m_builder.GetInsertBlock()->empty()) {
+		llvm::Instruction &last = m_builder.GetInsertBlock()->back();
+		isTerminator = last.isTerminator();
+	}
+	if (!isTerminator) {
+		m_builder.CreateBr(block);
+	}
 
 	// Add in the new block
 	block->insertInto(ctx->currentFunc);

@@ -284,6 +284,8 @@ void IRPrinter::VisitStmtJump(StmtJump *node) {
 	std::string &header = m_tagStack.back().header;
 	if (node->looping)
 		header += " LOOPING";
+	if (node->jumpOnFalse)
+		header += " INVERTED";
 	header += " target:" + GetLabelId(node->target);
 	IRVisitor::VisitStmtJump(node);
 }
