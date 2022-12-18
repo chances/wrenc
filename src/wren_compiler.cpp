@@ -3357,13 +3357,16 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 		compiler.fn->body = compiler.New<StmtReturn>(expr);
 	} else {
 		StmtBlock *block = compiler.New<StmtBlock>();
-		while (!match(&compiler, TOKEN_EOF)) {
+		bool hitEOF = false;
+		while (!match(&compiler, TOKEN_EOF) && !hitEOF) {
 			IRNode *node = definition(&compiler);
 
 			// If there is no newline, it must be the end of file on the same line.
 			if (!matchLine(&compiler)) {
 				consume(&compiler, TOKEN_EOF, "Expect end of file.");
-				break;
+				// Set a flag here rather than break-ing, since we still need to run everything
+				// below, and it has a lot of continue statements.
+				hitEOF = true;
 			}
 
 			// Put statements into the main function body, put everything else into the main module
