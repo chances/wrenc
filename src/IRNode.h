@@ -51,6 +51,12 @@ class VarDecl {
 	virtual void Accept(IRVisitor *visitor) = 0;
 };
 
+// An interface of random stuff for backends to use
+class BackendNodeData {
+  public:
+	virtual ~BackendNodeData();
+};
+
 // //////////////////// //
 // //// TOP-LEVEL  //// //
 // //////////////////// //
@@ -59,6 +65,18 @@ class IRNode {
   public:
 	virtual ~IRNode();
 	virtual void Accept(IRVisitor *visitor) = 0;
+
+	// This pointer allows backends to attach whatever internal data they want to nodes
+	std::unique_ptr<BackendNodeData> backendData;
+
+	template <typename T> T *GetBackendData() const {
+		T *data = dynamic_cast<T *>(backendData.get());
+		if (!data) {
+			fprintf(stderr, "Missing backend dynamic data\n");
+			abort();
+		}
+		return data;
+	}
 };
 
 class IRFn : public IRNode {

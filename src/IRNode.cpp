@@ -26,6 +26,7 @@ ArenaAllocator *getCompilerAlloc(Compiler *compiler);
 
 IRClass::~IRClass() = default;
 VarDecl::~VarDecl() = default;
+BackendNodeData::~BackendNodeData() = default;
 IRNode::~IRNode() = default;
 
 std::string IRGlobalDecl::Name() const { return name; }

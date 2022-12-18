@@ -90,7 +90,8 @@ struct ExprRes {
 
 struct StmtRes {};
 
-struct FnData {
+class FnData : public BackendNodeData {
+  public:
 	llvm::Function *llvmFunc = nullptr;
 	llvm::GlobalVariable *closureSpec = nullptr;
 	std::unique_ptr<UpvaluePackDef> upvaluePackDef;
@@ -99,7 +100,8 @@ struct FnData {
 	std::map<LocalVariable *, int> closedAddressPositions;
 };
 
-struct ClassData {
+class ClassData : public BackendNodeData {
+  public:
 	llvm::GlobalVariable *object = nullptr;
 	llvm::GlobalVariable *fieldOffset = nullptr;
 };
@@ -112,7 +114,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
   private:
 	llvm::Function *GenerateFunc(IRFn *func, bool initialiser);
-	void GenerateInitialiser();
+	void GenerateInitialiser(Module *module);
 
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
@@ -185,9 +187,6 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	// All the signatures we've ever used, for the signatures table
 	std::set<std::string> m_signatures;
-
-	std::map<IRFn *, FnData> m_fnData;
-	std::map<IRClass *, ClassData> m_classData;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -253,9 +252,15 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	llvm::FunctionType *initFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(m_context), false);
 	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
 
+	// Create our function data objects
+	for (IRFn *func : module->GetFunctions()) {
+		func->backendData = std::unique_ptr<BackendNodeData>(new FnData);
+	}
+
 	for (IRFn *func : module->GetClosures()) {
 		// Make a global variable for the ClosureSpec
-		m_fnData[func].closureSpec =
+		FnData *fnData = func->GetBackendData<FnData>();
+		fnData->closureSpec =
 		    new llvm::GlobalVariable(m_module, m_pointerType, false, llvm::GlobalVariable::InternalLinkage,
 		                             m_nullPointer, "spec_" + func->debugName);
 
@@ -269,7 +274,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		}
 
 		// Note we always have to register an upvalue pack definition, even if it's empty - it's required for closures.
-		m_fnData[func].upvaluePackDef = std::move(pack);
+		fnData->upvaluePackDef = std::move(pack);
 	}
 
 	// Add pointers to the ObjClass instances for all the classes we've declared
@@ -290,18 +295,19 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		    new llvm::GlobalVariable(m_module, m_int32Type, false, llvm::GlobalVariable::InternalLinkage,
 		                             CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
 
-		m_classData[cls] = ClassData{
-		    .object = classObj,
-		    .fieldOffset = memberOffset,
-		};
+		ClassData *classData = new ClassData;
+		classData->object = classObj;
+		classData->fieldOffset = memberOffset;
+		cls->backendData = std::unique_ptr<BackendNodeData>(classData);
 	}
 
 	for (IRFn *func : module->GetFunctions()) {
-		m_fnData[func].llvmFunc = GenerateFunc(func, func == module->GetMainFunction());
+		FnData *data = func->GetBackendData<FnData>();
+		data->llvmFunc = GenerateFunc(func, func == module->GetMainFunction());
 	}
 
 	// Generate the initialiser last, when we know all the string constants etc
-	GenerateInitialiser();
+	GenerateInitialiser(module);
 
 	// Identify this module as containing the main function
 	if (defineStandaloneMainFunc) {
@@ -309,8 +315,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		// Const-casating is ugly, but it works.
-		llvm::Function *main = m_fnData.at(const_cast<IRFn *>(module->GetMainFunction())).llvmFunc;
+		FnData *data = module->GetMainFunction()->GetBackendData<FnData>();
+		llvm::Function *main = data->llvmFunc;
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
 		                         "wrenStandaloneMainFunc");
 	}
@@ -386,10 +392,10 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 }
 
 llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
-	FnData &fnData = m_fnData[func];
+	FnData *fnData = func->GetBackendData<FnData>();
 
 	// Only take an upvalue pack argument if we actually need it
-	bool takesUpvaluePack = fnData.upvaluePackDef && !fnData.upvaluePackDef->variables.empty();
+	bool takesUpvaluePack = fnData->upvaluePackDef && !fnData->upvaluePackDef->variables.empty();
 
 	// Set up the function arguments
 	std::vector<llvm::Type *> funcArgs;
@@ -455,7 +461,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	}
 
 	// Copy across the position data, as it's used to generate the closure specs
-	fnData.closedAddressPositions = ctx.closedAddressPositions;
+	fnData->closedAddressPositions = ctx.closedAddressPositions;
 
 	// Load the upvalue pack
 	int nextArg = 0;
@@ -464,7 +470,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 		ctx.receiver->setName("this");
 	}
 	if (takesUpvaluePack) {
-		ctx.upvaluePack = fnData.upvaluePackDef.get();
+		ctx.upvaluePack = fnData->upvaluePackDef.get();
 		ctx.upvaluePackPtr = function->getArg(nextArg++);
 		ctx.upvaluePackPtr->setName("upvalue_pack");
 	}
@@ -481,7 +487,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	return function;
 }
 
-void LLVMBackendImpl::GenerateInitialiser() {
+void LLVMBackendImpl::GenerateInitialiser(Module *module) {
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
@@ -548,18 +554,17 @@ void LLVMBackendImpl::GenerateInitialiser() {
 	argTypes = {m_pointerType};
 	llvm::FunctionType *newClosureType = llvm::FunctionType::get(m_pointerType, argTypes, false);
 	llvm::FunctionCallee newClosureFn = m_module.getOrInsertFunction("wren_register_closure", newClosureType);
-	for (const auto &entry : m_fnData) {
-		IRFn *fn = entry.first;
-		const FnData &fnData = entry.second;
+	for (IRFn *fn : module->GetFunctions()) {
+		const FnData *fnData = fn->GetBackendData<FnData>();
 
 		// Only produce ClosureSpecs for closures
-		if (fnData.closureSpec == nullptr)
+		if (fnData->closureSpec == nullptr)
 			continue;
 
 		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
 		// is then used to closure objects wrapping this function.
 
-		UpvaluePackDef *upvaluePack = fnData.upvaluePackDef.get();
+		UpvaluePackDef *upvaluePack = fnData->upvaluePackDef.get();
 		int numUpvalues = upvaluePack->variables.size();
 
 		std::vector<llvm::Type *> specTypes = {m_pointerType, m_pointerType, m_int32Type, m_int32Type};
@@ -568,14 +573,14 @@ void LLVMBackendImpl::GenerateInitialiser() {
 
 		// Generate the spec table
 		std::vector<llvm::Constant *> structContent = {
-		    fnData.llvmFunc,                               // function pointer
+		    fnData->llvmFunc,                              // function pointer
 		    GetStringConst(fn->debugName),                 // name C string
 		    CInt::get(m_int32Type, fn->parameters.size()), // Arity
 		    CInt::get(m_int32Type, numUpvalues),           // Upvalue count
 		};
 		for (UpvalueVariable *upvalue : upvaluePack->variables) {
 			IRFn *parentFn = fn->parent;
-			FnData &parentData = m_fnData.at(parentFn);
+			FnData *parentData = parentFn->GetBackendData<FnData>();
 
 			LocalVariable *target = dynamic_cast<LocalVariable *>(upvalue->parent);
 			if (!target) {
@@ -584,12 +589,12 @@ void LLVMBackendImpl::GenerateInitialiser() {
 				abort();
 			}
 
-			if (!parentData.closedAddressPositions.contains(target)) {
+			if (!parentData->closedAddressPositions.contains(target)) {
 				fmt::print(stderr, "Function {} doesn't have closeable local {}, used by closure {}.\n",
 				           parentFn->debugName, target->Name(), fn->debugName);
 				abort();
 			}
-			int index = parentData.closedAddressPositions.at(target);
+			int index = parentData->closedAddressPositions.at(target);
 
 			structContent.push_back(CInt::get(m_int64Type, index));
 		}
@@ -603,18 +608,17 @@ void LLVMBackendImpl::GenerateInitialiser() {
 		// And generate the registration code
 		std::vector<llvm::Value *> args = {specData};
 		llvm::Value *spec = m_builder.CreateCall(newClosureFn, args, fn->debugName);
-		m_builder.CreateStore(spec, fnData.closureSpec);
+		m_builder.CreateStore(spec, fnData->closureSpec);
 	}
 
 	// Load the Obj type once, since we'll likely use it a lot since it's the default supertype
 	llvm::Value *objValue = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
 
-	for (const auto &entry : m_classData) {
+	for (IRClass *cls : module->GetClasses()) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
 
-		IRClass *cls = entry.first;
-		const ClassData &data = entry.second;
+		const ClassData &data = *cls->GetBackendData<ClassData>();
 
 		// Build the data as a list of i64s
 		std::vector<llvm::Constant *> values;
@@ -636,16 +640,8 @@ void LLVMBackendImpl::GenerateInitialiser() {
 				llvm::Constant *strConst = GetStringConst(sig->ToString());
 				values.push_back(llvm::ConstantExpr::getPtrToInt(strConst, m_int64Type));
 
-				if (!m_fnData.contains(method->fn)) {
-					fmt::print(
-					    stderr,
-					    "Function {} doesn't have any function data, found when writing data block for class {}.\n",
-					    method->fn->debugName, cls->info->name);
-					abort();
-				}
-				const FnData &fnData = m_fnData.at(method->fn);
-
-				values.push_back(llvm::ConstantExpr::getPtrToInt(fnData.llvmFunc, m_int64Type));
+				FnData *fnData = method->fn->GetBackendData<FnData>();
+				values.push_back(llvm::ConstantExpr::getPtrToInt(fnData->llvmFunc, m_int64Type));
 			}
 		};
 
@@ -696,8 +692,8 @@ void LLVMBackendImpl::GenerateInitialiser() {
 				abort();
 			}
 
-			const ClassData &supertypeData = m_classData.at(superclass);
-			supertype = m_builder.CreateLoad(m_valueType, supertypeData.object, "supertype_" + superclass->info->name);
+			ClassData *supertypeData = superclass->GetBackendData<ClassData>();
+			supertype = m_builder.CreateLoad(m_valueType, supertypeData->object, "supertype_" + superclass->info->name);
 		}
 
 		llvm::Constant *className = GetStringConst(cls->info->name);
@@ -971,7 +967,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 			abort();
 		}
 
-		llvm::GlobalVariable *classVar = m_classData.at(cls).object;
+		llvm::GlobalVariable *classVar = cls->GetBackendData<ClassData>()->object;
 		llvm::Value *thisClass = m_builder.CreateLoad(m_valueType, classVar, "super_cls_" + cls->info->name);
 
 		llvm::Value *isStatic = CInt::get(m_int8Type, ctx->currentWrenFunc->methodInfo->isStatic);
@@ -999,7 +995,7 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 		funcList = ctx->closureInstanceLists[node->func];
 	}
 
-	llvm::Value *closureSpec = m_fnData.at(node->func).closureSpec;
+	llvm::Value *closureSpec = node->func->GetBackendData<FnData>()->closureSpec;
 	llvm::Value *specObj = m_builder.CreateLoad(m_pointerType, closureSpec, "closure_spec_" + node->func->debugName);
 	std::vector<llvm::Value *> args = {specObj, closables, funcList};
 	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
@@ -1025,13 +1021,9 @@ ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStat
 ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, ExprAllocateInstanceMemory *node) {
 	std::string name = node->target->info->name;
 
-	if (!m_classData.contains(node->target)) {
-		fmt::print(stderr, "Found VisitExprAllocateInstanceMemory for class {} without class data!\n", name);
-		abort();
-	}
-	ClassData &cd = m_classData.at(node->target);
+	ClassData *cd = node->target->GetBackendData<ClassData>();
 
-	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd.object, "cls_" + name);
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd->object, "cls_" + name);
 	llvm::Value *newObj = m_builder.CreateCall(m_allocObject, {value}, "new_obj_" + name);
 
 	return {newObj};
@@ -1043,13 +1035,8 @@ ExprRes LLVMBackendImpl::VisitExprSystemVar(VisitorContext *ctx, ExprSystemVar *
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassVar *node) {
-	if (!m_classData.contains(node->cls)) {
-		fmt::print(stderr, "Found ExprGetClassVar for class {} without class data!\n", node->cls->info->name);
-		abort();
-	}
-
-	ClassData &cd = m_classData.at(node->cls);
-	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd.object, "cls_" + node->cls->info->name);
+	ClassData *cd = node->cls->GetBackendData<ClassData>();
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd->object, "cls_" + node->cls->info->name);
 	return {value};
 }
 
@@ -1231,7 +1218,7 @@ StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelo
 	// For each of the functions, loop through and relocate them
 	for (size_t i = 0; i < funcs.size(); i++) {
 		IRFn *fn = funcs.at(i);
-		UpvaluePackDef *pack = m_fnData.at(fn).upvaluePackDef.get();
+		UpvaluePackDef *pack = fn->GetBackendData<FnData>()->upvaluePackDef.get();
 		llvm::Value *closureListPtr = ctx->closureInstanceLists.at(fn);
 
 		llvm::BasicBlock *start = relocateSetups.at(fn);
