@@ -71,11 +71,6 @@ struct VisitorContext {
 	/// The array of upvalue value pointers.
 	llvm::Value *upvaluePackPtr = nullptr;
 
-	/// For each closure that references an upvalue from this function, there is a linked list of all the instances
-	/// of that closure. This is used to change the upvalue pointers for that closure for the variables that are
-	/// moved to heap storage.
-	std::map<IRFn *, llvm::Value *> closureInstanceLists;
-
 	/// The BasicBlock that each label represents. These are created whenever they're first needed, but aren't
 	/// added to the function until the StmtLabel is encountered in the AST.
 	std::map<StmtLabel *, llvm::BasicBlock *> labelBlocks;
@@ -436,19 +431,6 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 			// This variable is accessed by closures, so it gets stored in the array of closable variables.
 			ctx.closedAddressPositions[local] = closables.size();
 			closables.push_back(local);
-
-			// Create linked lists of all the functions that use our variables as upvalues
-			for (UpvalueVariable *upvalue : local->upvalues) {
-				IRFn *closure = upvalue->containingFunction;
-				if (ctx.closureInstanceLists.contains(closure))
-					continue;
-
-				ctx.closureInstanceLists[closure] =
-				    m_builder.CreateAlloca(m_pointerType, nullptr, "closure_list_" + closure->debugName);
-
-				// Zero-initialise
-				m_builder.CreateStore(m_nullPointer, ctx.closureInstanceLists[closure]);
-			}
 		}
 	}
 	for (LocalVariable *local : func->temporaries) {
@@ -457,7 +439,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 
 	if (!closables.empty()) {
 		ctx.closableVariables =
-		    m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, closables.size()), "closables");
+		    m_builder.CreateCall(m_allocUpvalueStorage, {CInt::get(m_int32Type, closables.size())}, "upvalueStorage");
 	}
 
 	// Copy across the position data, as it's used to generate the closure specs
@@ -987,17 +969,13 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 }
 ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node) {
 	llvm::Value *closables = m_nullPointer;
-	llvm::Value *funcList = m_nullPointer;
 	if (!node->func->upvalues.empty()) {
 		closables = ctx->closableVariables;
-	}
-	if (ctx->closureInstanceLists.contains(node->func)) {
-		funcList = ctx->closureInstanceLists[node->func];
 	}
 
 	llvm::Value *closureSpec = node->func->GetBackendData<FnData>()->closureSpec;
 	llvm::Value *specObj = m_builder.CreateLoad(m_pointerType, closureSpec, "closure_spec_" + node->func->debugName);
-	std::vector<llvm::Value *> args = {specObj, closables, funcList};
+	std::vector<llvm::Value *> args = {specObj, closables, m_nullPointer};
 	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
 
 	return {closure};
@@ -1138,130 +1116,8 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
-	// WARNING WARNING: Complicated and fragile code ahead
-	// Note: here, 'relocation' means a variable we're moving from the stack to the heap, so closures
-	// can continue using it once the block it was declared in is gone.
-
-	// For now, move all our locals (that are used as upvalues) to the heap if any of our closures use them. This is
-	// quite trigger-happy to use heap memory, which isn't great from a performance standpoint. Here's a few ideas of
-	// things we could do to improve the situation:
-	// * Partition the upvalues based on which functions use them, and handle them completely separately.
-	// * Use static analysis to find if at least one instance of a closure is always created, and if so then we
-	//   can omit the checking.
-
-	// First, build a list of the variables that are used by closures. Those that aren't can obviously just
-	// be ignored.
-	std::vector<LocalVariable *> closables;
-	std::set<IRFn *> funcsSet;
-	for (LocalVariable *var : node->variables) {
-		if (var->upvalues.empty())
-			continue;
-
-		closables.push_back(var);
-		for (UpvalueVariable *upvalue : var->upvalues) {
-			funcsSet.insert(upvalue->containingFunction);
-		}
-	}
-	std::vector<IRFn *> funcs;
-	funcs.insert(funcs.begin(), funcsSet.begin(), funcsSet.end());
-
-	// No upvalues? Nothing to do.
-	if (funcs.empty())
-		return {};
-
-	// Create the basic blocks for the cases where we have to relocate, and a terminator that we end with.
-	llvm::BasicBlock *relocCase = llvm::BasicBlock::Create(m_context, "do_reloc_closures", ctx->currentFunc);
-
-	std::map<IRFn *, llvm::BasicBlock *> relocateSetups;
-	std::map<IRFn *, llvm::BasicBlock *> relocateLoops;
-	for (IRFn *fn : funcs) {
-		relocateSetups[fn] =
-		    llvm::BasicBlock::Create(m_context, "relocate_" + fn->debugName + "_start", ctx->currentFunc);
-		relocateLoops[fn] =
-		    llvm::BasicBlock::Create(m_context, "relocate_" + fn->debugName + "_loop", ctx->currentFunc);
-	}
-
-	llvm::BasicBlock *endCase = llvm::BasicBlock::Create(m_context, "end_reloc_closures", ctx->currentFunc);
-
-	// Now check if any closures have been created
-	llvm::Value *noneExist = nullptr;
-	for (IRFn *fn : funcs) {
-		llvm::Value *value =
-		    m_builder.CreateICmpEQ(m_nullPointer, ctx->closureInstanceLists.at(fn), "has_fn_" + fn->debugName);
-
-		if (noneExist) {
-			noneExist = m_builder.CreateAnd(noneExist, value);
-		} else {
-			noneExist = value;
-		}
-	}
-	m_builder.CreateCondBr(noneExist, endCase, relocCase);
-
-	// Make the relocation case
-	m_builder.SetInsertPoint(relocCase);
-
-	// Allocate the memory to store the variables, and copy them all in
-	llvm::Value *upvalueStorage =
-	    m_builder.CreateCall(m_allocUpvalueStorage, {CInt::get(m_int32Type, closables.size())}, "upvalueStorage");
-	std::map<LocalVariable *, llvm::Value *> heapPtrs;
-	for (size_t i = 0; i < closables.size(); i++) {
-		LocalVariable *var = closables.at(i);
-		llvm::Value *oldPtr = GetLocalPointer(ctx, var);
-		llvm::Value *value = m_builder.CreateLoad(m_valueType, oldPtr);
-		llvm::Value *destPtr = m_builder.CreateGEP(m_valueType, upvalueStorage, CInt::get(m_int32Type, i));
-		m_builder.CreateStore(value, destPtr);
-		heapPtrs[var] = destPtr;
-	}
-
-	m_builder.CreateBr(relocateSetups.at(funcs.front()));
-
-	// For each of the functions, loop through and relocate them
-	for (size_t i = 0; i < funcs.size(); i++) {
-		IRFn *fn = funcs.at(i);
-		UpvaluePackDef *pack = fn->GetBackendData<FnData>()->upvaluePackDef.get();
-		llvm::Value *closureListPtr = ctx->closureInstanceLists.at(fn);
-
-		llvm::BasicBlock *start = relocateSetups.at(fn);
-		llvm::BasicBlock *loop = relocateLoops.at(fn);
-		llvm::BasicBlock *next = fn == funcs.back() ? endCase : relocateSetups.at(funcs.at(i + 1));
-
-		m_builder.SetInsertPoint(start);
-		// Get the pointer to the first Obj in the linked list
-		llvm::Value *startValue = m_builder.CreateLoad(m_pointerType, closureListPtr);
-		llvm::Value *isNull = m_builder.CreateICmpEQ(m_nullPointer, startValue);
-		m_builder.CreateCondBr(isNull, next, loop);
-
-		// Generate the main loop
-		m_builder.SetInsertPoint(loop);
-		llvm::PHINode *thisObj = m_builder.CreatePHI(m_pointerType, 2, "relocPtr");
-		thisObj->addIncoming(startValue, start);
-
-		llvm::Value *upvaluePack = m_builder.CreateCall(m_getUpvaluePack, thisObj);
-		for (size_t j = 0; j < pack->variables.size(); j++) {
-			UpvalueVariable *upvalue = pack->variables.at(j);
-			LocalVariable *parent = dynamic_cast<LocalVariable *>(upvalue->parent);
-
-			if (!heapPtrs.contains(parent))
-				continue;
-
-			// Modify the pack, so that this slot points to the new location of the value on the heap
-			llvm::Value *newPtr = heapPtrs.at(parent);
-			llvm::Value *packPPtr = m_builder.CreateGEP(m_pointerType, upvaluePack, {CInt::get(m_int32Type, j)},
-			                                            "pack_pptr_" + upvalue->Name());
-			m_builder.CreateStore(newPtr, packPPtr);
-		}
-
-		// Find the next value
-		llvm::Value *nextInstance = m_builder.CreateCall(m_getNextClosure, {thisObj}, "next_reloc_obj");
-		thisObj->addIncoming(nextInstance, loop);
-
-		// Check if we've reached the end, and if so then break - otherwise, repeat
-		llvm::Value *endIsNull = m_builder.CreateICmpEQ(m_nullPointer, nextInstance);
-		m_builder.CreateCondBr(endIsNull, next, loop);
-	}
-
-	// Continue compiling at the end block
-	m_builder.SetInsertPoint(endCase);
+	// All upvalues in the LLVM implementation are stored on the heap, since things get too complicated with
+	// nested closures otherwise. Thus (until we implement a GC) we don't have to do anything here.
 
 	return {};
 }
