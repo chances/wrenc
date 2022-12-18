@@ -550,7 +550,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		int numUpvalues = upvaluePack->variables.size();
 
 		std::vector<llvm::Type *> specTypes = {m_pointerType, m_pointerType, m_int32Type, m_int32Type};
-		specTypes.insert(specTypes.end(), numUpvalues, m_int64Type); // Add the upvalue indices
+		specTypes.insert(specTypes.end(), numUpvalues, m_int32Type); // Add the upvalue indices
 		llvm::StructType *closureSpecType = llvm::StructType::get(m_context, specTypes);
 
 		// Generate the spec table
@@ -578,7 +578,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			}
 			int index = parentData->closedAddressPositions.at(target);
 
-			structContent.push_back(CInt::get(m_int64Type, index));
+			structContent.push_back(CInt::get(m_int32Type, index));
 		}
 
 		llvm::Constant *constant = llvm::ConstantStruct::get(closureSpecType, structContent);
