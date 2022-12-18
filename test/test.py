@@ -202,6 +202,15 @@ class Test:
         )
         out, err = proc.communicate(None)
 
+        # This should only happen if the compiler crashes - in which case we shouldn't
+        # be worrying about individual lines.
+        if proc.returncode < 0:
+            self.failed("Compiler exited with negative return code " + str(proc.returncode))
+            print()
+            print("Compiler stdout: " + out.strip())
+            print("Compiler stderr: " + err.strip())
+            return None
+
         # Ignore stderr, all the errors are written to stdout
 
         lines = out.replace('\r\n', '\n').split('\n')
