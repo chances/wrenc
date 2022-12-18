@@ -46,7 +46,7 @@ class ClosureSpec;
 class ObjFn : public Obj {
   public:
 	~ObjFn();
-	ObjFn(ClosureSpec *spec, void *parentStack);
+	ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack);
 
 	/// In Wren there's two ways to create an Fn object:
 	/// * Using Fn.new { my closure }

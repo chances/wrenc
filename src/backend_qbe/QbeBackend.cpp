@@ -801,8 +801,8 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 	const char *stackLocals = node->func->upvalues.empty() ? "0" : "%stack_locals";
 	std::string listHeadName = listHead ? "%" + listHead->name : "0";
 	snip->result = AddTemporary("closure_result_" + node->func->debugName);
-	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {}, {} {})", snip->result->name, PTR_TYPE, descObj->name,
-	          PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
+	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {}, l 0, {} {})", snip->result->name, PTR_TYPE,
+	          descObj->name, PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
 
 	return snip;
 }

@@ -3,8 +3,8 @@
 //
 
 #include "ObjFn.h"
-#include "ObjClass.h"
 #include "Errors.h"
+#include "ObjClass.h"
 
 #include <optional>
 #include <span>
@@ -15,15 +15,27 @@ class ObjFnClass : public ObjNativeClass {
 };
 
 ObjFn::~ObjFn() = default;
-ObjFn::ObjFn(ClosureSpec *spec, void *parentStack) : Obj(Class()), spec(spec) {
+ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Obj(Class()), spec(spec) {
 	// Take the address of the relevant values on the parent function's stack, so while the parent function is
 	// still in scope we can modify the values in-place (upvaluePointers gets overwritten when the variables
 	// go out of scope, to point to heap memory where the values are moved to).
 
+	// In the LLVM backend, we support upvalues that are based on other upvalues (which you get when you nest
+	// closures) by also accepting the parent function's upvalue table, then pulling values out of that. The
+	// LLVM implementation doesn't relocate it's upvalues (it always allocates them, they never live on the
+	// stack) which makes this a lot simpler.
+
 	Value *valueStack = (Value *)parentStack;
+	Value **upvaluePack = (Value **)parentUpvaluePack;
 	upvaluePointers.reserve(spec->upvalueOffsets.size());
 	for (int stackPos : spec->upvalueOffsets) {
-		upvaluePointers.push_back(&valueStack[stackPos]);
+		bool isDoubleUpvalue = (stackPos & (1 << 31)) != 0;
+		int realValue = stackPos & 0x7fffffff;
+		if (isDoubleUpvalue) {
+			upvaluePointers.push_back(upvaluePack[realValue]);
+		} else {
+			upvaluePointers.push_back(&valueStack[realValue]);
+		}
 	}
 }
 
@@ -80,7 +92,7 @@ template <> std::optional<Value> invokePtr<-1>(void *func, const SpecialSpan &va
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	if ((int)values.size() != spec->arity) {
 		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
-		        (int)values.size(), spec->arity);
+		                  (int)values.size(), spec->arity);
 	}
 
 	SpecialSpan span;
@@ -99,7 +111,7 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	std::optional<Value> result = invokePtr<16>(spec->funcPtr, span);
 	if (!result) {
 		errors::wrenAbort("Cannot call closure '%s': internal call failure, could not find call impl (arity %d)\n",
-		        spec->name.c_str(), (int)values.size());
+		                  spec->name.c_str(), (int)values.size());
 	}
 
 	return result.value();

@@ -42,7 +42,7 @@ EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentC
 EXPORT Value wren_alloc_obj(Value classVar);
 EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
-EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead);
+EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead);
 EXPORT Value **wren_get_closure_upvalue_pack(ObjFn *closure);
 EXPORT ObjFn *wren_get_closure_chain_next(ObjFn *closure);
 EXPORT void *wren_alloc_upvalue_storage(int numClosures);
@@ -228,13 +228,13 @@ ClosureSpec *wren_register_closure(void *specData) {
 	return new ClosureSpec(specData);
 }
 
-Value wren_create_closure(ClosureSpec *spec, void *stack, ObjFn **listHead) {
+Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead) {
 	if (spec == nullptr) {
 		errors::wrenAbort("Cannot pass null spec to wren_create_closure\n");
 	}
 
 	// Stack may be null if we have no upvalues
-	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec, stack);
+	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec, stack, upvalueTable);
 
 	// Add this object to the linked list of all the other functions of the same type that have been created
 	// This is used for tracking which closures need to be fixed up when their upvalues escape.
