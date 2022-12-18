@@ -24,7 +24,7 @@ class IBackend {
   public:
 	virtual ~IBackend();
 
-	virtual CompilationResult Generate(Module *module) = 0;
+	virtual CompilationResult Generate(Module *mod) = 0;
 
 	/// Very special case flag for compiling Wren 'standard library' stuff, like the methods for List and String.
 	/// This makes things behave a bit... weird, disabling some parts of the class generation so we can cleanly

@@ -110,11 +110,11 @@ class LLVMBackendImpl : public LLVMBackend {
   public:
 	LLVMBackendImpl();
 
-	CompilationResult Generate(Module *aModule) override;
+	CompilationResult Generate(Module *mod) override;
 
   private:
 	llvm::Function *GenerateFunc(IRFn *func, bool initialiser);
-	void GenerateInitialiser(Module *module);
+	void GenerateInitialiser(Module *mod);
 
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
@@ -236,7 +236,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_registerSignatureTable = m_module.getOrInsertFunction("wren_register_signatures_table", registerSigTableType);
 }
 
-CompilationResult LLVMBackendImpl::Generate(Module *module) {
+CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	// Create all the system variables with the correct linkage
 	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		std::string name = "wren_sys_var_" + entry.first;
@@ -253,11 +253,11 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
 
 	// Create our function data objects
-	for (IRFn *func : module->GetFunctions()) {
+	for (IRFn *func : mod->GetFunctions()) {
 		func->backendData = std::unique_ptr<BackendNodeData>(new FnData);
 	}
 
-	for (IRFn *func : module->GetClosures()) {
+	for (IRFn *func : mod->GetClosures()) {
 		// Make a global variable for the ClosureSpec
 		FnData *fnData = func->GetBackendData<FnData>();
 		fnData->closureSpec =
@@ -278,7 +278,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 	}
 
 	// Add pointers to the ObjClass instances for all the classes we've declared
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		// System classes are defined in C++, and should only appear when compiling wren_core
 		if (cls->info->IsSystemClass())
 			continue;
@@ -301,13 +301,13 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		cls->backendData = std::unique_ptr<BackendNodeData>(classData);
 	}
 
-	for (IRFn *func : module->GetFunctions()) {
+	for (IRFn *func : mod->GetFunctions()) {
 		FnData *data = func->GetBackendData<FnData>();
-		data->llvmFunc = GenerateFunc(func, func == module->GetMainFunction());
+		data->llvmFunc = GenerateFunc(func, func == mod->GetMainFunction());
 	}
 
 	// Generate the initialiser last, when we know all the string constants etc
-	GenerateInitialiser(module);
+	GenerateInitialiser(mod);
 
 	// Identify this module as containing the main function
 	if (defineStandaloneMainFunc) {
@@ -315,7 +315,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *module) {
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		FnData *data = module->GetMainFunction()->GetBackendData<FnData>();
+		FnData *data = mod->GetMainFunction()->GetBackendData<FnData>();
 		llvm::Function *main = data->llvmFunc;
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
 		                         "wrenStandaloneMainFunc");
@@ -487,7 +487,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	return function;
 }
 
-void LLVMBackendImpl::GenerateInitialiser(Module *module) {
+void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
@@ -554,7 +554,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *module) {
 	argTypes = {m_pointerType};
 	llvm::FunctionType *newClosureType = llvm::FunctionType::get(m_pointerType, argTypes, false);
 	llvm::FunctionCallee newClosureFn = m_module.getOrInsertFunction("wren_register_closure", newClosureType);
-	for (IRFn *fn : module->GetFunctions()) {
+	for (IRFn *fn : mod->GetFunctions()) {
 		const FnData *fnData = fn->GetBackendData<FnData>();
 
 		// Only produce ClosureSpecs for closures
@@ -614,7 +614,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *module) {
 	// Load the Obj type once, since we'll likely use it a lot since it's the default supertype
 	llvm::Value *objValue = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
 
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
 
