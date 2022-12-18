@@ -71,6 +71,15 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 			continue;
 		}
 
+		if (recurse)
+			Visit(stmt);
+	}
+
+	// Remove returns *after* we're done flattening, since otherwise if there's a label in a block we wouldn't find it
+	// For example, test/language/return/after_while.wren had this problem.
+	for (int i = 0; i < node->statements.size(); i++) {
+		IRStmt *stmt = node->statements.at(i);
+
 		// If we find a return, remove everything after it until we find a label, since that's the only
 		// way you can access something after a return.
 		if (dynamic_cast<StmtReturn *>(stmt)) {
@@ -81,9 +90,6 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 				node->statements.erase(node->statements.begin() + i + 1);
 			}
 		}
-
-		if (recurse)
-			Visit(stmt);
 	}
 }
 
