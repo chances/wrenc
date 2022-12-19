@@ -663,11 +663,6 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			}
 
 			for (const auto &[group, keys] : byGroup) {
-				addCmdFlag(Cmd::ADD_ATTRIBUTE_GROUP, CD::FLAG_NONE);
-
-				llvm::Constant *groupConst = GetStringConst(group);
-				values.push_back(llvm::ConstantExpr::getPtrToInt(groupConst, m_int64Type));
-
 				// Find exactly how many attributes we'll be writing
 				std::vector<std::pair<std::string, const AttrContent *>> contents;
 				for (const AttrKey *key : keys) {
@@ -677,6 +672,15 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 						contents.push_back({key->name, &content});
 					}
 				}
+
+				// If we don't have any to write, then skip this group
+				if (contents.empty())
+					continue;
+
+				addCmdFlag(Cmd::ADD_ATTRIBUTE_GROUP, CD::FLAG_NONE);
+
+				llvm::Constant *groupConst = GetStringConst(group);
+				values.push_back(llvm::ConstantExpr::getPtrToInt(groupConst, m_int64Type));
 
 				// On little-endian layouts, this is <i32 method> <i32 size>
 				// Note we cast the method to a uint32_t first, so it doesn't get sign-extended
