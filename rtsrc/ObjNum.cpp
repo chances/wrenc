@@ -62,8 +62,14 @@ double ObjNumClass::OperatorMinus(double receiver, double other) { return receiv
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }
 double ObjNumClass::OperatorDivide(double receiver, double other) { return receiver / other; }
 
-bool ObjNumClass::OperatorEqualTo(double receiver, double other) { return receiver == other; }
-bool ObjNumClass::OperatorNotEqual(double receiver, double other) { return receiver != other; }
+// Equals and not-equals are a bit different to the others - it's not an error to pass an object to them
+bool ObjNumClass::OperatorEqualTo(double receiver, Value other) {
+	if (is_object(other))
+		return false;
+	return receiver == get_number_value(other);
+}
+bool ObjNumClass::OperatorNotEqual(double receiver, Value other) { return !OperatorEqualTo(receiver, other); }
+
 bool ObjNumClass::OperatorLessThan(double receiver, double other) { return receiver < other; }
 bool ObjNumClass::OperatorLessThanEq(double receiver, double other) { return receiver <= other; }
 bool ObjNumClass::OperatorGreaterThan(double receiver, double other) { return receiver > other; }

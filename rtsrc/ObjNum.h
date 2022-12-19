@@ -30,8 +30,8 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() double OperatorMultiply(double receiver, double other);
 	WREN_METHOD() double OperatorDivide(double receiver, double other);
 
-	WREN_METHOD() bool OperatorEqualTo(double receiver, double other);
-	WREN_METHOD() bool OperatorNotEqual(double receiver, double other);
+	WREN_METHOD() bool OperatorEqualTo(double receiver, Value other);
+	WREN_METHOD() bool OperatorNotEqual(double receiver, Value other);
 	WREN_METHOD() bool OperatorLessThan(double receiver, double other);
 	WREN_METHOD() bool OperatorLessThanEq(double receiver, double other);
 	WREN_METHOD() bool OperatorGreaterThan(double receiver, double other);
