@@ -23,6 +23,7 @@ class ObjNumClass : public ObjNativeClass {
 
 	WREN_METHOD(getter) double OperatorMinus(double receiver); // Negation
 	WREN_METHOD(getter) bool OperatorBoolNegate(double receiver);
+	WREN_METHOD(getter) bool OperatorBitwiseNegate(double receiver);
 
 	WREN_METHOD() double OperatorPlus(double receiver, double other);
 	WREN_METHOD() double OperatorMinus(double receiver, double other);

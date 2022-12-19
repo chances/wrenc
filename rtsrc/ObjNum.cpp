@@ -44,6 +44,15 @@ bool ObjNumClass::OperatorBoolNegate(double receiver) {
 	return false;
 }
 
+bool ObjNumClass::OperatorBitwiseNegate(double receiver) {
+	// https://wren.io/modules/core/num.html
+	// Truncate to a u32, negate, and cast back
+	uint32_t intValue = (uint32_t)receiver;
+	uint32_t negated = ~intValue;
+	double result = (double)negated;
+	return result;
+}
+
 double ObjNumClass::OperatorPlus(double receiver, double other) { return receiver + other; }
 double ObjNumClass::OperatorMinus(double receiver, double other) { return receiver - other; }
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }

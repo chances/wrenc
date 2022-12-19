@@ -27,6 +27,7 @@ OPERATOR_TYPES = {
     "GreaterThanEq": ">=",
 
     "BoolNegate": "!",
+    "BitwiseNegate": "~",
 }
 OPERATOR_SUBSCRIPT = "OperatorSubscript"
 OPERATOR_SUBSCRIPT_SET = "OperatorSubscriptSet"
