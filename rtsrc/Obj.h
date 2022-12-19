@@ -46,6 +46,8 @@ class Obj {
 	WREN_METHOD() bool OperatorNotEqual(Value other);
 	WREN_METHOD(getter) bool OperatorBoolNegate();
 	WREN_METHOD() bool Is(ObjClass *cls);
+	WREN_METHOD(getter) ObjClass *Type();
+	WREN_METHOD(getter) std::string ToString();
 
 	/// Helper method to make a virtual call to the toString function
 	/// Note this is called ConvertToString and not ToString to avoid clashing with implementations of the Wren method

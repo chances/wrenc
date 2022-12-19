@@ -71,3 +71,7 @@ bool Obj::Is(ObjClass *cls) {
 	}
 	return false;
 }
+
+ObjClass *Obj::Type() { return type; }
+
+std::string Obj::ToString() { return "instance of " + type->name; }
