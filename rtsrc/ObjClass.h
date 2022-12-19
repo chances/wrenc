@@ -127,7 +127,8 @@ class ObjClass : public Obj {
 	WREN_METHOD(getter) std::string Name() const;
 	WREN_METHOD(getter) ObjClass *Supertype() const;
 	WREN_METHOD(getter) std::string ToString() const;
-	// We need an 'attributes' getter when that gets implemented
+	/// Gets the result for calling 'attributes' on this class. Defaults to null, ObjManaged can override this.
+	WREN_METHOD(getter) virtual Value Attributes();
 
   protected:
 	/// Get a pointer to an entry in the function table. If this entry doesn't exist, the pointer to the

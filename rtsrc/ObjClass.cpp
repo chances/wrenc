@@ -107,6 +107,7 @@ bool ObjClass::InheritsMethods() { return true; }
 std::string ObjClass::Name() const { return name; }
 ObjClass *ObjClass::Supertype() const { return parentClass; }
 std::string ObjClass::ToString() const { return name; }
+Value ObjClass::Attributes() { return NULL_VAL; }
 
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
 	type = &m_defaultMetaClass;

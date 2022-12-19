@@ -11,6 +11,7 @@
 
 class ObjManagedClass;
 class ClassDescription; // From ClassDescription.h
+class AttributePack;
 
 /// Represents an object defined in Wren
 class ObjManaged : public Obj {
@@ -39,6 +40,8 @@ class ObjManagedClass : public ObjClass {
 
 	bool CanScriptSubclass() override;
 
+	Value Attributes() override;
+
 	ObjManagedMetaClass meta;
 
 	std::unique_ptr<ClassDescription> spec;
@@ -48,4 +51,11 @@ class ObjManagedClass : public ObjClass {
 
 	/// The byte size of an ObjManaged instance representing this class, including all the fields.
 	int size;
+
+  private:
+	void InitialiseAttributes();
+	static ObjMap *BuildAttributes(const AttributePack *attributes);
+
+	/// An instance of ClassAttributes, which is a purely-Wren type
+	Value m_attributes = NULL_VAL;
 };
