@@ -114,7 +114,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
-	llvm::Value *GetGlobalVariable(IRGlobalDecl *global);
+	llvm::GlobalVariable *GetGlobalVariable(IRGlobalDecl *global);
 	llvm::Value *GetLocalPointer(VisitorContext *ctx, LocalVariable *local);
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
 	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
@@ -819,6 +819,32 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 	// Functions must return!
 	m_builder.CreateRetVoid();
+
+	// Finally, generate the get-global-table function, if this module has a name - otherwise it can't be imported
+	// anyway. The name here is important, as it's part of the ABI.
+	if (mod->Name()) {
+		std::string getGlobalName = mod->Name().value() + "_get_globals";
+		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
+		llvm::Function *getGlobalsFunc =
+		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
+		m_builder.SetInsertPoint(llvm::BasicBlock::Create(m_context, "entry", getGlobalsFunc));
+
+		// Create the globals table
+		std::vector<llvm::Constant *> components;
+		for (IRGlobalDecl *global : mod->GetGlobalVariables()) {
+			components.push_back(GetStringConst(global->Name()));
+			components.push_back(GetGlobalVariable(global));
+		}
+		// Terminating null
+		components.push_back(m_nullPointer);
+
+		llvm::ArrayType *arrayType = llvm::ArrayType::get(m_pointerType, components.size());
+		llvm::Constant *value = llvm::ConstantArray::get(arrayType, components);
+		llvm::GlobalVariable *globalsTable = new llvm::GlobalVariable(
+		    m_module, arrayType, true, llvm::GlobalVariable::PrivateLinkage, value, "globals_table");
+
+		m_builder.CreateRet(globalsTable);
+	}
 }
 
 llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
@@ -850,7 +876,7 @@ llvm::Value *LLVMBackendImpl::GetManagedStringValue(const std::string &str) {
 	return var;
 }
 
-llvm::Value *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
+llvm::GlobalVariable *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
 	auto iter = m_globalVariables.find(global);
 	if (iter != m_globalVariables.end())
 		return iter->second;
