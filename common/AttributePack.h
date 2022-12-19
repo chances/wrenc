@@ -50,6 +50,10 @@ struct AttrContent {
 class AttributePack {
   public:
 	~AttributePack();
+	AttributePack() = default;
+
+	AttributePack(const AttributePack &) = delete;
+	AttributePack &operator=(const AttributePack &) = delete;
 
 	std::unordered_map<AttrKey, std::vector<AttrContent>, AttrKey::HashFunc, AttrKey::EqFunc> attributes;
 };

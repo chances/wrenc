@@ -629,6 +629,70 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			values.push_back(CInt::get(m_int64Type, cmdFlag));
 		};
 
+		// Write the attributes - both for the class, and all the methods
+		auto writeSingleAttribute = [&](const std::string &name, const AttrContent &attr) {
+			llvm::Constant *nameConst = GetStringConst(name);
+			values.push_back(llvm::ConstantExpr::getPtrToInt(nameConst, m_int64Type));
+
+			CD::AttrType type;
+			llvm::Constant *result;
+
+			if (attr.str) {
+				type = CD::AttrType::STRING;
+				result = llvm::ConstantExpr::getPtrToInt(GetStringConst(attr.str.value()), m_int64Type);
+			} else if (attr.boolean) {
+				type = CD::AttrType::BOOLEAN;
+				result = CInt::get(m_int64Type, attr.boolean.value());
+			} else {
+				type = CD::AttrType::VALUE;
+				result = CInt::get(m_int64Type, attr.value);
+			}
+
+			values.push_back(CInt::get(m_int64Type, (uint64_t)type));
+
+			values.push_back(result);
+		};
+		auto writeAttributes = [&](const AttributePack *attributes, int method) {
+			if (!attributes)
+				return;
+
+			// We emit attribute blocks per-group, so group the keys by them
+			std::map<std::string, std::vector<const AttrKey *>> byGroup;
+			for (const auto &[key, _] : attributes->attributes) {
+				byGroup[key.group].push_back(&key);
+			}
+
+			for (const auto &[group, keys] : byGroup) {
+				addCmdFlag(Cmd::ADD_ATTRIBUTE_GROUP, CD::FLAG_NONE);
+
+				llvm::Constant *groupConst = GetStringConst(group);
+				values.push_back(llvm::ConstantExpr::getPtrToInt(groupConst, m_int64Type));
+
+				// Find exactly how many attributes we'll be writing
+				std::vector<std::pair<std::string, const AttrContent *>> contents;
+				for (const AttrKey *key : keys) {
+					for (const AttrContent &content : attributes->attributes.at(*key)) {
+						if (!content.runtimeAccess)
+							continue;
+						contents.push_back({key->name, &content});
+					}
+				}
+
+				// On little-endian layouts, this is <i32 method> <i32 size>
+				// Note we cast the method to a uint32_t first, so it doesn't get sign-extended
+				uint64_t methodAndCount = ((uint32_t)method) + (contents.size() << 32);
+				values.push_back(CInt::get(m_int64Type, methodAndCount)); // Count
+
+				for (const auto &[name, content] : contents) {
+					writeSingleAttribute(name, *content);
+				}
+			}
+		};
+
+		// Write the class attributes here, the rest will be mixed in with the methods
+		writeAttributes(cls->info->attributes.get(), -1);
+		int methodId = 0; // Used to track the method index for the attribute data
+
 		// Emit a block for each method
 		auto writeMethods = [&](const ClassInfo::MethodMap &methods, bool isStatic) {
 			for (const auto &[sig, method] : methods) {
@@ -642,6 +706,9 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 				FnData *fnData = method->fn->GetBackendData<FnData>();
 				values.push_back(llvm::ConstantExpr::getPtrToInt(fnData->llvmFunc, m_int64Type));
+
+				writeAttributes(method->attributes.get(), methodId);
+				methodId++;
 			}
 		};
 
