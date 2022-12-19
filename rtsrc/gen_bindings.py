@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
     r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<static>static\s+)?" +
-    r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;$")
+    r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)(?:\s+const)?\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
 ARG_REGEX = re.compile(r"^\s*(?P<type>.+\s[*&]*)(?P<name>\w+)\s*$")
 
