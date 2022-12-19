@@ -20,7 +20,7 @@ class QbeBackend : public IBackend {
 	QbeBackend();
 	~QbeBackend();
 
-	CompilationResult Generate(Module *module);
+	CompilationResult Generate(Module *mod);
 
   private:
 	/// Information about a local variable
@@ -68,7 +68,7 @@ class QbeBackend : public IBackend {
 
 	VLocal *AddTemporary(std::string debugName);
 
-	void GenerateInitFunction(const std::string &moduleName, Module *module);
+	void GenerateInitFunction(const std::string &moduleName, Module *mod);
 
 	// Create a string constant if it doesn't already exist, and return it's name, ready for use in QBE IR.
 	std::string GetStringPtr(const std::string &value);

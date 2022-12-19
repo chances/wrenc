@@ -33,11 +33,11 @@ static const std::string SYM_CLOSURE_DESC_OBJ = "closure_obj_";
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
-CompilationResult QbeBackend::Generate(Module *module) {
-	std::string moduleName = MangleUniqueName(module->Name().value_or("unknown"), false);
+CompilationResult QbeBackend::Generate(Module *mod) {
+	std::string moduleName = MangleUniqueName(mod->Name().value_or("unknown"), false);
 
 	// Make the upvalue pack for each function that needs them
-	for (IRFn *func : module->GetClosures()) {
+	for (IRFn *func : mod->GetClosures()) {
 		std::unique_ptr<UpvaluePackDef> pack = std::make_unique<UpvaluePackDef>();
 
 		for (const auto &entry : func->upvalues) {
@@ -54,26 +54,26 @@ CompilationResult QbeBackend::Generate(Module *module) {
 		m_functionUpvaluePacks[func] = std::move(pack);
 	}
 
-	for (IRFn *func : module->GetFunctions()) {
+	for (IRFn *func : mod->GetFunctions()) {
 		std::optional<std::string> initFunc;
-		if (func == module->GetMainFunction()) {
+		if (func == mod->GetMainFunction()) {
 			initFunc = "module_init_func_" + moduleName;
 		}
 		VisitFn(func, initFunc);
 	}
 
 	// Generate the initialisation function
-	GenerateInitFunction(moduleName, module);
+	GenerateInitFunction(moduleName, mod);
 
 	// Add the global variables
-	for (IRGlobalDecl *var : module->GetGlobalVariables()) {
+	for (IRGlobalDecl *var : mod->GetGlobalVariables()) {
 		Print("section \".data\" data {} = {{ {} {} }}", MangleGlobalName(var), PTR_TYPE, (uint64_t)NULL_VAL);
 	}
 
 	// Add a table of data describing each class, what their methods are etc
 	// This works as a series of commands with flags
 	// Note we create new strings here, so this has to be done before writing the strings
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
 
@@ -112,7 +112,7 @@ CompilationResult QbeBackend::Generate(Module *module) {
 	}
 
 	// Add a table describing all the closures, and pointers to data objects for them
-	for (IRFn *fn : module->GetClosures()) {
+	for (IRFn *fn : mod->GetClosures()) {
 		// Note: put the data table in .data instead of .rodata since it contains a relocation
 		std::string funcName = MangleUniqueName(fn->debugName, false);
 		Print("section \".bss\" data ${}{} = {{ {} 0 }}", SYM_CLOSURE_DESC_OBJ, GetClosureName(fn), PTR_TYPE);
@@ -156,7 +156,7 @@ CompilationResult QbeBackend::Generate(Module *module) {
 	}
 
 	// Add pointers to the ObjClass instances for all the classes we've declared
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		// System classes are defined in C++, and should only appear when compiling wren_core
 		if (cls->info->IsSystemClass())
 			continue;
@@ -168,7 +168,7 @@ CompilationResult QbeBackend::Generate(Module *module) {
 	// can currently have classes extending from classes in another file, and they don't know how
 	// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
 	// we have to add it to the object pointer to get the fields area.
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		if (cls->info->IsSystemClass())
 			continue;
 
@@ -196,7 +196,7 @@ CompilationResult QbeBackend::Generate(Module *module) {
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		std::string mainFuncName = MangleUniqueName(module->GetMainFunction()->debugName, false);
+		std::string mainFuncName = MangleUniqueName(mod->GetMainFunction()->debugName, false);
 		Print("section \".data\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
 	}
 
@@ -232,7 +232,7 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 	return other->result;
 }
 
-void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *module) {
+void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod) {
 	Print("function $module_init_func_{}() {{", moduleName);
 	m_inFunction = true;
 	Print("@start");
@@ -263,7 +263,7 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	VLocal *objClass = AddTemporary("obj_class");
 	Print("%{} =l loadl $wren_sys_var_Object", objClass->name);
 
-	for (IRClass *cls : module->GetClasses()) {
+	for (IRClass *cls : mod->GetClasses()) {
 		VLocal *supertypeLocal;
 		if (cls->info->parentClass) {
 			Snippet *supertypeSnippet = VisitExpr(cls->info->parentClass);
@@ -294,7 +294,7 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	}
 
 	Print("# Register upvalues");
-	for (IRFn *fn : module->GetClosures()) {
+	for (IRFn *fn : mod->GetClosures()) {
 		// For each upvalue, tell the runtime about it and save the description object it gives us. This object
 		// is then used to closure objects wrapping this function.
 		std::string name = GetClosureName(fn);
