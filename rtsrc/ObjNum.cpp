@@ -4,6 +4,10 @@
 
 #include "ObjNum.h"
 
+#include "Errors.h"
+#include "ObjRange.h"
+#include "WrenRuntime.h"
+
 ObjNumClass::~ObjNumClass() {}
 
 // Don't inherit methods from our parent, since we have the funny thing with the number receivers
@@ -64,5 +68,12 @@ bool ObjNumClass::OperatorLessThan(double receiver, double other) { return recei
 bool ObjNumClass::OperatorLessThanEq(double receiver, double other) { return receiver <= other; }
 bool ObjNumClass::OperatorGreaterThan(double receiver, double other) { return receiver > other; }
 bool ObjNumClass::OperatorGreaterThanEq(double receiver, double other) { return receiver >= other; }
+
+ObjRange *ObjNumClass::OperatorDotDot(double receiver, double other) {
+	return WrenRuntime::Instance().New<ObjRange>(receiver, other, true);
+}
+ObjRange *ObjNumClass::OperatorDotDotDot(double receiver, double other) {
+	return WrenRuntime::Instance().New<ObjRange>(receiver, other, false);
+}
 
 // NOLINTEND(readability-convert-member-functions-to-static)

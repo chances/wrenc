@@ -28,6 +28,9 @@ OPERATOR_TYPES = {
 
     "BoolNegate": "!",
     "BitwiseNegate": "~",
+
+    "DotDot": "..",
+    "DotDotDot": "...",
 }
 OPERATOR_SUBSCRIPT = "OperatorSubscript"
 OPERATOR_SUBSCRIPT_SET = "OperatorSubscriptSet"

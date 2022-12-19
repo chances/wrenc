@@ -3172,10 +3172,6 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 		consumeLine(compiler, "Expect newline after definition in class.");
 	}
 
-	// If any attributes are present,
-	// instantiate a ClassAttributes instance for the class
-	// and send it over to CODE_END_CLASS
-
 	compiler->enclosingClass = NULL;
 
 	IRStmt *cleanup = popScope(compiler);

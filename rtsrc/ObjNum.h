@@ -36,4 +36,7 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() bool OperatorLessThanEq(double receiver, double other);
 	WREN_METHOD() bool OperatorGreaterThan(double receiver, double other);
 	WREN_METHOD() bool OperatorGreaterThanEq(double receiver, double other);
+
+	WREN_METHOD() ObjRange *OperatorDotDot(double receiver, double other);
+	WREN_METHOD() ObjRange *OperatorDotDotDot(double receiver, double other);
 };
