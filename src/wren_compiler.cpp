@@ -3157,6 +3157,13 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 		parentTypeExpr = nullptr;
 	}
 
+	// Stop users here if they're trying to extend a core type
+	// Unsurprisingly, we make an exception for wren_core
+	ExprSystemVar *systemParent = dynamic_cast<ExprSystemVar *>(parentTypeExpr);
+	if (systemParent && systemParent->name != "Object" && !compiler->parser->compilingInternal) {
+		error(compiler, "Class %s cannot extend from system type %s", className.c_str(), systemParent->name.c_str());
+	}
+
 	// Push a local variable scope. Static fields in a class body are hoisted out
 	// into local variables declared in this scope. Methods that use them will
 	// have upvalues referencing them.
