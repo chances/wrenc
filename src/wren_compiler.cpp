@@ -743,14 +743,20 @@ static void readRawString(Parser *parser) {
 	nextChar(parser);
 
 	int offset = 0;
+	int count = string.size();
 
 	if (firstNewline != -1 && skipStart == firstNewline)
 		offset = firstNewline + 1;
 
+	if (lastNewline != -1 && skipEnd == lastNewline)
+		count = lastNewline;
+
+	count -= (offset > count) ? count : offset;
+
 	if (offset > (int)string.size()) {
 		parser->next.value = "";
 	} else {
-		parser->next.value = string.substr(offset);
+		parser->next.value = string.substr(offset, count);
 	}
 
 	makeToken(parser, type);
