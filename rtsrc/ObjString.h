@@ -21,6 +21,10 @@ class ObjString : public Obj {
 	WREN_METHOD(getter) Value ToString();
 	WREN_METHOD(getter) int Count();
 	WREN_METHOD() std::string OperatorPlus(Value other);
+	WREN_METHOD() std::string OperatorSubscript(int index);
 
 	std::string m_value;
+
+  private:
+	void ValidateIndex(int index, const char *argName) const;
 };
