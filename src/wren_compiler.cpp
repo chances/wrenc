@@ -3092,6 +3092,16 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		fn->debugName = method->fn->debugName + "::alloc";
 		alloc->fn = fn;
 
+		std::vector<LocalVariable *> args;
+		for (LocalVariable *initArg : method->fn->parameters) {
+			LocalVariable *local = compiler->New<LocalVariable>();
+			local->name = initArg->name;
+			local->depth = 0;
+			fn->locals.push_back(local);
+			fn->parameters.push_back(local);
+			args.push_back(local);
+		}
+
 		StmtBlock *block = compiler->New<StmtBlock>();
 		fn->body = block;
 
@@ -3110,7 +3120,9 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		ExprFuncCall *call = compiler->New<ExprFuncCall>();
 		call->signature = signature;
 		call->receiver = compiler->New<ExprLoad>(objLocal);
-		// TODO arguments
+		for (LocalVariable *arg : args) {
+			call->args.push_back(loadVariable(compiler, arg));
+		}
 		block->Add(compiler, call);
 
 		// Finally, return it
