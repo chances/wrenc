@@ -118,6 +118,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
 	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
 
+	/// Process a string literal, to make it suitable for using as a name in the IR
+	static std::string FilterStringLiteral(const std::string &literal);
+
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
 
@@ -806,9 +809,10 @@ llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
 	std::vector<int8_t> data(str.size() + 1);
 	std::copy(str.begin(), str.end(), data.begin());
 
+	std::string name = "str_" + FilterStringLiteral(str);
 	llvm::Constant *constant = llvm::ConstantDataArray::get(m_context, data);
 	llvm::GlobalVariable *var = new llvm::GlobalVariable(m_module, constant->getType(), true,
-	                                                     llvm::GlobalVariable::PrivateLinkage, constant, "str_" + str);
+	                                                     llvm::GlobalVariable::PrivateLinkage, constant, name);
 
 	m_stringConstants[str] = var;
 	return var;
@@ -819,8 +823,9 @@ llvm::Value *LLVMBackendImpl::GetManagedStringValue(const std::string &str) {
 	if (iter != m_managedStrings.end())
 		return iter->second;
 
-	llvm::GlobalVariable *var = new llvm::GlobalVariable(
-	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "strobj_" + str);
+	std::string name = "strobj_" + FilterStringLiteral(str);
+	llvm::GlobalVariable *var =
+	    new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, name);
 	m_managedStrings[str] = var;
 	return var;
 }
@@ -892,6 +897,24 @@ llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel 
 	return block;
 }
 
+std::string LLVMBackendImpl::FilterStringLiteral(const std::string &literal) {
+	// Limit the maximum string length
+	int length = std::min((int)literal.size(), 30);
+	std::string result = literal.substr(0, length);
+
+	// Go through and remove any null bytes - they're a valid string character, but LLVM
+	// is understandably unimpressed by them.
+	size_t lastNull = 0;
+	while (true) {
+		lastNull = result.find((char)0, lastNull);
+		if (lastNull == std::string::npos)
+			break;
+		result.erase(lastNull, 1);
+	}
+
+	return result;
+}
+
 // Visitors
 ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
 #define DISPATCH(func, type)                                                                                           \
@@ -951,8 +974,8 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 		break;
 	case CcValue::STRING: {
 		llvm::Value *ptr = GetManagedStringValue(node->value.s);
-		// FIXME only use a short prefix of the string
-		value = m_builder.CreateLoad(m_valueType, ptr, "strobj_" + node->value.s);
+		std::string name = "strobj_" + FilterStringLiteral(node->value.s);
+		value = m_builder.CreateLoad(m_valueType, ptr, name);
 		break;
 	}
 	case CcValue::BOOL: {
