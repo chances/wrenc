@@ -19,12 +19,20 @@ class ObjString : public Obj {
 	static ObjString *New(std::string &&value);
 
 	WREN_METHOD(getter) Value ToString();
-	WREN_METHOD(getter) int Count();
+	// Maybe we should implement Count for performance? Otherwise wren_core does it.
+	WREN_METHOD(getter) int ByteCount_();
 	WREN_METHOD() std::string OperatorPlus(Value other);
 	WREN_METHOD() std::string OperatorSubscript(int index);
+	WREN_METHOD() int ByteAt_(int index);
+
+	WREN_METHOD() Value Iterate(Value previous);
+	WREN_METHOD() Value IterateByte_(Value previous);
+	WREN_METHOD() std::string IteratorValue(int iterator);
 
 	std::string m_value;
 
   private:
+	Value IterateImpl(Value previous, bool unicode) const;
+
 	void ValidateIndex(int index, const char *argName) const;
 };
