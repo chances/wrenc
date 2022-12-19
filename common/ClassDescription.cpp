@@ -81,7 +81,7 @@ void ClassDescription::Parse(uint8_t *data) {
 					content.value = item->value;
 					break;
 				case AttrType::BOOLEAN:
-					content.boolean = item->value == 0;
+					content.boolean = item->value != 0;
 					break;
 				case AttrType::STRING:
 					content.str = (const char *)item->value;
