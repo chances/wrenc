@@ -70,7 +70,7 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 	if (!func) {
 		std::string name = ObjClass::LookupSignatureFromId({signature}, true);
-		errors::wrenAbort("On receiver of type %s, could not find method %s\n", type->name.c_str(), name.c_str());
+		errors::wrenAbort("%s does not implement '%s'.", type->name.c_str(), name.c_str());
 	}
 
 	// printf("On receiver of type %s invoke %lx func %p\n", object->type->name.c_str(), signature, func->func);
