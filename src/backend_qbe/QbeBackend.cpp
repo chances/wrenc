@@ -29,6 +29,7 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 static const std::string SYM_FIELD_OFFSET = "class_field_offset_";
 static const std::string SYM_CLOSURE_DATA_TBL = "closure_data_";
 static const std::string SYM_CLOSURE_DESC_OBJ = "closure_obj_";
+static const std::string SYM_GLOBALS_FUNC_TBL = "global_table_";
 
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
@@ -53,6 +54,10 @@ CompilationResult QbeBackend::Generate(Module *mod) {
 
 		m_functionUpvaluePacks[func] = std::move(pack);
 	}
+
+	// Generate the global getter function (this is how other modules can import things from this file)
+	// Do this early on so both the exported functions are at the top of the file
+	GenerateGetGlobalFunc(moduleName, mod);
 
 	for (IRFn *func : mod->GetFunctions()) {
 		std::optional<std::string> initFunc;
@@ -142,6 +147,14 @@ CompilationResult QbeBackend::Generate(Module *mod) {
 
 		Print("}}");
 	}
+
+	// Add a table of all the globals in this module, so they can be imported into other modules
+	// This also has to go in .data due to the relocations
+	Print("section \".data\" data ${}{} = {{", SYM_GLOBALS_FUNC_TBL, moduleName);
+	for (IRGlobalDecl *global : mod->GetGlobalVariables()) {
+		Print("\t{} {}, {} {},", PTR_TYPE, GetStringPtr(global->Name()), PTR_TYPE, MangleGlobalName(global));
+	}
+	Print("l 0 }} # End with a null string pointer");
 
 	// Add the strings
 	for (const auto &[literal, name] : m_strings) {
@@ -308,6 +321,16 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	Print("call $wren_register_signatures_table({} $signatures_table_{})", PTR_TYPE, moduleName);
 
 	Print("ret");
+	m_inFunction = false;
+	Print("}}");
+}
+
+void QbeBackend::GenerateGetGlobalFunc(const std::string &moduleName, Module *mod) {
+	Print("export function {} ${}_get_globals() {{", PTR_TYPE, moduleName);
+	m_inFunction = true;
+	Print("@start");
+
+	Print("ret ${}{}", SYM_GLOBALS_FUNC_TBL, moduleName);
 	m_inFunction = false;
 	Print("}}");
 }
@@ -1005,7 +1028,7 @@ std::string QbeBackend::GetStringObjPtr(const std::string &value) {
 }
 
 std::string QbeBackend::EscapeString(std::string value) {
-	for (int i = 0; i < value.size(); i++) {
+	for (size_t i = 0; i < value.size(); i++) {
 		char c = value.at(i);
 		if (c != '"' && c != '\\' && c != '\n')
 			continue;
@@ -1067,7 +1090,7 @@ std::string QbeBackend::MangleUniqueName(const std::string &name, bool excludeId
 
 std::string QbeBackend::MangleRawName(const std::string &str, bool permitAmbiguity) {
 	std::string name = str;
-	for (int i = 0; i < name.size(); i++) {
+	for (size_t i = 0; i < name.size(); i++) {
 		char c = name.at(i);
 
 		// Filtering ASCII alphanumerical characters, as that's all we can reliably use with QBE

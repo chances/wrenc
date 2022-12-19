@@ -4,7 +4,12 @@
 
 #pragma once
 
+#include "common/common.h"
+
+#include <memory>
 #include <utility>
+
+class RtModule;
 
 class WrenRuntime {
   public:
@@ -21,7 +26,11 @@ class WrenRuntime {
 	void *AllocateMem(int size, int alignment);
 	// TODO freeing memory
 
+	Value GetCoreGlobal(const std::string &name);
+
   private:
 	WrenRuntime();
 	~WrenRuntime();
+
+	std::unique_ptr<RtModule> m_coreModule;
 };

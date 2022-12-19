@@ -9,11 +9,13 @@
 #include "Errors.h"
 #include "GenEntry.h"
 #include "ObjClass.h"
+#include "RtModule.h"
 #include "WrenRuntime.h"
 
 extern "C" {
 // Defined in wren_core
 void wren_core_3a_3a__root_func();
+void *wren_core_get_globals();
 }
 
 WrenRuntime::WrenRuntime() {}
@@ -35,5 +37,16 @@ void *WrenRuntime::AllocateMem(int size, int alignment) {
 void WrenRuntime::Initialise() {
 	wren_core_3a_3a__root_func();
 
+	Instance().m_coreModule = std::make_unique<RtModule>(wren_core_get_globals());
+
 	ObjNativeClass::FinaliseSetup();
+}
+
+Value WrenRuntime::GetCoreGlobal(const std::string &name) {
+	auto iter = m_coreModule->globals.find(name);
+	if (iter != m_coreModule->globals.end())
+		return *iter->second;
+
+	fprintf(stderr, "Missing core global '%s' requested by rtlib\n", name.c_str());
+	abort();
 }
