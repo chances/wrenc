@@ -1876,13 +1876,13 @@ static IRExpr *map(Compiler *compiler, bool canAssign) {
 			break;
 
 		// The key.
-		parsePrecedence(compiler, PREC_UNARY);
+		IRExpr *key = parsePrecedence(compiler, PREC_UNARY);
 		consume(compiler, TOKEN_COLON, "Expect ':' after map key.");
 		ignoreNewlines(compiler);
 
 		// The value.
 		IRExpr *toAdd = expression(compiler);
-		callMethod(compiler, "[_]=(_)", loadVariable(compiler, map), {toAdd}, block);
+		callMethod(compiler, "[_]=(_)", loadVariable(compiler, map), {key, toAdd}, block);
 	} while (match(compiler, TOKEN_COMMA));
 
 	// Allow newlines before the closing '}'.
