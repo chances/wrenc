@@ -24,9 +24,17 @@ class ObjMap : public Obj {
 	// values is implemented in wren_core
 	WREN_METHOD() Value OperatorSubscript(Value key);
 	WREN_METHOD() Value OperatorSubscriptSet(Value key, Value value);
-	// TODO iterate
+
+	// Iterator stuff
+	WREN_METHOD() Value Iterate(Value previous);
+	WREN_METHOD() Value KeyIteratorValue_(Value iterator);
+	WREN_METHOD() Value ValueIteratorValue_(Value iterator);
 
   private:
+	/// Modifies a Value so it's not recognised as any special value, such as null or false.
+	static Value WrapIterator(Value raw);
+	static Value UnwrapIterator(Value wrapped);
+
 	/// Validates that a value is suitable for use as a key. This should be called before anything
 	/// is passed to the map, to keep the hashing/equality functions simple.
 	static void ValidateKey(Value key);

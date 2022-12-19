@@ -68,6 +68,76 @@ Value ObjMap::OperatorSubscriptSet(Value key, Value value) {
 	return value;
 }
 
+Value ObjMap::Iterate(Value previous) {
+	// If the map is empty, we're definitely done
+	if (m_contents.empty()) {
+		return encode_object(ObjBool::Get(false));
+	}
+
+	// Basically, we'll assume that unordered_map has a roughly stable order - obviously this completely
+	// falls apart if we mutate it, and there might be some STL implementations where this breaks down.
+
+	if (previous == NULL_VAL) {
+		// Wrap the iterator value so it doesn't get recognised as null or false
+		// Of course this means everything will explode if someone tries using it in Wren, but that's
+		// fine - it's only ever passed into our key- and value-iterator-value functions.
+		return WrapIterator(m_contents.begin()->first);
+	}
+
+	// A non-null iterator means it's already wrapped - so unwrap it
+	Value unwrapped = UnwrapIterator(previous);
+
+	// Lookup the iterator for this key
+	auto iter = m_contents.find(unwrapped);
+	if (iter == m_contents.end()) {
+		// We should always find the item passed in as a key in the map, if not the map has probably been
+		// modified while the loop was running.
+		std::string keyStr = Obj::ToString(unwrapped);
+		errors::wrenAbort("iterate() called with wrapped key '%s', which was not found in the map!", keyStr.c_str());
+	}
+
+	// Advance to the next item
+	iter++;
+
+	// Was the previous item the last one? Then stop iterating.
+	if (iter == m_contents.end()) {
+		return encode_object(ObjBool::Get(false));
+	}
+
+	// Otherwise, just return it's key (but properly wrapped).
+	return WrapIterator(iter->first);
+}
+Value ObjMap::KeyIteratorValue_(Value iterator) { return UnwrapIterator(iterator); }
+Value ObjMap::ValueIteratorValue_(Value iterator) {
+	auto iter = m_contents.find(UnwrapIterator(iterator));
+	if (iter == m_contents.end()) {
+		errors::wrenAbort("Called valueIteratorValue_ with an invalid iterator - not found in map!");
+	}
+	return iter->second;
+}
+
+Value ObjMap::WrapIterator(Value raw) {
+	// We have to make sure that iterator values are always 'true'-like so iteration doesn't end if
+	// we run into a null or false value. To do this we'll just increment all pointers by 1.
+
+	// Number values are always fine
+	if (is_value_float(raw))
+		return raw;
+
+	uint64_t ptr = (uint64_t)get_object_value(raw);
+	Obj *wrapped = (Obj *)(ptr + 1);
+	return encode_object(wrapped);
+}
+Value ObjMap::UnwrapIterator(Value wrapped) {
+	// Opposite of WrapIterator
+	if (is_value_float(wrapped))
+		return wrapped;
+
+	uint64_t ptr = (uint64_t)get_object_value(wrapped);
+	Obj *raw = (Obj *)(ptr - 1);
+	return encode_object(raw);
+}
+
 void ObjMap::ValidateKey(Value key) {
 	// Floats and nulls are fine
 	if (is_value_float(key) || key == NULL_VAL)
