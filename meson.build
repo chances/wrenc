@@ -45,6 +45,7 @@ configure_file(
 # Common library shared by both the runtime and compiler
 common_lib = static_library('common-lib',
   'common/common.cpp',
+  'common/AttributePack.cpp',
   'common/ClassDescription.cpp',
   'common/HashUtil.cpp',
   include_directories: ['common'],

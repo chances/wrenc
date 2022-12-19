@@ -13,6 +13,7 @@
 #include "wren_compiler.h"
 
 #include "ArenaAllocator.h"
+#include "AttributePack.h"
 #include "CcValue.h"
 #include "ClassInfo.h"
 #include "CompContext.h"
@@ -292,15 +293,6 @@ class Compiler {
 	// Whether or not the compiler is for a constructor initializer
 	bool isInitializer;
 
-	// The number of attributes seen while parsing.
-	// We track this separately as compile time attributes
-	// are not stored, so we can't rely on attributes->count
-	// to enforce an error message when attributes are used
-	// anywhere other than methods or classes.
-	int numAttributes;
-	// Attributes for the next class or method.
-	std::unordered_map<std::string, CcValue> *attributes;
-
 	// Utility functions:
 	template <typename T, typename... Args> T *New(Args &&...args) {
 		return parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
@@ -316,16 +308,6 @@ class Compiler {
 };
 
 // Forward declarations
-
-// TODO re-enable for attribute support
-#if 0
-static void disallowAttributes(Compiler *compiler);
-static void addToAttributeGroup(Compiler *compiler, Value group, Value key, Value value);
-static void emitClassAttributes(Compiler *compiler, ClassInfo *classInfo);
-static void copyAttributes(Compiler *compiler, ObjMap *into);
-static void copyMethodAttributes(Compiler *compiler, bool isForeign, bool isStatic, const char *fullSignature,
-                                 int32_t length);
-#endif
 
 static IRExpr *null(Compiler *compiler, bool canAssign = false);
 
@@ -435,7 +417,6 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 		compiler->scopeDepth = 0;
 	}
 
-	compiler->numAttributes = 0;
 	compiler->fn = parser->context->alloc.New<IRFn>();
 }
 
@@ -2945,25 +2926,54 @@ static CcValue consumeLiteral(Compiler *compiler, const char *message) {
 	return CcValue::NULL_TYPE;
 }
 
-static bool matchAttribute(Compiler *compiler) {
-	// For now, attributes aren't implemented
-#if 0
+static AttrContent valueToAttribute(bool runtimeAccess, CcValue value) {
+	AttrContent content = {.runtimeAccess = runtimeAccess};
 
-	if (match(compiler, TOKEN_HASH)) {
-		compiler->numAttributes++;
+	switch (value.type) {
+	case CcValue::NULL_TYPE:
+		content.value = NULL_VAL;
+		break;
+	case CcValue::STRING:
+		content.str = value.s;
+		break;
+	case CcValue::BOOL:
+		content.boolean = value.b;
+		break;
+	case CcValue::INT:
+	case CcValue::NUM:
+		content.value = encode_number(value.n);
+		break;
+	default:
+		fmt::print(stderr, "Invalid attribute value type {}\n", value.type);
+		abort();
+		break;
+	}
+
+	return content;
+}
+
+static std::unique_ptr<AttributePack> matchAttribute(Compiler *compiler) {
+	std::unique_ptr<AttributePack> pack;
+
+	while (match(compiler, TOKEN_HASH)) {
+		if (!pack) {
+			pack = std::make_unique<AttributePack>();
+		}
+
 		bool runtimeAccess = match(compiler, TOKEN_BANG);
 		if (match(compiler, TOKEN_NAME)) {
-			CcValue group = compiler->parser->previous.value;
+			std::string group = compiler->parser->previous.value.CheckString();
 			TokenType ahead = peek(compiler);
 			if (ahead == TOKEN_EQ || ahead == TOKEN_LINE) {
-				CcValue key = group;
-				CcValue value = NULL_VAL;
+				// This isn't a group - what we thought was the group is the name
+				AttrKey key = {.name = group};
+
+				CcValue value;
 				if (match(compiler, TOKEN_EQ)) {
 					value = consumeLiteral(compiler,
 					                       "Expect a Bool, Num, String or Identifier literal for an attribute value.");
 				}
-				if (runtimeAccess)
-					addToAttributeGroup(compiler, NULL_VAL, key, value);
+				pack->attributes[key].push_back(valueToAttribute(runtimeAccess, value));
 			} else if (match(compiler, TOKEN_LEFT_PAREN)) {
 				ignoreNewlines(compiler);
 				if (match(compiler, TOKEN_RIGHT_PAREN)) {
@@ -2971,14 +2981,15 @@ static bool matchAttribute(Compiler *compiler) {
 				} else {
 					while (peek(compiler) != TOKEN_RIGHT_PAREN) {
 						consume(compiler, TOKEN_NAME, "Expect name for attribute key.");
-						CcValue key = compiler->parser->previous.value;
-						CcValue value = NULL_VAL;
+						std::string name = compiler->parser->previous.value.CheckString();
+						AttrKey key = {.group = group, .name = name};
+						CcValue value;
 						if (match(compiler, TOKEN_EQ)) {
 							value = consumeLiteral(
 							    compiler, "Expect a Bool, Num, String or Identifier literal for an attribute value.");
 						}
-						if (runtimeAccess)
-							addToAttributeGroup(compiler, group, key, value);
+						pack->attributes[key].push_back(valueToAttribute(runtimeAccess, value));
+
 						ignoreNewlines(compiler);
 						if (!match(compiler, TOKEN_COMMA))
 							break;
@@ -2996,11 +3007,9 @@ static bool matchAttribute(Compiler *compiler) {
 		}
 
 		consumeLine(compiler, "Expect newline after attribute.");
-		return true;
 	}
-#endif
 
-	return false;
+	return pack;
 }
 
 // Compiles a method definition inside a class body.
@@ -3009,9 +3018,7 @@ static bool matchAttribute(Compiler *compiler) {
 // be parsed.
 static bool method(Compiler *compiler, IRClass *classNode) {
 	// Parse any attributes before the method and store them
-	if (matchAttribute(compiler)) {
-		return method(compiler, classNode);
-	}
+	std::unique_ptr<AttributePack> attributes = matchAttribute(compiler);
 
 	// TODO: What about foreign constructors?
 	bool isForeign = match(compiler, TOKEN_FOREIGN);
@@ -3045,15 +3052,12 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		error(compiler, "A constructor cannot be static.");
 	}
 
-	// Copy any attributes the compiler collected into the enclosing class
-	// TODO re-enable when signatures are implemented
-	// copyMethodAttributes(compiler, isForeign, isStatic, fullSignature, length);
-
 	// Check for duplicate methods. Doesn't matter that it's already been
 	// defined, error will discard bytecode anyway.
 	// Check if the method table already contains this symbol
 	MethodInfo *method = declareMethod(compiler, signature, false);
 	method->isForeign = isForeign;
+	method->attributes = std::move(attributes);
 
 	if (isForeign) {
 		// We don't need the function we started compiling in the parameter list
@@ -3118,7 +3122,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 
 // Compiles a class definition. Assumes the "class" token has already been
 // consumed (along with a possibly preceding "foreign" token).
-static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
+static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_ptr<AttributePack> attributes) {
 	IRClass *classNode = compiler->New<IRClass>();
 	classNode->info = std::make_unique<ClassInfo>();
 
@@ -3144,14 +3148,11 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	classInfo.isForeign = isForeign;
 	classInfo.name = className;
 	classInfo.parentClass = parentTypeExpr;
+	classInfo.attributes = std::move(attributes);
 
 	if (classInfo.IsSystemClass() && !compiler->parser->compilingInternal) {
 		error(compiler, "Cannot compile class which shares a name with system class '%s'", className.c_str());
 	}
-
-	// Copy any existing attributes into the class
-	// TODO enable this when attributes are implemented
-	// copyAttributes(compiler, classInfo.classAttributes);
 
 	// Set up symbol buffers to track duplicate static and instance methods.
 	compiler->enclosingClass = classNode->info.get();
@@ -3174,18 +3175,6 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign) {
 	// If any attributes are present,
 	// instantiate a ClassAttributes instance for the class
 	// and send it over to CODE_END_CLASS
-	// TODO re-enable for attribute support
-#if 0
-	bool hasAttr = classInfo.classAttributes != NULL || classInfo.methodAttributes != NULL;
-	if (hasAttr) {
-		emitClassAttributes(compiler, &classInfo);
-		loadVariable(compiler, classVariable);
-		// At the moment, we don't have other uses for CODE_END_CLASS,
-		// so we put it inside this condition. Later, we can always
-		// emit it and use it as needed.
-		emitOp(compiler, CODE_END_CLASS);
-	}
-#endif
 
 	compiler->enclosingClass = NULL;
 
@@ -3295,20 +3284,19 @@ static IRNode *variableDefinition(Compiler *compiler) {
 // They can only appear at the top level of a block and are prohibited in places
 // like the non-curly body of an if or while.
 IRNode *definition(Compiler *compiler) {
-	if (matchAttribute(compiler)) {
-		return definition(compiler);
-	}
+	std::unique_ptr<AttributePack> attributes = matchAttribute(compiler);
 
 	if (match(compiler, TOKEN_CLASS)) {
-		return classDefinition(compiler, false);
+		return classDefinition(compiler, false, std::move(attributes));
 	}
 	if (match(compiler, TOKEN_FOREIGN)) {
 		consume(compiler, TOKEN_CLASS, "Expect 'class' after 'foreign'.");
-		return classDefinition(compiler, true);
+		return classDefinition(compiler, true, std::move(attributes));
 	}
 
-	// TODO enable for attributes
-	// disallowAttributes(compiler);
+	if (attributes) {
+		error(compiler, "Attributes can only specified before a class or a method");
+	}
 
 	if (match(compiler, TOKEN_IMPORT)) {
 		return import(compiler);
@@ -3446,196 +3434,3 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 
 	return compiler.fn;
 }
-
-// Attribute handling, disabled for now - they're experimental upstream anyway, and can be added later
-#if 0
-// Helpers for Attributes
-
-// Throw an error if any attributes were found preceding,
-// and clear the attributes so the error doesn't keep happening.
-static void disallowAttributes(Compiler *compiler) {
-	if (compiler->numAttributes > 0) {
-		error(compiler, "Attributes can only specified before a class or a method");
-		wrenMapClear(compiler->parser->context, compiler->attributes);
-		compiler->numAttributes = 0;
-	}
-}
-
-// Add an attribute to a given group in the compiler attribues map
-static void addToAttributeGroup(Compiler *compiler, Value group, Value key, Value value) {
-	CompContext *vm = compiler->parser->context;
-
-	if (IS_OBJ(group))
-		wrenPushRoot(vm, AS_OBJ(group));
-	if (IS_OBJ(key))
-		wrenPushRoot(vm, AS_OBJ(key));
-	if (IS_OBJ(value))
-		wrenPushRoot(vm, AS_OBJ(value));
-
-	Value groupMapValue = wrenMapGet(compiler->attributes, group);
-	if (IS_UNDEFINED(groupMapValue)) {
-		groupMapValue = OBJ_VAL(wrenNewMap(vm));
-		wrenMapSet(vm, compiler->attributes, group, groupMapValue);
-	}
-
-	// we store them as a map per so we can maintain duplicate keys
-	// group = { key:[value, ...], }
-	ObjMap *groupMap = AS_MAP(groupMapValue);
-
-	// var keyItems = group[key]
-	// if(!keyItems) keyItems = group[key] = []
-	Value keyItemsValue = wrenMapGet(groupMap, key);
-	if (IS_UNDEFINED(keyItemsValue)) {
-		keyItemsValue = OBJ_VAL(wrenNewList(vm, 0));
-		wrenMapSet(vm, groupMap, key, keyItemsValue);
-	}
-
-	// keyItems.add(value)
-	ObjList *keyItems = AS_LIST(keyItemsValue);
-	wrenValueBufferWrite(vm, &keyItems->elements, value);
-
-	if (IS_OBJ(group))
-		wrenPopRoot(vm);
-	if (IS_OBJ(key))
-		wrenPopRoot(vm);
-	if (IS_OBJ(value))
-		wrenPopRoot(vm);
-}
-
-// Emit the attributes in the give map onto the stack
-static void emitAttributes(Compiler *compiler, ObjMap *attributes) {
-	// Instantiate a new map for the attributes
-	loadCoreVariable(compiler, "Map");
-	callMethod(compiler, 0, "new()", 5);
-
-	// The attributes are stored as group = { key:[value, value, ...] }
-	// so our first level is the group map
-	for (uint32_t groupIdx = 0; groupIdx < attributes->capacity; groupIdx++) {
-		const MapEntry *groupEntry = &attributes->entries[groupIdx];
-		if (IS_UNDEFINED(groupEntry->key))
-			continue;
-		// group key
-		emitConstant(compiler, groupEntry->key);
-
-		// group value is gonna be a map
-		loadCoreVariable(compiler, "Map");
-		callMethod(compiler, 0, "new()", 5);
-
-		ObjMap *groupItems = AS_MAP(groupEntry->value);
-		for (uint32_t itemIdx = 0; itemIdx < groupItems->capacity; itemIdx++) {
-			const MapEntry *itemEntry = &groupItems->entries[itemIdx];
-			if (IS_UNDEFINED(itemEntry->key))
-				continue;
-
-			emitConstant(compiler, itemEntry->key);
-			// Attribute key value, key = []
-			loadCoreVariable(compiler, "List");
-			callMethod(compiler, 0, "new()", 5);
-			// Add the items to the key list
-			ObjList *items = AS_LIST(itemEntry->value);
-			for (int itemIdx = 0; itemIdx < items->elements.count; ++itemIdx) {
-				emitConstant(compiler, items->elements.data[itemIdx]);
-				callMethod(compiler, 1, "addCore_(_)", 11);
-			}
-			// Add the list to the map
-			callMethod(compiler, 2, "addCore_(_,_)", 13);
-		}
-
-		// Add the key/value to the map
-		callMethod(compiler, 2, "addCore_(_,_)", 13);
-	}
-}
-
-// Methods are stored as method <-> attributes, so we have to have
-// an indirection to resolve for methods
-static void emitAttributeMethods(Compiler *compiler, ObjMap *attributes) {
-	// Instantiate a new map for the attributes
-	loadCoreVariable(compiler, "Map");
-	callMethod(compiler, 0, "new()", 5);
-
-	for (uint32_t methodIdx = 0; methodIdx < attributes->capacity; methodIdx++) {
-		const MapEntry *methodEntry = &attributes->entries[methodIdx];
-		if (IS_UNDEFINED(methodEntry->key))
-			continue;
-		emitConstant(compiler, methodEntry->key);
-		ObjMap *attributeMap = AS_MAP(methodEntry->value);
-		emitAttributes(compiler, attributeMap);
-		callMethod(compiler, 2, "addCore_(_,_)", 13);
-	}
-}
-
-// Emit the final ClassAttributes that exists at runtime
-static void emitClassAttributes(Compiler *compiler, ClassInfo *classInfo) {
-	loadCoreVariable(compiler, "ClassAttributes");
-
-	classInfo->classAttributes ? emitAttributes(compiler, classInfo->classAttributes) : null(compiler, false);
-
-	classInfo->methodAttributes ? emitAttributeMethods(compiler, classInfo->methodAttributes) : null(compiler, false);
-
-	callMethod(compiler, 2, "new(_,_)", 8);
-}
-
-// Copy the current attributes stored in the compiler into a destination map
-// This also resets the counter, since the intent is to consume the attributes
-static void copyAttributes(Compiler *compiler, ObjMap *into) {
-	compiler->numAttributes = 0;
-
-	if (compiler->attributes->count == 0)
-		return;
-	if (into == NULL)
-		return;
-
-	CompContext *vm = compiler->parser->context;
-
-	// Note we copy the actual values as is since we'll take ownership
-	// and clear the original map
-	for (uint32_t attrIdx = 0; attrIdx < compiler->attributes->capacity; attrIdx++) {
-		const MapEntry *attrEntry = &compiler->attributes->entries[attrIdx];
-		if (IS_UNDEFINED(attrEntry->key))
-			continue;
-		wrenMapSet(vm, into, attrEntry->key, attrEntry->value);
-	}
-
-	wrenMapClear(vm, compiler->attributes);
-}
-
-// Copy the current attributes stored in the compiler into the method specific
-// attributes for the current enclosingClass.
-// This also resets the counter, since the intent is to consume the attributes
-static void copyMethodAttributes(Compiler *compiler, bool isForeign, bool isStatic, const char *fullSignature,
-                                 int32_t length) {
-	compiler->numAttributes = 0;
-
-	if (compiler->attributes->count == 0)
-		return;
-
-	CompContext *vm = compiler->parser->context;
-
-	// Make a map for this method to copy into
-	ObjMap *methodAttr = wrenNewMap(vm);
-	wrenPushRoot(vm, (Obj *)methodAttr);
-	copyAttributes(compiler, methodAttr);
-
-	// Include 'foreign static ' in front as needed
-	int32_t fullLength = length;
-	if (isForeign)
-		fullLength += 8;
-	if (isStatic)
-		fullLength += 7;
-	char fullSignatureWithPrefix[MAX_METHOD_SIGNATURE + 8 + 7];
-	const char *foreignPrefix = isForeign ? "foreign " : "";
-	const char *staticPrefix = isStatic ? "static " : "";
-	sprintf(fullSignatureWithPrefix, "%s%s%.*s", foreignPrefix, staticPrefix, length, fullSignature);
-	fullSignatureWithPrefix[fullLength] = '\0';
-
-	if (compiler->enclosingClass->methodAttributes == NULL) {
-		compiler->enclosingClass->methodAttributes = wrenNewMap(vm);
-	}
-
-	// Store the method attributes in the class map
-	Value key = wrenNewStringLength(vm, fullSignatureWithPrefix, fullLength);
-	wrenMapSet(vm, compiler->enclosingClass->methodAttributes, key, OBJ_VAL(methodAttr));
-
-	wrenPopRoot(vm);
-}
-#endif

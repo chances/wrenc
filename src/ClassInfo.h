@@ -8,6 +8,8 @@
 
 #include <map>
 
+class AttributePack;
+
 class MethodInfo {
   public:
 	~MethodInfo();
@@ -17,6 +19,7 @@ class MethodInfo {
 	bool isStatic = false;
 	int lineNum = 0; // The line at which this method was declared, used for error messages
 	IRFn *fn = nullptr;
+	std::unique_ptr<AttributePack> attributes;
 };
 
 // Bookkeeping information for compiling a class definition.
@@ -60,4 +63,6 @@ class ClassInfo {
 	// The signature of the method currently being compiled. This is nullptr outside of
 	// the parsing stage.
 	Signature *signature;
+
+	std::unique_ptr<AttributePack> attributes;
 };

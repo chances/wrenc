@@ -20,6 +20,7 @@ class CcValue {
 		NUM,
 	};
 
+	~CcValue();
 	CcValue() : type(NULL_TYPE) {}
 	CcValue(Type type) : type(type) {}
 	CcValue(bool value) : type(BOOL), b(value) {}
@@ -27,10 +28,14 @@ class CcValue {
 	CcValue(int value) : type(INT), i(value), n(value) {}
 	CcValue(double value) : type(NUM), i(value), n(value) {}
 
+	static const CcValue NULL_VALUE;
+
 	Type type = NULL_TYPE;
 
 	bool b = false;
 	std::string s;
 	int i = 0;
 	double n = 0;
+
+	std::string CheckString() const;
 };

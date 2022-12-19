@@ -4,6 +4,8 @@
 
 #include "ClassInfo.h"
 
+#include "common/AttributePack.h"
+
 // Default destructors, to put the vtables in this compilation unit
 MethodInfo::~MethodInfo() = default;
 ClassInfo::~ClassInfo() = default;
