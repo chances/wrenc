@@ -64,6 +64,7 @@ struct VisitorContext {
 	llvm::Value *closableVariables = nullptr;
 
 	llvm::Value *receiver = nullptr;
+	llvm::Value *fieldPointer = nullptr;
 
 	/// The function's upvalue pack, used to reference upvalues from this closure's parent function.
 	UpvaluePackDef *upvaluePack = nullptr;
@@ -453,6 +454,25 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	if (func->enclosingClass) {
 		ctx.receiver = function->getArg(nextArg++);
 		ctx.receiver->setName("this");
+
+		// Find a pointer to this object, since the 'this' argument is a value.
+		// We'll just assume it's always a pointer, since there's no valid reason why it could be a number.
+		// (note this is still an i64, we'll convert it to a pointer later)
+		llvm::Value *thisPtr = m_builder.CreateAnd(ctx.receiver, CInt::get(m_int64Type, CONTENT_MASK));
+
+		// Also find the pointer to our field block
+		// We don't know the position of the class's fields at compile time, they're stored in a variable that's
+		// loaded during class initialisation. Use this as an offset into our object to find where the fields start.
+		// We only need this if we access fields, but that's quite common and LLVM should optimise it out if
+		// it's not needed
+
+		ClassData *cd = func->enclosingClass->GetBackendData<ClassData>();
+		llvm::Value *fieldStartOffset = m_builder.CreateLoad(m_int32Type, cd->fieldOffset, "this_field_offset");
+		llvm::Value *wideStartOffset =
+		    m_builder.CreateIntCast(fieldStartOffset, m_int64Type, false, "this_field_offset_64");
+
+		llvm::Value *fieldPtrInt = m_builder.CreateAdd(thisPtr, wideStartOffset, "fields_ptr_int");
+		ctx.fieldPointer = m_builder.CreateIntToPtr(fieldPtrInt, m_pointerType, "fields_ptr");
 	}
 	if (takesUpvaluePack) {
 		ctx.upvaluePack = fnData->upvaluePackDef.get();
@@ -1021,9 +1041,11 @@ ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
 	}
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
-	printf("error: not implemented: VisitExprFieldLoad\n");
-	abort();
-	return {};
+	llvm::Value *fieldPointer = m_builder.CreateGEP(
+	    m_valueType, ctx->fieldPointer, {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
+
+	llvm::Value *result = m_builder.CreateLoad(m_valueType, fieldPointer, "field_" + node->var->Name());
+	return {result};
 }
 ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *node) {
 	ExprRes receiver = VisitExpr(ctx, node->receiver);
@@ -1160,8 +1182,12 @@ StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) 
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssign *node) {
-	printf("error: not implemented: VisitStmtFieldAssign\n");
-	abort();
+	ExprRes res = VisitExpr(ctx, node->value);
+
+	llvm::Value *fieldPointer = m_builder.CreateGEP(
+	    m_valueType, ctx->fieldPointer, {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
+
+	m_builder.CreateStore(res.value, fieldPointer);
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtEvalAndIgnore(VisitorContext *ctx, StmtEvalAndIgnore *node) {
