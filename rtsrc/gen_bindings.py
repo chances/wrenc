@@ -5,7 +5,7 @@ from typing import TextIO, List
 from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
-    r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<static>static\s+)?" +
+    r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<stat_virt>static\s+|virtual\s+)?" +
     r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)(?:\s+const)?\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
 ARG_REGEX = re.compile(r"^\s*(?P<type>.+\s[*&]*)(?P<name>\w+)\s*$")
@@ -141,8 +141,14 @@ def parse_file(fi: TextIO) -> List[Class]:
         return_type = method_match.group("return").replace(' ', '')  # May have spaces from pointers
         name = method_match.group("name")
         args_str = method_match.group("args")
-        static = method_match.group("static") is not None
+        static_virtual = method_match.group("stat_virt")
         special_type = method_match.group("type")
+
+        # We can either have a static or a virtual qualifier - we only care about static qualifiers, and this group
+        # also contains some whitespace.
+        if static_virtual:
+            static_virtual = static_virtual.strip()
+        static = static_virtual == 'static'
 
         if special_type not in ['', 'getter', 'variadic']:
             raise Exception(f"Invalid special type '{special_type}' for method {current_class.name}::{name}")
