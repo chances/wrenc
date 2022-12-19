@@ -17,4 +17,10 @@ class ObjNull : public Obj {
 	static ObjClass *Class();
 
 	WREN_METHOD(getter) std::string ToString();
+
+	// Reimplement some basic operators, since the normal Obj ones won't work with null receivers
+	WREN_METHOD() bool OperatorEqualTo(Value other);
+	WREN_METHOD() bool OperatorNotEqual(Value other);
+	WREN_METHOD(getter) bool OperatorBoolNegate();
+	WREN_METHOD() bool Is(ObjClass *cls);
 };
