@@ -14,29 +14,7 @@ static std::unordered_map<uint64_t, std::string> signatureNames;
 static std::vector<ObjNativeClass *> nativeClasses;
 
 ObjClass::~ObjClass() = default;
-ObjClass::ObjClass() : Obj(nullptr) {
-	// Manually bind our getters
-	typedef Value (*getter_t)(Value receiver);
-
-	getter_t getName = [](Value receiver) -> Value {
-		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.name", receiver);
-		return encode_object(ObjString::New(cls->name));
-	};
-	getter_t getSupertype = [](Value receiver) -> Value {
-		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.supertype", receiver);
-		return encode_object(cls->parentClass);
-	};
-	getter_t toString = [](Value receiver) -> Value {
-		// Same as getName, bar the name passed to checkReceiver
-		ObjClass *cls = checkReceiver<ObjClass>("ObjClass.toString", receiver);
-		return encode_object(ObjString::New(cls->name));
-	};
-
-	AddFunction("name", (void *)getName);
-	AddFunction("supertype", (void *)getSupertype);
-	AddFunction("toString", (void *)toString);
-	// We need an 'attributes' getter when that gets implemented
-}
+ObjClass::ObjClass() : Obj(nullptr) {}
 
 SignatureId ObjClass::FindSignatureId(const std::string &name) {
 	SignatureId id = hash_util::findSignatureId(name);
@@ -126,6 +104,10 @@ bool ObjClass::CanScriptSubclass() { return false; }
 
 bool ObjClass::InheritsMethods() { return true; }
 
+std::string ObjClass::Name() const { return name; }
+ObjClass *ObjClass::Supertype() const { return parentClass; }
+std::string ObjClass::ToString() const { return name; }
+
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
 	type = &m_defaultMetaClass;
 	this->name = name;
@@ -133,6 +115,9 @@ ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindi
 	m_defaultMetaClass.name = name;
 	m_defaultMetaClass.parentClass = m_defaultMetaClass.type = &CoreClasses::Instance()->RootClass();
 	m_defaultMetaClass.isMetaClass = true;
+
+	// Inherit ObjClass's static methods
+	m_defaultMetaClass.functions = m_defaultMetaClass.parentClass->functions;
 
 	Bind(this, bindingName, false);
 	Bind(&m_defaultMetaClass, bindingName, true);
@@ -165,9 +150,5 @@ void ObjNativeClass::FinaliseSetup() {
 				}
 			}
 		}
-
-		// As a special case, last of all, bind the Obj methods
-		// These are special, in that they don't override methods already defined
-		Bind(cls, "Obj", false);
 	}
 }

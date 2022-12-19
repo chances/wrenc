@@ -53,5 +53,8 @@ bool ObjManagedClass::CanScriptSubclass() { return true; }
 ObjManagedMetaClass::ObjManagedMetaClass() {
 	parentClass = type = &CoreClasses::Instance()->RootClass();
 	isMetaClass = true;
+
+	// Inherit the standard ObjClass functions
+	functions = parentClass->functions;
 }
 ObjManagedMetaClass::~ObjManagedMetaClass() {}

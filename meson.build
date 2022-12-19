@@ -127,6 +127,7 @@ rtlib_bindings = custom_target(
   input : [
     'rtsrc/gen_bindings.py',
     'rtsrc/Obj.h',
+    'rtsrc/ObjClass.h',
     'rtsrc/ObjString.h',
     'rtsrc/ObjMap.h',
     'rtsrc/ObjRange.h',

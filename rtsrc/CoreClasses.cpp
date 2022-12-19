@@ -26,6 +26,10 @@ CoreClasses::CoreClasses() {
 	m_rootClass.isMetaClass = true;
 	m_rootClass.parentClass = &m_object;
 	m_rootClass.type = &m_rootClass; // The root class has itself as it's type
+
+	// Bind the Obj and ObjClass functions
+	ObjClass::Bind(&m_object, "Obj", false);
+	ObjClass::Bind(&m_rootClass, "ObjClass", false);
 }
 
 CoreClasses *CoreClasses::Instance() {

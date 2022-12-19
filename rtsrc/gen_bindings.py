@@ -1,4 +1,3 @@
-import io
 import re
 import sys
 from optparse import OptionParser
@@ -36,7 +35,6 @@ OPERATOR_SUBSCRIPT = "OperatorSubscript"
 OPERATOR_SUBSCRIPT_SET = "OperatorSubscriptSet"
 NUMBER_CLASS = "ObjNumClass"
 NULL_CLASS = "ObjNull"
-ROOT_CLASS = "Obj"
 
 
 @dataclass
@@ -188,7 +186,7 @@ def generate(output: TextIO, files: List[str]):
 
     output.write("\n// Includes for referenced files:\n")
     for filename in files:
-        # If a C++ file is specified, use it's header
+        # If a C++ file is specified, use its header
         if filename.endswith(".cpp"):
             filename = filename[:-3] + "h"
         output.write(f"#include \"{filename}\"\n")
@@ -293,12 +291,6 @@ def generate(output: TextIO, files: List[str]):
 
                     output.write(f"static Value {method.method_name()}_va{num}({args}) {'{'} {body} {'}'}\n")
 
-        # For Obj it's special and it's Bind call gets run after everything else, so it mustn't overwrite anything.
-        # This is achieved by supplying a third argument to AddFunction
-        overwrite = ""
-        if cls.name == ROOT_CLASS:
-            overwrite = ", false"
-
         output.write(f"static void register_{cls.name}(ObjClass *cls, bool isMeta) {'{'}\n")
         for method in cls.methods:
             if method.static:
@@ -308,7 +300,7 @@ def generate(output: TextIO, files: List[str]):
             output.write(f"\tif ({meta_requirement})\n")
             if not method.special_type == 'variadic':
                 output.write(
-                    f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()}{overwrite});\n")
+                    f"\t\tcls->AddFunction(\"{method.signature()}\", (void*){method.method_name()});\n")
                 continue
 
             # Write out all the variadic functions
@@ -323,13 +315,13 @@ def generate(output: TextIO, files: List[str]):
                 signature += ")"  # Put the bracket back on
 
                 output.write(
-                    f"\t\tcls->AddFunction(\"{signature}\", (void*){method.method_name()}_va{num}{overwrite});\n")
+                    f"\t\tcls->AddFunction(\"{signature}\", (void*){method.method_name()}_va{num});\n")
             output.write("\t}\n")
 
         output.write("}\n")
 
     output.write("\n// Binding setup method, called by hand-written C++ classes\n")
-    output.write("void ObjNativeClass::Bind(ObjClass *cls, const std::string &type, bool isMeta) {\n")
+    output.write("void ObjClass::Bind(ObjClass *cls, const std::string &type, bool isMeta) {\n")
     for cls in classes:
         output.write(f"\tif (type == \"{cls.name}\") {'{'}\n")
         output.write(f"\t\tregister_{cls.name}(cls, isMeta);\n")

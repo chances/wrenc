@@ -41,6 +41,7 @@
 #include <vector>
 
 class WrenRuntime;
+class CoreClasses;
 
 /// Basically this forms a hashmap for all the function signatures.
 class FunctionTable {
@@ -122,10 +123,25 @@ class ObjClass : public Obj {
 	/// be returned as a hex value. With allowUnknown not set, we'll crash if we don't know what it is.
 	static std::string LookupSignatureFromId(SignatureId id, bool allowUnknown);
 
+	// Wren functions:
+	WREN_METHOD(getter) std::string Name() const;
+	WREN_METHOD(getter) ObjClass *Supertype() const;
+	WREN_METHOD(getter) std::string ToString() const;
+	// We need an 'attributes' getter when that gets implemented
+
   protected:
 	/// Get a pointer to an entry in the function table. If this entry doesn't exist, the pointer to the
 	/// next unoccupied slot is returned.
 	FunctionTable::Entry *FindFunctionTableEntry(SignatureId signature);
+
+	/// Bind all the auto-generated method adapters to this class. Call it with
+	/// the name of your class. Calling it multiple times with multiple names is
+	/// valid as part of an inheritance tree.
+	/// The implementation of this function itself is auto-generated.
+	static void Bind(ObjClass *cls, const std::string &type, bool isMetaClass);
+
+	// CoreClasses needs to be able to bind methods
+	friend CoreClasses;
 };
 
 /// Class used to define types in C++
@@ -138,13 +154,6 @@ class ObjNativeClass : public ObjClass {
 	/// @arg inheritParentMethods  Whether or not to inherit methods from the parent class. Should almost always be
 	///                            left at the default value of true.
 	ObjNativeClass(const std::string &name, const std::string &bindingName);
-
-  protected:
-	/// Bind all the auto-generated method adapters to this class. Call it with
-	/// the name of your class. Calling it multiple times with multiple names is
-	/// valid as part of an inheritance tree.
-	/// The implementation of this function itself is auto-generated.
-	static void Bind(ObjClass *cls, const std::string &type, bool isMetaClass);
 
   private:
 	ObjClass m_defaultMetaClass;
