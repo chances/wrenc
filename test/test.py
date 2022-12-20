@@ -14,7 +14,7 @@ import sys
 from threading import Timer
 from pathlib import Path
 import platform
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, List
 
 # Runs the tests.
 
@@ -23,6 +23,7 @@ parser.add_argument('--suffix', default='')
 parser.add_argument('suite', nargs='?')
 parser.add_argument('--show-passes', '-p', action='store_true', help='list the tests that pass')
 parser.add_argument('--static-output', '-s', action='store_true', help="don't overwrite the status lines")
+parser.add_argument('--show-cmdline', '-c', action='store_true', help="show the command line used to build the test")
 
 args = parser.parse_args(sys.argv[1:])
 
@@ -73,6 +74,7 @@ expectations = 0
 
 class Test:
     modules: Set[str]
+    compiler_args: Optional[List[str | Path]]
 
     def __init__(self, path: Path):
         self.path = path
@@ -85,6 +87,7 @@ class Test:
         self.input_bytes = None
         self.failures = []
         self.modules = set()
+        self.compiler_args = None
 
     def parse(self):
         global num_skipped
@@ -224,7 +227,7 @@ class Test:
         dest_file = Path("/tmp/wrencc-test")
 
         # Build the arguments
-        args = [
+        self.compiler_args = [
             cc,
             "-o", dest_file,
             "--module=test",
@@ -235,8 +238,8 @@ class Test:
         transitive_deps = self.resolve_module_dependencies()
         for module in transitive_deps:
             mod_name = str(module.relative_to(self.path.parent)).removesuffix('.wren')
-            args.append("--module=" + mod_name)
-            args.append(module)
+            self.compiler_args.append("--module=" + mod_name)
+            self.compiler_args.append(module)
 
         # Run the compiler
         proc = subprocess.Popen(
@@ -244,7 +247,7 @@ class Test:
             stdout=PIPE,
             stderr=PIPE,
             encoding="utf-8",
-            args=args,
+            args=self.compiler_args,
         )
         out, err = proc.communicate(None)
 
@@ -530,14 +533,20 @@ def run_script(app, path: Path, type):
 
     test.run(app, type)
 
+    cmdline_str = " ".join([str(a) for a in test.compiler_args])
+
     # Display the results.
     if len(test.failures) == 0:
         passed += 1
         if args.show_passes:
             print_line(green('PASS') + ': ' + rel_path, keep=True)
+            if args.show_cmdline:
+                print('      ' + cmdline_str)
     else:
         failed += 1
         print_line(red('FAIL') + ': ' + rel_path, keep=True)
+        if args.show_cmdline:
+            print('      ' + cmdline_str)
         for failure in test.failures:
             print('      ' + pink(failure))
         print('')
