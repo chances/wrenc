@@ -7,6 +7,7 @@
 #include "common/common.h"
 
 #include <memory>
+#include <unordered_map>
 #include <utility>
 
 class RtModule;
@@ -28,9 +29,12 @@ class WrenRuntime {
 
 	Value GetCoreGlobal(const std::string &name);
 
+	RtModule *GetOrInitModule(void *getGlobalsFunction);
+
   private:
 	WrenRuntime();
 	~WrenRuntime();
 
 	std::unique_ptr<RtModule> m_coreModule;
+	std::unordered_map<void *, std::unique_ptr<RtModule>> m_userModules;
 };

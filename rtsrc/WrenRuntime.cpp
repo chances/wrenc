@@ -50,3 +50,29 @@ Value WrenRuntime::GetCoreGlobal(const std::string &name) {
 	fprintf(stderr, "Missing core global '%s' requested by rtlib\n", name.c_str());
 	abort();
 }
+
+RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
+	if (m_userModules.contains(getGlobalsFunction))
+		return m_userModules.at(getGlobalsFunction).get();
+
+	typedef void *(*globalsFunc_t)();
+	globalsFunc_t func = (globalsFunc_t)getGlobalsFunction;
+	void *globalsTable = func();
+
+	std::unique_ptr<RtModule> mod = std::make_unique<RtModule>(globalsTable);
+	RtModule *ptr = mod.get();
+	m_userModules[getGlobalsFunction] = std::move(mod);
+
+	// Run this module's initialiser function - be sure to do this AFTER inserting the module into
+	// the user modules map, since this module might call GetOrInitModule again and eventually reference
+	// itself, even though it's not done loading.
+	typedef void (*initFunc_t)();
+	initFunc_t initFunc = (initFunc_t)ptr->GetOrNull("<INTERNAL>::init_func");
+
+	if (!initFunc) {
+		errors::wrenAbort("Cannot initialise module %s: no initialiser function!", ptr->moduleName.c_str());
+	}
+	initFunc();
+
+	return ptr;
+}

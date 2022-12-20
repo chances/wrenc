@@ -21,6 +21,7 @@
 #include "ObjSequence.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
+#include "RtModule.h"
 #include "WrenRuntime.h"
 #include "common.h"
 #include "common/ClassDescription.h"
@@ -48,6 +49,8 @@ EXPORT ObjFn *wren_get_closure_chain_next(ObjFn *closure);
 EXPORT void *wren_alloc_upvalue_storage(int numClosures);
 EXPORT Value wren_get_bool_value(bool value);
 EXPORT Value wren_get_core_class_value(const char *name);
+EXPORT RtModule *wren_import_module(const char *name, void *getGlobalsFunc);
+EXPORT Value wren_get_module_global(RtModule *mod, const char *name);
 }
 // NOLINTEND(readability-identifier-naming)
 
@@ -286,4 +289,17 @@ Value wren_get_core_class_value(const char *name) {
 	errors::wrenAbort("Module requested unknown system class '%s', aborting\n", name);
 
 #undef GET_CLASS
+}
+
+RtModule *wren_import_module(const char *name, void *getGlobalsFunc) {
+	return WrenRuntime::Instance().GetOrInitModule(getGlobalsFunc);
+}
+
+Value wren_get_module_global(RtModule *mod, const char *name) {
+	Value *ptr = mod->GetOrNull(name);
+	if (!ptr) {
+		errors::wrenAbort("No such module variable: %s.%s", mod->moduleName.c_str(), name);
+	}
+
+	return *ptr;
 }
