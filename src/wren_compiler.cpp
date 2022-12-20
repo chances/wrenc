@@ -2551,7 +2551,9 @@ IRExpr *parsePrecedence(Compiler *compiler, Precedence precedence) {
 
 	if (prefix == NULL) {
 		error(compiler, "Expected expression.");
-		return nullptr;
+
+		// Return a dummy value to avoid problems
+		return null(compiler);
 	}
 
 	// Track if the precendence of the surrounding expression is low enough to
