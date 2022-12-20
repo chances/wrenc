@@ -12,6 +12,7 @@
 #include "HashUtil.h"
 #include "LLVMBackend.h"
 #include "Scope.h"
+#include "Utils.h"
 #include "common.h"
 
 #include <llvm/IR/Constants.h>
@@ -361,7 +362,9 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	m_module.setTargetTriple(targetTriple);
 
 	// Actually generate the code
-	std::string filename = "/tmp/wren-output.o";
+	std::string filename = "wren-output-!!!!!!!.o";
+	filename = utils::buildTempFilename(filename);
+
 	std::error_code ec;
 	llvm::raw_fd_ostream dest(filename, ec, llvm::sys::fs::OF_None);
 
