@@ -118,6 +118,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::GlobalVariable *GetGlobalVariable(IRGlobalDecl *global);
 	llvm::Value *GetLocalPointer(VisitorContext *ctx, LocalVariable *local);
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
+	llvm::Value *GetVariablePointer(VisitorContext *ctx, VarDecl *var);
 	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
 
 	/// Process a string literal, to make it suitable for using as a name in the IR
@@ -943,6 +944,24 @@ llvm::Value *LLVMBackendImpl::GetUpvaluePointer(VisitorContext *ctx, UpvalueVari
 	return m_builder.CreateLoad(m_pointerType, varPtrPtr, "uv_ptr_" + upvalue->Name());
 }
 
+llvm::Value *LLVMBackendImpl::GetVariablePointer(VisitorContext *ctx, VarDecl *var) {
+	LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(var);
+
+	if (local) {
+		return GetLocalPointer(ctx, local);
+	}
+	if (upvalue) {
+		return GetUpvaluePointer(ctx, upvalue);
+	}
+	if (global) {
+		return GetGlobalVariable(global);
+	}
+	fprintf(stderr, "Attempted to access non-local, non-global, non-upvalue variable '%s'\n", var->Name().c_str());
+	abort();
+}
+
 llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel *label) {
 	if (ctx->labelBlocks.contains(label))
 		return ctx->labelBlocks.at(label);
@@ -1057,26 +1076,9 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
-	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
-	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
-	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
-
-	if (local) {
-		llvm::Value *ptr = GetLocalPointer(ctx, local);
-		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
-		return {value};
-	} else if (upvalue) {
-		llvm::Value *ptr = GetUpvaluePointer(ctx, upvalue);
-		llvm::Value *var = m_builder.CreateLoad(m_valueType, ptr, "uv_" + upvalue->Name());
-		return {var};
-	} else if (global) {
-		llvm::Value *ptr = GetGlobalVariable(global);
-		llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
-		return {value};
-	} else {
-		fprintf(stderr, "Attempted to load non-local, non-global, non-upvalue variable %p\n", node->var);
-		abort();
-	}
+	llvm::Value *ptr = GetVariablePointer(ctx, node->var);
+	llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
+	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
 	llvm::Value *fieldPointer = m_builder.CreateGEP(
@@ -1197,25 +1199,10 @@ ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassV
 // Statements
 
 StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) {
-	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
-	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
-	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
-
 	llvm::Value *value = VisitExpr(ctx, node->expr).value;
 
-	if (local) {
-		llvm::Value *ptr = GetLocalPointer(ctx, local);
-		m_builder.CreateStore(value, ptr);
-	} else if (upvalue) {
-		llvm::Value *ptr = GetUpvaluePointer(ctx, upvalue);
-		m_builder.CreateStore(value, ptr);
-	} else if (global) {
-		llvm::Value *ptr = GetGlobalVariable(global);
-		m_builder.CreateStore(value, ptr);
-	} else {
-		fprintf(stderr, "Attempted to store to non-local, non-global, non-upvalue variable %p\n", node->var);
-		abort();
-	}
+	llvm::Value *ptr = GetVariablePointer(ctx, node->var);
+	m_builder.CreateStore(value, ptr);
 
 	return {};
 }
