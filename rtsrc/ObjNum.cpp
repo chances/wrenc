@@ -8,6 +8,8 @@
 #include "ObjRange.h"
 #include "WrenRuntime.h"
 
+#include <math.h>
+
 ObjNumClass::~ObjNumClass() {}
 
 // Don't inherit methods from our parent, since we have the funny thing with the number receivers
@@ -30,14 +32,37 @@ bool ObjNumClass::Is(double receiver, ObjClass *cls) {
 }
 
 std::string ObjNumClass::ToString(double receiver) {
-	// Print integers as integers - passing a double into std::to_string will always
-	// result in decimal points, even if the actual value is an integer.
+	// Copied and modified from wren_value.c:wrenNumToString
 
-	if ((int64_t)receiver == receiver) {
-		return std::to_string((int64_t)receiver);
+	// Edge case: If the value is NaN or infinity, different versions of libc
+	// produce different outputs (some will format it signed and some won't). To
+	// get reliable output, handle it ourselves.
+	if (isnan(receiver)) {
+		return "nan";
+	}
+	if (isinf(receiver)) {
+		return receiver > 0.0 ? "infinity" : "-infinity";
 	}
 
-	return std::to_string(receiver);
+	// This is large enough to hold any double converted to a string using
+	// "%.14g". Example:
+	//
+	//     -1.12345678901234e-1022
+	//
+	// So we have:
+	//
+	// + 1 char for sign
+	// + 1 char for digit
+	// + 1 char for "."
+	// + 14 chars for decimal digits
+	// + 1 char for "e"
+	// + 1 char for "-" or "+"
+	// + 4 chars for exponent
+	// + 1 char for "\0"
+	// = 24
+	char buffer[24];
+	snprintf(buffer, sizeof(buffer), "%.14g", receiver);
+	return buffer;
 }
 
 double ObjNumClass::OperatorMinus(double receiver) { return -receiver; }
