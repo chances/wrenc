@@ -17,6 +17,8 @@ class RtModule {
 	/// Look up a global by varName, returning null if one isn't found
 	Value *GetOrNull(const std::string &varName);
 
+	std::string moduleName;
+
   private:
 	/// This module's global variables
 	std::unordered_map<std::string, Value *> m_globals;

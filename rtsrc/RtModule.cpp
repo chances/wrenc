@@ -16,6 +16,14 @@ RtModule::RtModule(void *globalsTable) {
 		m_globals[items->name] = items->global;
 		items++;
 	}
+
+	// The name is inserted as a special value
+	const char *rawName = (const char *)GetOrNull("<INTERNAL>::module_name");
+	if (rawName == nullptr) {
+		moduleName = "<unnamed module>";
+	} else {
+		moduleName = rawName;
+	}
 }
 
 Value *RtModule::GetOrNull(const std::string &varName) {

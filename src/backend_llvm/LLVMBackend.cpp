@@ -838,6 +838,15 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			components.push_back(GetStringConst(global->Name()));
 			components.push_back(GetGlobalVariable(global));
 		}
+
+		// Add some special values that have a meaning to the runtime
+		components.push_back(GetStringConst("<INTERNAL>::init_func"));
+		components.push_back(mod->GetMainFunction()->GetBackendData<FnData>()->llvmFunc);
+		if (mod->Name()) {
+			components.push_back(GetStringConst("<INTERNAL>::module_name"));
+			components.push_back(GetStringConst(mod->Name().value()));
+		}
+
 		// Terminating null
 		components.push_back(m_nullPointer);
 
