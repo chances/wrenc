@@ -327,7 +327,7 @@ static IRExpr *null(Compiler *compiler, bool canAssign = false);
 	} while (0)
 
 static void assertionFailure(const char *file, int line, const char *msg) {
-	fmt::print("Assertion failure at {}:{} - {}\n", file, line, msg);
+	fmt::print(stderr, "Assertion failure at {}:{} - {}\n", file, line, msg);
 	abort();
 }
 
@@ -346,7 +346,7 @@ static void printError(Parser *parser, int line, const char *label, const char *
 	vsnprintf(buf, sizeof(buf), format, args);
 	std::string message = std::string(label) + ": " + std::string(buf);
 
-	fmt::print("WrenCC at {}:{} - {}\n", moduleName(parser), line, message);
+	fmt::print(stderr, "WrenCC at {}:{} - {}\n", moduleName(parser), line, message);
 }
 
 // Outputs a lexical error.

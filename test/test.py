@@ -55,6 +55,8 @@ STDIN_PATTERN = re.compile(r'// stdin: (.*)')
 SKIP_PATTERN = re.compile(r'// skip: (.*)')
 NONTEST_PATTERN = re.compile(r'// nontest')
 
+IGNORED_ERR_LINES = {"Parse errors found, aborting"}
+
 # This lists tests that should succeed even if they're supposed to fail
 OVERRIDE_SHOULD_SUCCEED: Set[str] = set()
 OVERRIDE_SHOULD_FAIL_COMPILATION: Dict[str, str] = dict()
@@ -235,9 +237,11 @@ class Test:
             print("Compiler stderr: " + err.strip())
             return None
 
-        # Ignore stderr, all the errors are written to stdout
+        # It's probably bad form, but we want to be really sure the compiler never writes to stdout
+        if out:
+            raise Exception(f"Compiler wrote to stdout for test {self.path}: {out}")
 
-        lines = out.replace('\r\n', '\n').split('\n')
+        lines = err.replace('\r\n', '\n').split('\n')
         self.validate_compile_errors(lines)
 
         compile_failed = proc.returncode != 0
@@ -322,6 +326,9 @@ class Test:
         # Validate that every compile error was expected.
         found_errors = set()
         for line in error_lines:
+            if line in IGNORED_ERR_LINES:
+                continue
+
             match = ERROR_PATTERN.search(line)
             if match:
                 error_line = float(match.group(1))

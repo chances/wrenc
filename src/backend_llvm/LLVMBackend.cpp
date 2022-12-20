@@ -340,7 +340,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	}
 
 	// Verify the IR, to make sure we haven't done something strange
-	if (llvm::verifyModule(m_module, &llvm::outs())) {
+	if (llvm::verifyModule(m_module, &llvm::errs())) {
 		fprintf(stderr, "LLVM IR Validation failed!\n");
 		exit(1);
 	}
