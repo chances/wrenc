@@ -2341,8 +2341,16 @@ void mixedSignature(Compiler *compiler, Signature *signature) {
 		signature->arity = 1;
 
 		// Parse the parameter name.
-		declareNamedVariable(compiler);
+		VarDecl *var = declareNamedVariable(compiler);
 		consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
+
+		LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+		if (!local) {
+			std::string name = var->Name();
+			error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
+		} else {
+			compiler->fn->parameters.push_back(local);
+		}
 	}
 }
 
@@ -2363,8 +2371,16 @@ static bool maybeSetter(Compiler *compiler, Signature *signature) {
 
 	// Parse the value parameter.
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after '='.");
-	declareNamedVariable(compiler);
+	VarDecl *var = declareNamedVariable(compiler);
 	consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
+
+	LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+	if (!local) {
+		std::string name = var->Name();
+		error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
+	} else {
+		compiler->fn->parameters.push_back(local);
+	}
 
 	signature->arity++;
 
