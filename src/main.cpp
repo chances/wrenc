@@ -17,7 +17,8 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
-static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName);
+static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
+                                     bool main);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
@@ -62,7 +63,7 @@ int main(int argc, char **argv) {
 	bool needsHelp = false; // Print the help page?
 	bool compileOnly = false;
 	std::string outputFile;
-	std::optional<std::string> moduleName;
+	std::vector<std::string> moduleNames;
 
 	while (true) {
 		int opt = getopt_long(argc, argv, "o:m:ch", options, nullptr);
@@ -82,7 +83,7 @@ int main(int argc, char **argv) {
 			needsHelp = true;
 			break;
 		case 'm':
-			moduleName = optarg;
+			moduleNames.push_back(optarg);
 			break;
 		case '?':
 			// Error message already printed by getopt
@@ -105,6 +106,7 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("-h", "--help", "Print this help page");
 		optHelp.emplace_back("-c", "--compile-only", "Only compile the input files, do not link them");
 		optHelp.emplace_back("-o file", "--output=file", "Write the output to the file [file]");
+		optHelp.emplace_back("-m name", "--module=name", "Sets the module name. Repeat for multiple files.");
 
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
@@ -155,13 +157,24 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+	if (moduleNames.size() > sourceFiles.size()) {
+		fmt::print(stderr, "{}: More module names specified than source files.\n", argv[0]);
+		exit(1);
+	}
+
 	std::vector<int> assemblyFiles;
 	bool hitError = false;
-	for (const std::string &sourceFile : sourceFiles) {
+	for (size_t sourceFileId = 0; sourceFileId < sourceFiles.size(); sourceFileId++) {
+		const std::string &sourceFile = sourceFiles.at(sourceFileId);
+		std::optional<std::string> thisModuleName;
+		if (sourceFileId < moduleNames.size()) {
+			thisModuleName = moduleNames.at(sourceFileId);
+		}
 		std::ifstream input;
 		try {
 			input.open(sourceFile);
-			CompilationResult result = runCompiler(input, moduleName);
+			// TODO add a proper way of selecting the main module
+			CompilationResult result = runCompiler(input, thisModuleName, sourceFileId == 0);
 			if (!result.successful) {
 				hitError = true;
 				continue;
@@ -225,7 +238,8 @@ int main(int argc, char **argv) {
 	}
 }
 
-static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName) {
+static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
+                                     bool main) {
 	std::string source;
 	{
 		// Quick way to read an entire stream
@@ -275,7 +289,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	}
 
 	backend->compileWrenCore = globalBuildCoreLib;
-	backend->defineStandaloneMainFunc = !globalBuildCoreLib; // TODO only mark modules as main with a CLI option
+	backend->defineStandaloneMainFunc = !globalBuildCoreLib && main;
 	CompilationResult result = backend->Generate(&mod);
 
 	if (!result.successful) {
