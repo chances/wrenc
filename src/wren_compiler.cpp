@@ -2844,7 +2844,10 @@ IRStmt *statement(Compiler *compiler) {
 
 		// Relocate any upvalues, and any other cleanup we have to do. Do this all the way down to the first
 		// frame, since all the frames are obviously gone once we return.
-		block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
+		// The exception is if we're at the root scope, then everything is just a global variable anyway.
+		if (compiler->scopeDepth != -1) {
+			block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
+		}
 
 		compiler->AddNew<StmtReturn>(block, loadVariable(compiler, tempReturn));
 
