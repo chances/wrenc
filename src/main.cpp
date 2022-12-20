@@ -172,6 +172,7 @@ int main(int argc, char **argv) {
 		}
 		std::ifstream input;
 		try {
+			input.exceptions(std::ios::badbit | std::ios::failbit);
 			input.open(sourceFile);
 			// TODO add a proper way of selecting the main module
 			CompilationResult result = runCompiler(input, thisModuleName, sourceFileId == 0);
