@@ -49,3 +49,51 @@ std::string utils::buildTempFilename(std::string nameTemplate) {
 	tempFiles.push_back(filename);
 	return filename;
 }
+
+std::string utils::stringFindReplace(std::string str, const std::string &from, const std::string &to) {
+	size_t lastPos = 0;
+	while (true) {
+		lastPos = str.find(from, lastPos);
+		if (lastPos == std::string::npos)
+			return str;
+		str.replace(lastPos, from.size(), to);
+	}
+}
+
+std::vector<std::string> utils::stringSplit(const std::string &str, const std::string &sep) {
+	std::vector<std::string> parts;
+
+	size_t startPos = 0;
+	while (true) {
+		size_t pos = str.find(sep, startPos);
+		if (pos == std::string::npos)
+			break;
+
+		// The section from startPos until (not including) pos is the next section
+		parts.emplace_back(str.substr(startPos, pos - startPos));
+
+		// Start immediately after the separator, otherwise we'll get stuck and infinitely loop on it
+		startPos = pos + 1;
+	}
+
+	// Add the last part
+	parts.emplace_back(str.substr(startPos));
+
+	return parts;
+}
+
+std::string utils::stringJoin(const std::vector<std::string> &parts, const std::string &sep) {
+	std::string result;
+
+	bool isFirst = true;
+	for (const std::string &str : parts) {
+		if (!isFirst) {
+			result.append(sep);
+		}
+		isFirst = false;
+
+		result.append(str);
+	}
+
+	return result;
+}

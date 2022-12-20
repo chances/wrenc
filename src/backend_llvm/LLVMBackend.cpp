@@ -1313,8 +1313,52 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 	// is named 'a' then it's an empty string.
 
 	std::string modName = node->import->moduleName;
-	if (modName.starts_with("./")) {
-		modName = currentModDir + modName.substr(2);
+	// If a module name starts with / then it's an absolute path
+	if (modName.starts_with("/")) {
+		modName = modName.substr(1);
+	} else {
+		// Note we'll pretend to be a bit more like a filesystem to satisfy a test case, so duplicate strokes and /./
+		// are both allowed, and we just normalise them out here.
+		modName = currentModDir + "/" + modName; // Get something like current_dir/./my_omd
+
+		// It's easier to process the path if we turn it into a list of path segments
+		std::vector<std::string> parts = utils::stringSplit(modName, "/");
+
+		// Get rid of empty segments '//' and . segments '/./'
+		// Iterate backwards since we're removing stuff
+		for (ssize_t i = parts.size() - 1; i >= 0; i--) {
+			const std::string &part = parts.at(i);
+			if (part == "." || part.empty()) {
+				parts.erase(parts.begin() + i);
+			}
+		}
+
+		// If we see .. then remove the previous path segment. Do this in order, so multiple ..s in a row are handled
+		// properly (removing two normal path segments, not each other).
+		for (ssize_t i = 0; i < (ssize_t)parts.size(); i++) {
+			if (parts.at(i) != "..")
+				continue;
+
+			// If we find a .. at the start, that's the user's fault.
+			if (i == 0) {
+				fmt::print(stderr, "Module path {} tries to reach before the module area root", modName);
+				abort();
+			}
+
+			if (parts.at(i - 1) == "..") {
+				fmt::print(stderr, "Error while processing module path {}: attempted to cancel ..", modName);
+				abort();
+			}
+
+			// Remove both this and the previous item
+			parts.erase(parts.begin() + i - 1, parts.begin() + i + 1);
+
+			// Decrement i by two, since we've moved everything else back by two - otherwise we'd end up
+			// skipping over two elements.
+			i -= 2;
+		}
+
+		modName = utils::stringJoin(parts, "/");
 	}
 
 	// Create an import for that module's global-getter function
