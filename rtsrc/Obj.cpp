@@ -61,16 +61,7 @@ bool Obj::OperatorBoolNegate() {
 	return false;
 }
 
-bool Obj::Is(ObjClass *cls) {
-	// Walk through the type hierarchy and see if we are or extend the specified class
-	ObjClass *iter = type;
-	while (iter) {
-		if (iter == cls)
-			return true;
-		iter = iter->parentClass;
-	}
-	return false;
-}
+bool Obj::Is(ObjClass *cls) { return type->Extends(cls); }
 
 ObjClass *Obj::Type() { return type; }
 

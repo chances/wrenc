@@ -109,6 +109,17 @@ ObjClass *ObjClass::Supertype() const { return parentClass; }
 std::string ObjClass::ToString() const { return name; }
 Value ObjClass::Attributes() { return NULL_VAL; }
 
+bool ObjClass::Extends(ObjClass *other) {
+	// Walk through the type hierarchy and see if we are or extend the specified class
+	ObjClass *iter = this;
+	while (iter) {
+		if (iter == other)
+			return true;
+		iter = iter->parentClass;
+	}
+	return false;
+}
+
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
 	type = &m_defaultMetaClass;
 	this->name = name;

@@ -23,7 +23,4 @@ bool ObjNull::OperatorBoolNegate() {
 	// !null is always true
 	return true;
 }
-bool ObjNull::Is(ObjClass *cls) {
-	// We want the regular behaviour from Is, just with a different receiver
-	return Obj::Is(cls);
-}
+bool ObjNull::Is(ObjClass *cls) { return Class()->Extends(cls); }

@@ -107,6 +107,10 @@ class ObjClass : public Obj {
 	/// has it's own special members because it's generally just special.
 	virtual bool InheritsMethods();
 
+	/// Check if this class extends another class. This is similar to the 'is' operator:
+	/// "a is b" is the same as "a.type.Extends(b)"
+	bool Extends(ObjClass *other);
+
 	/// Find a virtual function in the virtual function table. Returns nullptr if it's not found.
 	FunctionTable::Entry *LookupMethod(SignatureId signature);
 
