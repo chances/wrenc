@@ -55,6 +55,9 @@ STDIN_PATTERN = re.compile(r'// stdin: (.*)')
 SKIP_PATTERN = re.compile(r'// skip: (.*)')
 NONTEST_PATTERN = re.compile(r'// nontest')
 
+# Used to figure out which modules need compiling
+IMPORT_PATTERN = re.compile(r'^import\s+"([^"]*)"')
+
 IGNORED_ERR_LINES = {"Parse errors found, aborting"}
 
 # This lists tests that should succeed even if they're supposed to fail
@@ -69,7 +72,9 @@ expectations = 0
 
 
 class Test:
-    def __init__(self, path):
+    modules: Set[str]
+
+    def __init__(self, path: Path):
         self.path = path
         self.output = []
         self.compile_errors = set()
@@ -79,6 +84,7 @@ class Test:
         self.runtime_error_status_expected = False
         self.input_bytes = None
         self.failures = []
+        self.modules = set()
 
     def parse(self):
         global num_skipped
@@ -153,6 +159,10 @@ class Test:
                 if match:
                     return False
 
+                match = IMPORT_PATTERN.search(line)
+                if match:
+                    self.modules.add(match.group(1))
+
                 line_num += 1
 
         if override_success:
@@ -213,18 +223,28 @@ class Test:
         # TODO auto-delete this
         dest_file = Path("/tmp/wrencc-test")
 
+        # Build the arguments
+        args = [
+            cc,
+            "-o", dest_file,
+            "--module=test",
+            self.path,
+        ]
+
+        # Add each of the modules we're using, including transitive dependencies
+        transitive_deps = self.resolve_module_dependencies()
+        for module in transitive_deps:
+            mod_name = str(module.relative_to(self.path.parent)).removesuffix('.wren')
+            args.append("--module=" + mod_name)
+            args.append(module)
+
         # Run the compiler
         proc = subprocess.Popen(
             stdin=subprocess.DEVNULL,
             stdout=PIPE,
             stderr=PIPE,
             encoding="utf-8",
-            args=[
-                cc,
-                "--module=test",
-                "-o", dest_file,
-                self.path,
-            ],
+            args=args,
         )
         out, err = proc.communicate(None)
 
@@ -382,6 +402,41 @@ class Test:
             message = message.format(*args)
         self.failures.append(message)
 
+    @staticmethod
+    def resolve_module_path(current: Path, module_name: str) -> Path:
+        path = current.parent / f"{module_name}.wren"
+
+        # Get rid of any /../ stuff
+        return path.resolve()
+
+    def resolve_module_dependencies(self) -> Set[Path]:
+        # Modules may reference us - that's fine, just make sure we're using the same path as resolve_module_path
+        # results in.
+        self_path = self.path.resolve()
+
+        # In case we have any transitive dependencies on modules we didn't directly import, figure that
+        # out now by scanning those modules we did import.
+        # Note we deal with everything as a path, since modules can use relative imports.
+        scanned = {self_path}
+        remaining = set([Test.resolve_module_path(self.path, m) for m in self.modules])
+        while len(remaining) > 0:
+            # Take an arbitrary module we haven't looked at yet, and find it's imports:
+            target_module = remaining.pop()
+            imports = scan_for_module_imports(target_module)
+            import_paths = [Test.resolve_module_path(target_module, name) for name in imports]
+
+            # Now mark this module as scanned
+            scanned.add(target_module)
+
+            # We'll need to investigate any modules it found
+            remaining.update(import_paths)
+
+            # And remove any scanned modules from the remaining list, otherwise we could scan the same module twice
+            remaining.difference_update(scanned)
+
+        scanned.remove(self_path)
+        return scanned
+
 
 def color_text(text, color):
     """Converts text to a string and wraps it in the ANSI escape sequence for
@@ -524,6 +579,25 @@ def load_list(path: Path) -> Dict[str, Optional[str]]:
             items[key] = value
 
     return items
+
+
+def scan_for_module_imports(path: Path) -> Set[str]:
+    imports = set()
+
+    # Ignore files that don't exist - it'll cause a link error, but we can deal with that then
+    # We do this because some tests which are designed to fail import modules that don't exist
+    if not path.exists():
+        return imports
+
+    with open(path, 'r', encoding="utf-8", newline='', errors='replace') as file:
+        data = file.read()
+        lines = re.split('\n|\r\n', data)
+        for line in lines:
+            match = IMPORT_PATTERN.search(line)
+            if match:
+                imports.add(match.group(1))
+
+    return imports
 
 
 def main():
