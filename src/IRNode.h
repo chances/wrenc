@@ -189,7 +189,10 @@ class IRImport : public IRNode {
 /**
  * Represents an action that can be executed at runtime.
  */
-class IRStmt : public IRNode {};
+class IRStmt : public IRNode {
+  public:
+	virtual bool IsUnconditionalBranch();
+};
 
 /// Assign a value to a local or global variable
 class StmtAssign : public IRStmt {
@@ -257,6 +260,8 @@ class StmtJump : public IRStmt {
 
 	void Accept(IRVisitor *visitor) override;
 
+	bool IsUnconditionalBranch() override;
+
 	StmtLabel *target = nullptr;
 	IRExpr *condition = nullptr; /// Unconditional if nullptr. Otherwise, if it evaluates to null or false, won't jump.
 	bool looping = false; /// If this jump is part of a loop, this is true. Otherwise the jump MUST only go 'forwards'.
@@ -268,6 +273,8 @@ class StmtReturn : public IRStmt {
 	explicit StmtReturn(IRExpr *value) : value(value) {}
 
 	void Accept(IRVisitor *visitor) override;
+
+	bool IsUnconditionalBranch() override;
 
 	IRExpr *value = nullptr;
 };

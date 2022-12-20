@@ -80,9 +80,9 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 	for (int i = 0; i < node->statements.size(); i++) {
 		IRStmt *stmt = node->statements.at(i);
 
-		// If we find a return, remove everything after it until we find a label, since that's the only
+		// If we find an unconditional branch, remove everything after it until we find a label, since that's the only
 		// way you can access something after a return.
-		if (dynamic_cast<StmtReturn *>(stmt)) {
+		if (stmt->IsUnconditionalBranch()) {
 			while (i + 1 < node->statements.size()) {
 				IRStmt *next = node->statements.at(i + 1);
 				if (dynamic_cast<StmtLabel *>(next))

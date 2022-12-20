@@ -32,6 +32,8 @@ IRNode::~IRNode() = default;
 std::string IRGlobalDecl::Name() const { return name; }
 VarDecl::ScopeType IRGlobalDecl::Scope() const { return SCOPE_MODULE; }
 
+bool IRStmt::IsUnconditionalBranch() { return false; }
+
 void StmtBlock::Add(IRStmt *stmt) {
 	if (stmt)
 		statements.push_back(stmt);
@@ -53,6 +55,10 @@ ExprSystemVar::ExprSystemVar(std::string name) : name(name) {
 		abort();
 	}
 }
+
+bool StmtReturn::IsUnconditionalBranch() { return true; }
+
+bool StmtJump::IsUnconditionalBranch() { return condition == nullptr; }
 
 static std::unordered_map<std::string, int> buildSysVarNames() {
 	std::vector<const char *> names = {
