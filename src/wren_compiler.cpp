@@ -3227,7 +3227,7 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 static IRNode *import(Compiler *compiler) {
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_STRING, "Expect a string after 'import'.");
-	std::string moduleName = compiler->parser->previous.contents;
+	std::string moduleName = compiler->parser->previous.value.CheckString();
 
 	// Add a node to say that we need the module. This is kinda just put anywhere inside the
 	// file, with no concerns for ordering or matching up with if statements or anything like that.
@@ -3240,6 +3240,7 @@ static IRNode *import(Compiler *compiler) {
 	// a debug module that throws an error when imported in release builds and all the imports
 	// of it check if you're in release mode or not, then this is what makes that work properly.
 	StmtLoadModule *load = compiler->New<StmtLoadModule>();
+	load->import = import;
 
 	// The for clause is optional.
 	if (!match(compiler, TOKEN_FOR))
