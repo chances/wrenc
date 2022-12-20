@@ -73,7 +73,6 @@ expectations = 0
 
 
 class Test:
-    modules: Set[str]
     compiler_args: Optional[List[str | Path]]
 
     def __init__(self, path: Path):
@@ -86,7 +85,6 @@ class Test:
         self.runtime_error_status_expected = False
         self.input_bytes = None
         self.failures = []
-        self.modules = set()
         self.compiler_args = None
 
     def parse(self):
@@ -161,10 +159,6 @@ class Test:
                 match = NONTEST_PATTERN.search(line)
                 if match:
                     return False
-
-                match = IMPORT_PATTERN.search(line)
-                if match:
-                    self.modules.add(match.group(1))
 
                 line_num += 1
 
