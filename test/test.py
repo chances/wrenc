@@ -57,7 +57,7 @@ SKIP_PATTERN = re.compile(r'// skip: (.*)')
 NONTEST_PATTERN = re.compile(r'// nontest')
 
 # Used to figure out which modules need compiling
-IMPORT_PATTERN = re.compile(r'^import\s+"([^"]*)"')
+IMPORT_PATTERN = re.compile(r'^\s*import\s+"([^"]*)"')
 
 IGNORED_ERR_LINES = {"Parse errors found, aborting"}
 
