@@ -420,13 +420,16 @@ class Test:
         # In case we have any transitive dependencies on modules we didn't directly import, figure that
         # out now by scanning those modules we did import.
         # Note we deal with everything as a path, since modules can use relative imports.
-        scanned = {self_path}
-        remaining = set([Test.resolve_module_path(self.path, m) for m in self.modules])
+        scanned = set()
+        remaining = {self_path}
         while len(remaining) > 0:
             # Take an arbitrary module we haven't looked at yet, and find it's imports:
             target_module = remaining.pop()
             imports = scan_for_module_imports(target_module)
             import_paths = [Test.resolve_module_path(target_module, name) for name in imports]
+
+            # Ignore imports of files that don't exist
+            import_paths = [path for path in import_paths if path.exists()]
 
             # Now mark this module as scanned
             scanned.add(target_module)
@@ -437,7 +440,9 @@ class Test:
             # And remove any scanned modules from the remaining list, otherwise we could scan the same module twice
             remaining.difference_update(scanned)
 
+        # Remove ourselves, since this is a list of dependencies
         scanned.remove(self_path)
+
         return scanned
 
 
@@ -592,11 +597,6 @@ def load_list(path: Path) -> Dict[str, Optional[str]]:
 
 def scan_for_module_imports(path: Path) -> Set[str]:
     imports = set()
-
-    # Ignore files that don't exist - it'll cause a link error, but we can deal with that then
-    # We do this because some tests which are designed to fail import modules that don't exist
-    if not path.exists():
-        return imports
 
     with open(path, 'r', encoding="utf-8", newline='', errors='replace') as file:
         data = file.read()
