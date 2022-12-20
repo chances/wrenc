@@ -62,9 +62,9 @@ double ObjRange::IteratorValue(double value) const { return value; }
 std::string ObjRange::ToString() const {
 	std::string str = std::to_string(from);
 	if (inclusive)
-		str.append(3, '.');
-	else
 		str.append(2, '.');
+	else
+		str.append(3, '.');
 	str += std::to_string(to);
 	return str;
 }
