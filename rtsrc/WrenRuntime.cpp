@@ -43,9 +43,9 @@ void WrenRuntime::Initialise() {
 }
 
 Value WrenRuntime::GetCoreGlobal(const std::string &name) {
-	auto iter = m_coreModule->globals.find(name);
-	if (iter != m_coreModule->globals.end())
-		return *iter->second;
+	Value *global = m_coreModule->GetOrNull(name);
+	if (global)
+		return *global;
 
 	fprintf(stderr, "Missing core global '%s' requested by rtlib\n", name.c_str());
 	abort();

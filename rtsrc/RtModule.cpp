@@ -13,7 +13,15 @@ RtModule::RtModule(void *globalsTable) {
 	items = (decltype(items))globalsTable;
 
 	while (items->name) {
-		globals[items->name] = items->global;
+		m_globals[items->name] = items->global;
 		items++;
 	}
+}
+
+Value *RtModule::GetOrNull(const std::string &varName) {
+	auto iter = m_globals.find(varName);
+	if (iter == m_globals.end()) {
+		return nullptr;
+	}
+	return iter->second;
 }
