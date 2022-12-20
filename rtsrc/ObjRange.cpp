@@ -6,6 +6,7 @@
 #include "Errors.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
+#include "ObjNum.h"
 
 class ObjRangeClass : public ObjNativeClass {
   public:
@@ -60,11 +61,11 @@ Value ObjRange::Iterate(Value prev) const {
 double ObjRange::IteratorValue(double value) const { return value; }
 
 std::string ObjRange::ToString() const {
-	std::string str = std::to_string(from);
+	std::string str = ObjNumClass::Instance()->ToString(from);
 	if (inclusive)
 		str.append(2, '.');
 	else
 		str.append(3, '.');
-	str += std::to_string(to);
+	str += ObjNumClass::Instance()->ToString(to);
 	return str;
 }
