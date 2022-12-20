@@ -111,6 +111,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	CompilationResult Generate(Module *mod) override;
 
   private:
+	/// We pretend that a Value is a pointer in another address space. This helps with the safepoint stuff.
+	static constexpr int VALUE_ADDR_SPACE = 1;
+
 	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
 
@@ -170,13 +173,13 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
-	llvm::IntegerType *m_valueType = nullptr;
+	llvm::PointerType *m_valueType = nullptr;
 	llvm::IntegerType *m_int8Type = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
 	llvm::IntegerType *m_int64Type = nullptr;
 	llvm::Type *m_voidType = nullptr;
 
-	llvm::ConstantInt *m_nullValue = nullptr;
+	llvm::Constant *m_nullValue = nullptr;
 	llvm::Constant *m_nullPointer = nullptr;
 
 	std::map<std::string, llvm::GlobalVariable *> m_systemVars;
@@ -191,10 +194,13 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	// All the signatures we've ever used, for the signatures table
 	std::set<std::string> m_signatures;
+
+	// Should statepoints (for GC use) be generated?
+	bool m_enableStatepoints = true;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
-	m_valueType = llvm::Type::getInt64Ty(m_context);
+	m_valueType = llvm::PointerType::get(m_context, VALUE_ADDR_SPACE);
 	m_signatureType = llvm::Type::getInt64Ty(m_context);
 	m_pointerType = llvm::PointerType::get(m_context, 0);
 	m_int8Type = llvm::Type::getInt8Ty(m_context);
@@ -202,7 +208,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_int64Type = llvm::Type::getInt64Ty(m_context);
 	m_voidType = llvm::Type::getVoidTy(m_context);
 
-	m_nullValue = CInt::get(m_valueType, encode_object(nullptr));
+	m_nullValue = llvm::ConstantExpr::getIntToPtr(CInt::get(m_int64Type, encode_object(nullptr)), m_valueType);
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
 
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
@@ -474,7 +480,8 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		// Find a pointer to this object, since the 'this' argument is a value.
 		// We'll just assume it's always a pointer, since there's no valid reason why it could be a number.
 		// (note this is still an i64, we'll convert it to a pointer later)
-		llvm::Value *thisPtr = m_builder.CreateAnd(ctx.receiver, CInt::get(m_int64Type, CONTENT_MASK));
+		llvm::Value *intThisVal = m_builder.CreatePtrToInt(ctx.receiver, m_int64Type);
+		llvm::Value *thisPtr = m_builder.CreateAnd(intThisVal, CInt::get(m_int64Type, CONTENT_MASK));
 
 		// Also find the pointer to our field block
 		// We don't know the position of the class's fields at compile time, they're stored in a variable that's
@@ -1074,11 +1081,12 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 		break;
 	}
 	case CcValue::INT:
-		value = CInt::get(m_valueType, encode_number(node->value.i));
+	case CcValue::NUM: {
+		// Since valueType is a pointer, we have to produce the value as an integer then cast it in
+		llvm::Constant *intValue = CInt::get(m_int64Type, encode_number(node->value.n));
+		value = llvm::ConstantExpr::getIntToPtr(intValue, m_valueType);
 		break;
-	case CcValue::NUM:
-		value = CInt::get(m_valueType, encode_number(node->value.n));
-		break;
+	}
 	default:
 		fprintf(stderr, "Invalid constant node type %d\n", (int)node->value.type);
 		abort();
