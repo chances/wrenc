@@ -73,7 +73,7 @@ bool ObjNumClass::OperatorBoolNegate(double receiver) {
 	return false;
 }
 
-bool ObjNumClass::OperatorBitwiseNegate(double receiver) {
+double ObjNumClass::OperatorBitwiseNegate(double receiver) {
 	// https://wren.io/modules/core/num.html
 	// Truncate to a u32, negate, and cast back
 	uint32_t intValue = (uint32_t)receiver;
