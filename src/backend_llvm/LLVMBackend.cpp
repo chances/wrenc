@@ -79,6 +79,7 @@ struct VisitorContext {
 
 	llvm::Function *currentFunc = nullptr;
 	IRFn *currentWrenFunc = nullptr;
+	Module *currentModule = nullptr;
 };
 
 struct ExprRes {
@@ -110,7 +111,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	CompilationResult Generate(Module *mod) override;
 
   private:
-	llvm::Function *GenerateFunc(IRFn *func, bool initialiser);
+	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
 
 	llvm::Constant *GetStringConst(const std::string &str);
@@ -164,6 +165,8 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_initClass;
 	llvm::FunctionCallee m_getClassFieldOffset;
 	llvm::FunctionCallee m_registerSignatureTable;
+	llvm::FunctionCallee m_importModule;
+	llvm::FunctionCallee m_getModuleVariable;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
@@ -235,6 +238,14 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 	llvm::FunctionType *registerSigTableType = llvm::FunctionType::get(m_voidType, {m_pointerType}, false);
 	m_registerSignatureTable = m_module.getOrInsertFunction("wren_register_signatures_table", registerSigTableType);
+
+	llvm::FunctionType *importModuleType =
+	    llvm::FunctionType::get(m_pointerType, {m_pointerType, m_pointerType}, false);
+	m_importModule = m_module.getOrInsertFunction("wren_import_module", importModuleType);
+
+	llvm::FunctionType *getModuleVariableType =
+	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType}, false);
+	m_getModuleVariable = m_module.getOrInsertFunction("wren_get_module_global", getModuleVariableType);
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *mod) {
@@ -304,7 +315,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 
 	for (IRFn *func : mod->GetFunctions()) {
 		FnData *data = func->GetBackendData<FnData>();
-		data->llvmFunc = GenerateFunc(func, func == mod->GetMainFunction());
+		data->llvmFunc = GenerateFunc(func, mod);
 	}
 
 	// Generate the initialiser last, when we know all the string constants etc
@@ -394,7 +405,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	};
 }
 
-llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
+llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	FnData *fnData = func->GetBackendData<FnData>();
 
 	// Only take an upvalue pack argument if we actually need it
@@ -420,7 +431,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", function);
 	m_builder.SetInsertPoint(bb);
 
-	if (initialiser) {
+	if (func == mod->GetMainFunction()) {
 		// Call the initialiser, which we'll generate later
 		m_builder.CreateCall(m_initFunc->getFunctionType(), m_initFunc);
 	}
@@ -428,6 +439,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, bool initialiser) {
 	VisitorContext ctx = {};
 	ctx.currentFunc = function;
 	ctx.currentWrenFunc = func;
+	ctx.currentModule = mod;
 
 	std::vector<LocalVariable *> closables;
 
@@ -1285,8 +1297,43 @@ StmtRes LLVMBackendImpl::VisitStmtReturn(VisitorContext *ctx, StmtReturn *node) 
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule *node) {
-	printf("error: not implemented: VisitStmtLoadModule\n");
-	abort();
+	// TODO move the name resolution stuff out of this backend, to somewhere backend-independent
+
+	// Find the full name of this module. Stuff like './' will refer to a virtual directory structure in
+	// which all the modules sit.
+	std::string currentModName = ctx->currentModule->Name().value_or("<anon_module>");
+	std::string currentModDir;
+	size_t lastStrokePos = currentModName.find_last_of('/');
+	if (lastStrokePos != std::string::npos) {
+		// Include the trailing stroke
+		currentModDir = currentModName.substr(0, lastStrokePos + 1);
+	}
+
+	// At this point, currentModDir will be something like 'a/b/' if our module is named 'a/b/c'. If our module
+	// is named 'a' then it's an empty string.
+
+	std::string modName = node->import->moduleName;
+	if (modName.starts_with("./")) {
+		modName = currentModDir + modName.substr(2);
+	}
+
+	// Create an import for that module's global-getter function
+	llvm::FunctionType *funcType = llvm::FunctionType::get(m_pointerType, false);
+	llvm::FunctionCallee globalsFunc = m_module.getOrInsertFunction(modName + "_get_globals", funcType);
+
+	// Create or get the module - this runs it's initialiser, etc
+	std::vector<llvm::Value *> args = {GetStringConst(modName), globalsFunc.getCallee()};
+	llvm::Value *modPtr = m_builder.CreateCall(m_importModule, args, "module_" + node->import->moduleName);
+
+	// And import all the variables from it
+	for (const StmtLoadModule::VarImport &var : node->variables) {
+		llvm::Value *varValue =
+		    m_builder.CreateCall(m_getModuleVariable, {modPtr, GetStringConst(var.name)}, "mod_var_" + var.name);
+
+		llvm::Value *destPtr = GetVariablePointer(ctx, var.bindTo);
+		m_builder.CreateStore(varValue, destPtr);
+	}
+
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
