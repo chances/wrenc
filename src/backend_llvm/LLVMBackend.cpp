@@ -343,6 +343,10 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	const char *dumpIrStr = getenv("DUMP_LLVM_IR");
 	if (dumpIrStr && dumpIrStr == std::string("1")) {
 		m_module.print(llvm::outs(), nullptr);
+
+		std::error_code ec;
+		llvm::raw_fd_ostream output("/tmp/wren_llvm_ir.ll", ec, llvm::sys::fs::OF_None);
+		m_module.print(output, nullptr);
 	}
 
 	// Verify the IR, to make sure we haven't done something strange
