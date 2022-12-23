@@ -424,7 +424,7 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 		compiler->scopeDepth = 0;
 	}
 
-	compiler->fn = parser->context->alloc.New<IRFn>();
+	compiler->fn = compiler->New<IRFn>();
 }
 
 // Lexing ----------------------------------------------------------------------
@@ -1741,6 +1741,11 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 
 	std::vector<IRExpr *> args;
 
+	// Create the call now, so it has the line number of it's start if the call spans multiple lines
+	ExprFuncCall *call = compiler->New<ExprFuncCall>();
+	call->receiver = receiver;
+	call->super = super;
+
 	// Parse the argument list, if any.
 	if (match(compiler, TOKEN_LEFT_PAREN)) {
 		called.type = SIG_METHOD;
@@ -1799,11 +1804,8 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		called.type = SIG_INITIALIZER;
 	}
 
-	ExprFuncCall *call = compiler->New<ExprFuncCall>();
-	call->receiver = receiver;
 	call->signature = normaliseSignature(compiler, called);
 	call->args = std::move(args);
-	call->super = super;
 	return call;
 }
 
@@ -3415,6 +3417,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	ignoreNewlines(&compiler);
 
 	compiler.fn->debugName = moduleName(&parser) + "::__root_func";
+	compiler.fn->debugInfo.lineNumber = 1;
 	module->AddNode(compiler.fn);
 	ASSERT(module->GetFunctions().front() == compiler.fn, "Module init function is not the module's first function!");
 

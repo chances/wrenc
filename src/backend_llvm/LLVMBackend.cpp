@@ -16,6 +16,7 @@
 #include "common.h"
 
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -37,9 +38,12 @@
 #include <map>
 
 using CInt = llvm::ConstantInt;
+namespace dwarf = llvm::dwarf;
 
 // Wrap everything in a namespace to avoid any possibility of name collisions
 namespace wren_llvm_backend {
+
+class ScopedDebugGuard;
 
 struct UpvaluePackDef {
 	// All the variables bound to upvalues in the relevant closure
@@ -116,6 +120,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
+	void SetupDebugInfo(Module *mod);
 
 	llvm::Constant *GetStringConst(const std::string &str);
 	llvm::Value *GetManagedStringValue(const std::string &str);
@@ -130,6 +135,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	ExprRes VisitExpr(VisitorContext *ctx, IRExpr *expr);
 	StmtRes VisitStmt(VisitorContext *ctx, IRStmt *expr);
+	void WriteNodeDebugInfo(IRNode *node);
 
 	ExprRes VisitExprConst(VisitorContext *ctx, ExprConst *node);
 	ExprRes VisitExprLoad(VisitorContext *ctx, ExprLoad *node);
@@ -156,6 +162,10 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::IRBuilder<> m_builder;
 	llvm::Module m_module;
 
+	std::unique_ptr<llvm::DIBuilder> m_debugInfo;
+	llvm::DISubprogram *m_dbgSubProgramme = nullptr;
+	IRNode *m_dbgCurrentNode = nullptr;
+
 	llvm::Function *m_initFunc = nullptr;
 
 	llvm::FunctionCallee m_virtualMethodLookup;
@@ -179,6 +189,11 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::IntegerType *m_int64Type = nullptr;
 	llvm::Type *m_voidType = nullptr;
 
+	llvm::DIBasicType *m_dbgValueType = nullptr;
+	llvm::DIBasicType *m_dbgUpvaluePackType = nullptr;
+	llvm::DIFile *m_dbgFile = nullptr;
+	llvm::DICompileUnit *m_dbgCompileUnit = nullptr;
+
 	llvm::Constant *m_nullValue = nullptr;
 	llvm::Constant *m_nullPointer = nullptr;
 
@@ -197,6 +212,19 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	// Should statepoints (for GC use) be generated?
 	bool m_enableStatepoints = true;
+
+	friend ScopedDebugGuard;
+};
+
+/// Sets the debug position to a given node while this object is in scope, then returns it afterwards
+class ScopedDebugGuard {
+  public:
+	ScopedDebugGuard(LLVMBackendImpl *backend, IRNode *node);
+	~ScopedDebugGuard();
+
+  private:
+	LLVMBackendImpl *m_backend = nullptr;
+	IRNode *m_previous = nullptr;
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
@@ -255,6 +283,16 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *mod) {
+	// TODO create the module with the source file name
+
+	if (mod->sourceFilePath) {
+		// Assuming it wants just the filename, not the full path
+		std::vector<std::string> parts = utils::stringSplit(mod->sourceFilePath.value(), "/");
+		m_module.setSourceFileName(parts.back());
+	}
+
+	SetupDebugInfo(mod);
+
 	// Create all the system variables with the correct linkage
 	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		std::string name = "wren_sys_var_" + entry.first;
@@ -335,6 +373,11 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
 		    "wrenStandaloneMainFunc");
 	}
+
+	// We're done writing functions at this point, so finalise the debug information - this is also the latest
+	// we can wait since we have to do it before dumping/optimising/etc the IR.
+	m_debugInfo->finalize();
+	m_debugInfo.reset();
 
 	// Print out the LLVM IR for debugging
 	const char *dumpIrStr = getenv("DUMP_LLVM_IR");
@@ -418,19 +461,23 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	// Only take an upvalue pack argument if we actually need it
 	bool takesUpvaluePack = fnData->upvaluePackDef && !fnData->upvaluePackDef->variables.empty();
 
-	// Set up the function arguments
+	// Set up the function arguments - there's two arrays, one for the LLVM types and one for the DWARF types
 	std::vector<llvm::Type *> funcArgs;
+	std::vector<llvm::Metadata *> debugTypeArgs;
 	if (func->enclosingClass) {
 		// The receiver ('this') value.
 		funcArgs.push_back(m_valueType);
+		debugTypeArgs.push_back(m_dbgValueType);
 	}
 	if (takesUpvaluePack) {
 		// If this function uses upvalues, they're passed as an argument
 		funcArgs.push_back(m_pointerType);
+		debugTypeArgs.push_back(m_dbgUpvaluePackType);
 	}
 
 	// The 'regular' arguments, that the user would see
 	funcArgs.insert(funcArgs.end(), func->parameters.size(), m_valueType);
+	debugTypeArgs.insert(debugTypeArgs.end(), func->parameters.size(), m_dbgValueType);
 
 	llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
 
@@ -442,6 +489,24 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		// Call the initialiser, which we'll generate later
 		m_builder.CreateCall(m_initFunc->getFunctionType(), m_initFunc);
 	}
+
+	// Set up the function's debug information
+	llvm::DISubroutineType *dbgSubType =
+	    m_debugInfo->createSubroutineType(m_debugInfo->getOrCreateTypeArray(debugTypeArgs));
+	int lineNum = func->debugInfo.lineNumber;
+	m_dbgSubProgramme = m_debugInfo->createFunction(m_dbgCompileUnit, func->debugName, llvm::StringRef(), m_dbgFile,
+	    lineNum, dbgSubType, lineNum, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+	function->setSubprogram(m_dbgSubProgramme);
+
+	// This should be null here, just make sure it is - this is done by WriteNodeDebugInfo anyway, but
+	// putting it here for clarity.
+	m_dbgCurrentNode = nullptr;
+
+	// From https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl09.html
+	// Unset the location for the prologue emission (leading instructions with no
+	// location in a function are considered part of the prologue and the debugger
+	// will run past them when breaking on a function)
+	WriteNodeDebugInfo(nullptr);
 
 	VisitorContext ctx = {};
 	ctx.currentFunc = function;
@@ -512,6 +577,8 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	}
 
 	VisitStmt(&ctx, func->body);
+
+	m_dbgSubProgramme = nullptr;
 
 	return function;
 }
@@ -878,6 +945,29 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 	}
 }
 
+void LLVMBackendImpl::SetupDebugInfo(Module *mod) {
+	m_debugInfo = std::make_unique<llvm::DIBuilder>(m_module);
+
+	if (mod->sourceFilePath) {
+		std::vector<std::string> filenameParts = utils::stringSplit(mod->sourceFilePath.value(), "/");
+		std::string filenameNoDir = filenameParts.back();
+		filenameParts.pop_back();
+		std::string directory = utils::stringJoin(filenameParts, "/");
+		m_dbgFile = m_debugInfo->createFile(filenameNoDir, directory);
+	} else {
+		m_dbgFile = m_debugInfo->createFile("<unknown-source>.wren", ".");
+	}
+
+	std::string producer = "qwrencc native compiler <todo options> <todo version>";
+	// TODO isOptimised flag
+	m_dbgCompileUnit = m_debugInfo->createCompileUnit(dwarf::DW_LANG_C, m_dbgFile, producer, false, "", 1);
+
+	// It's a big ugly, we can't really create a proper type for values
+	m_dbgValueType = m_debugInfo->createBasicType("Value", 64, dwarf::DW_ATE_float);
+
+	m_dbgUpvaluePackType = m_debugInfo->createUnspecifiedType("UpvaluePackPtr");
+}
+
 llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
 	auto iter = m_stringConstants.find(str);
 	if (iter != m_stringConstants.end())
@@ -1010,8 +1100,16 @@ std::string LLVMBackendImpl::FilterStringLiteral(const std::string &literal) {
 	return result;
 }
 
+ScopedDebugGuard::ScopedDebugGuard(LLVMBackendImpl *backend, IRNode *node) : m_backend(backend) {
+	m_previous = backend->m_dbgCurrentNode;
+	m_backend->WriteNodeDebugInfo(node);
+}
+ScopedDebugGuard::~ScopedDebugGuard() { m_backend->WriteNodeDebugInfo(m_previous); }
+
 // Visitors
 ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
+	ScopedDebugGuard debugBlock(this, expr);
+
 #define DISPATCH(func, type)                                                                                           \
 	do {                                                                                                               \
 		if (typeid(*expr) == typeid(type))                                                                             \
@@ -1038,6 +1136,8 @@ ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
 }
 
 StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
+	ScopedDebugGuard debugBlock(this, expr);
+
 #define DISPATCH(func, type)                                                                                           \
 	do {                                                                                                               \
 		if (typeid(*expr) == typeid(type))                                                                             \
@@ -1059,6 +1159,24 @@ StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
 	fmt::print("Unknown stmt node {}\n", typeid(*expr).name());
 	abort();
 	return {};
+}
+
+void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
+	if (!node) {
+		// Used in the function prologue, to tell the debugger that it's not user-defined code
+		m_builder.SetCurrentDebugLocation(llvm::DebugLoc());
+		return;
+	}
+
+	IRDebugInfo &di = node->debugInfo;
+
+	if (di.lineNumber == -1) {
+		fprintf(stderr, "dbginfo: Missing line num for node %s\n", typeid(*node).name());
+		abort();
+	}
+
+	m_builder.SetCurrentDebugLocation(
+	    llvm::DILocation::get(m_dbgCompileUnit->getContext(), di.lineNumber, di.column, m_dbgSubProgramme));
 }
 
 ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {

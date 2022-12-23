@@ -41,6 +41,8 @@ class Module {
 	/// Add a top-level node.
 	void AddNode(IRNode *node);
 
+	std::optional<std::string> sourceFilePath;
+
   private:
 	std::optional<std::string> m_name;
 	std::unordered_map<std::string, std::unique_ptr<IRGlobalDecl>> m_globals;

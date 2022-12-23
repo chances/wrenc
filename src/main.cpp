@@ -18,7 +18,7 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-    bool main);
+    const std::optional<std::string> &sourceFileName, bool main);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
 			input.exceptions(std::ios::badbit | std::ios::failbit);
 			input.open(sourceFile);
 			// TODO add a proper way of selecting the main module
-			CompilationResult result = runCompiler(input, thisModuleName, sourceFileId == 0);
+			CompilationResult result = runCompiler(input, thisModuleName, sourceFile, sourceFileId == 0);
 			if (!result.successful) {
 				hitError = true;
 				continue;
@@ -265,7 +265,8 @@ int main(int argc, char **argv) {
 }
 
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-    bool main) {
+    const std::optional<std::string> &sourceFileName, bool main) {
+
 	std::string source;
 	{
 		// Quick way to read an entire stream
@@ -276,6 +277,18 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 
 	CompContext ctx;
 	Module mod(moduleName);
+
+	// Use the absolute path to the source file, so it works wherever it's run (on the same system, at least).
+	if (sourceFileName) {
+		char *resolvedC = realpath(sourceFileName.value().c_str(), nullptr);
+		if (!resolvedC) {
+			fmt::print(stderr, "Failed to resolve source file name - error {} {}!\n", errno, strerror(errno));
+			exit(1);
+		}
+		mod.sourceFilePath = resolvedC;
+		free(resolvedC);
+	}
+
 	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false, globalBuildCoreLib);
 
 	if (!rootFn)
