@@ -151,6 +151,11 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+	// A '-' means read/write to stdin/stdout
+	if (outputFile == "-") {
+		outputFile = "/dev/stdout";
+	}
+
 	// The remaining arguments are input filenames - either source or object files
 	std::vector<std::string> sourceFiles;
 	std::vector<std::string> objectFiles;
@@ -158,6 +163,8 @@ int main(int argc, char **argv) {
 		std::string file = argv[i];
 		if (file.ends_with(".o") || file.ends_with(".obj")) {
 			objectFiles.push_back(file);
+		} else if (file == "-") {
+			sourceFiles.push_back("/dev/stdin");
 		} else {
 			sourceFiles.push_back(file);
 		}
