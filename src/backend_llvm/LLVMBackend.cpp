@@ -442,7 +442,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 
 	// TODO switch to the new PassManager
 	llvm::legacy::PassManager pass;
-	llvm::CodeGenFileType fileType = llvm::CGFT_ObjectFile;
+	llvm::CodeGenFileType fileType = options->forceAssemblyOutput ? llvm::CGFT_AssemblyFile : llvm::CGFT_ObjectFile;
 
 	if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
 		fprintf(stderr, "TargetMachine can't emit a file of this type");
@@ -455,7 +455,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	return CompilationResult{
 	    .successful = true,
 	    .tempFilename = filename,
-	    .format = CompilationResult::OBJECT,
+	    .format = options->forceAssemblyOutput ? CompilationResult::ASSEMBLY : CompilationResult::OBJECT,
 	};
 }
 

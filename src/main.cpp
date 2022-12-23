@@ -107,6 +107,7 @@ int main(int argc, char **argv) {
 	}
 
 	backendOpts.includeDebugInfo = !globalNoDebugInfo;
+	backendOpts.forceAssemblyOutput = globalDontAssemble;
 
 	if (needsHelp) {
 		fmt::print("Usage: {} [-hc] [-o «filename»] inputs...\n", argv[0]);
@@ -199,11 +200,20 @@ int main(int argc, char **argv) {
 				objectFiles.push_back(result.tempFilename);
 				break;
 			case CompilationResult::ASSEMBLY:
-				if (result.fd == -1) {
+				if (result.fd != -1) {
+					assemblyFiles.push_back(result.fd);
+				} else if (!result.tempFilename.empty()) {
+					int fd = open(result.tempFilename.c_str(), O_RDONLY);
+					if (fd == -1) {
+						fmt::print(stderr, "Cannot open temporary file {}: {} {}\n", sourceFile, errno,
+						    strerror(errno));
+						exit(1);
+					}
+					assemblyFiles.push_back(fd);
+				} else {
 					fmt::print(stderr, "Cannot process non-FD assembly compilation result for {}\n", sourceFile);
 					exit(1);
 				}
-				assemblyFiles.push_back(result.fd);
 				break;
 			default:
 				fmt::print(stderr, "Unsupported compilation result format {} for {}\n", result.format, sourceFile);

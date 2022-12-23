@@ -8,6 +8,7 @@
 
 struct CompilationOptions {
 	bool includeDebugInfo = false;
+	bool forceAssemblyOutput = false;
 };
 
 struct CompilationResult {
