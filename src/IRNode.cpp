@@ -21,9 +21,6 @@ const std::set<std::string> INLINE_NODES = {
 };
 const bool PRINT_ADDR = false;
 
-// Ugly hack to get the allocator out of a compiler
-ArenaAllocator *getCompilerAlloc(Compiler *compiler);
-
 IRClass::~IRClass() = default;
 VarDecl::~VarDecl() = default;
 BackendNodeData::~BackendNodeData() = default;
@@ -37,13 +34,6 @@ bool IRStmt::IsUnconditionalBranch() { return false; }
 void StmtBlock::Add(IRStmt *stmt) {
 	if (stmt)
 		statements.push_back(stmt);
-}
-void StmtBlock::Add(Compiler *forAlloc, IRExpr *expr) {
-	if (!expr)
-		return;
-
-	ArenaAllocator *alloc = getCompilerAlloc(forAlloc);
-	Add(alloc->New<StmtEvalAndIgnore>(expr));
 }
 
 ExprConst::ExprConst() {}

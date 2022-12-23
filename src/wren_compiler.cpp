@@ -174,6 +174,8 @@ struct Token {
 
 	// The parsed value if the token is a literal.
 	CcValue value;
+
+	IRDebugInfo MakeDebugInfo() const;
 };
 
 struct Parser {
@@ -295,13 +297,21 @@ class Compiler {
 
 	// Utility functions:
 	template <typename T, typename... Args> T *New(Args &&...args) {
-		return parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
+		T *thing = parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
+
+		// Set the debug info for nodes automatically.
+		// There's certainly a more efficient way to do this that avoids the dynamic_cast, but we don't care.
+		IRNode *baseNode = dynamic_cast<IRNode *>(thing);
+		if (baseNode)
+			baseNode->debugInfo = parser->previous.MakeDebugInfo();
+
+		return thing;
 	}
 
 	/// Creates and adds a new statement
 	/// This is just shorthand for creating the statement with compiler->New and then adding it to the block.
 	template <typename T, typename... Args> T *AddNew(StmtBlock *block, Args &&...args) {
-		T *value = parser->context->alloc.New<T, Args...>(std::forward<Args>(args)...);
+		T *value = New<T, Args...>(std::forward<Args>(args)...);
 		block->Add(value);
 		return value;
 	}
@@ -385,9 +395,6 @@ static void error(Compiler *compiler, const char *format, ...) {
 	}
 	va_end(args);
 }
-
-// Used in IRNode.cpp as a bit of a hack
-ArenaAllocator *getCompilerAlloc(Compiler *compiler) { return &compiler->parser->context->alloc; }
 
 // Initializes [compiler].
 static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, bool isMethod) {
@@ -500,6 +507,13 @@ static void makeToken(Parser *parser, TokenType type) {
 	// Make line tokens appear on the line containing the "\n".
 	if (type == TOKEN_LINE)
 		parser->next.line--;
+}
+
+IRDebugInfo Token::MakeDebugInfo() const {
+	return IRDebugInfo{
+	    .lineNumber = line,
+	    // TODO column
+	};
 }
 
 // If the current character is [c], then consumes it and makes a token of type
@@ -1714,7 +1728,7 @@ static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExp
 	if (!toAdd)
 		return call;
 
-	toAdd->Add(compiler, call);
+	toAdd->Add(compiler->New<StmtEvalAndIgnore>(call));
 	return nullptr;
 }
 
@@ -3163,7 +3177,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		for (LocalVariable *arg : args) {
 			call->args.push_back(loadVariable(compiler, arg));
 		}
-		block->Add(compiler, call);
+		block->Add(compiler->New<StmtEvalAndIgnore>(call));
 
 		// Finally, return it
 		block->Add(compiler->New<StmtReturn>(compiler->New<ExprLoad>(objLocal)));

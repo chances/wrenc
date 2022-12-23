@@ -57,6 +57,13 @@ class BackendNodeData {
 	virtual ~BackendNodeData();
 };
 
+class IRDebugInfo {
+  public:
+	// The line number and column of the start (or thereabout) of the token that caused this node to be created.
+	int lineNumber = -1;
+	int column = -1;
+};
+
 // //////////////////// //
 // //// TOP-LEVEL  //// //
 // //////////////////// //
@@ -68,6 +75,8 @@ class IRNode {
 
 	// This pointer allows backends to attach whatever internal data they want to nodes
 	std::unique_ptr<BackendNodeData> backendData;
+
+	IRDebugInfo debugInfo;
 
 	template <typename T> T *GetBackendData() const {
 		T *data = dynamic_cast<T *>(backendData.get());
@@ -233,9 +242,6 @@ class StmtBlock : public IRStmt {
   public:
 	/// Adds a statement, doing nothing if it's nullptr.
 	void Add(IRStmt *stmt);
-
-	/// Wraps an expression in an StmtEvalAndIgnore, doing nothing if it's nullptr.
-	void Add(Compiler *forAlloc, IRExpr *expr);
 
 	void Accept(IRVisitor *visitor) override;
 
