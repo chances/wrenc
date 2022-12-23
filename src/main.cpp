@@ -18,7 +18,7 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-    const std::optional<std::string> &sourceFileName, bool main);
+    const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
@@ -26,6 +26,7 @@ static std::string compilerInstallDir;
 
 static int globalDontAssemble = 0;
 static int globalBuildCoreLib = 0;
+static int globalNoDebugInfo = 0;
 
 static option options[] = {
     {"output", required_argument, 0, 'o'},
@@ -33,6 +34,7 @@ static option options[] = {
     {"module", required_argument, 0, 'm'},
     {"dont-assemble", no_argument, &globalDontAssemble, true},
     {"help", no_argument, 0, 'h'},
+    {"no-debug-info", no_argument, &globalNoDebugInfo, true},
 
     // Intentionally undocumented options
     {"internal-build-core-lib", no_argument, &globalBuildCoreLib, true}, // Build the wren_core module
@@ -65,6 +67,8 @@ int main(int argc, char **argv) {
 	std::string outputFile;
 	std::vector<std::string> moduleNames;
 
+	CompilationOptions backendOpts;
+
 	while (true) {
 		int opt = getopt_long(argc, argv, "o:m:ch", options, nullptr);
 
@@ -85,6 +89,9 @@ int main(int argc, char **argv) {
 		case 'm':
 			moduleNames.push_back(optarg);
 			break;
+		case 'g':
+			backendOpts.includeDebugInfo = true;
+			break;
 		case '?':
 			// Error message already printed by getopt
 			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
@@ -99,6 +106,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	backendOpts.includeDebugInfo = !globalNoDebugInfo;
+
 	if (needsHelp) {
 		fmt::print("Usage: {} [-hc] [-o «filename»] inputs...\n", argv[0]);
 
@@ -109,6 +118,7 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("-m name", "--module=name", "Sets the module name. Repeat for multiple files.");
 
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
+		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
 
 		// Find the longest argument string, so we can line everything up
@@ -175,7 +185,7 @@ int main(int argc, char **argv) {
 			input.exceptions(std::ios::badbit | std::ios::failbit);
 			input.open(sourceFile);
 			// TODO add a proper way of selecting the main module
-			CompilationResult result = runCompiler(input, thisModuleName, sourceFile, sourceFileId == 0);
+			CompilationResult result = runCompiler(input, thisModuleName, sourceFile, sourceFileId == 0, &backendOpts);
 			if (!result.successful) {
 				hitError = true;
 				continue;
@@ -265,7 +275,7 @@ int main(int argc, char **argv) {
 }
 
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-    const std::optional<std::string> &sourceFileName, bool main) {
+    const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts) {
 
 	std::string source;
 	{
@@ -329,7 +339,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 
 	backend->compileWrenCore = globalBuildCoreLib;
 	backend->defineStandaloneMainFunc = !globalBuildCoreLib && main;
-	CompilationResult result = backend->Generate(&mod);
+	CompilationResult result = backend->Generate(&mod, opts);
 
 	if (!result.successful) {
 		fmt::print(stderr, "Failed to compile module, backend was unsuccessful.\n");

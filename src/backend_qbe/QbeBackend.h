@@ -20,7 +20,7 @@ class QbeBackend : public IBackend {
 	QbeBackend();
 	~QbeBackend();
 
-	CompilationResult Generate(Module *mod);
+	CompilationResult Generate(Module *mod, const CompilationOptions *options);
 
   private:
 	/// Information about a local variable

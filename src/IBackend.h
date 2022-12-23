@@ -6,6 +6,10 @@
 
 #include "Module.h"
 
+struct CompilationOptions {
+	bool includeDebugInfo = false;
+};
+
 struct CompilationResult {
 	enum Format {
 		OBJECT,
@@ -24,7 +28,7 @@ class IBackend {
   public:
 	virtual ~IBackend();
 
-	virtual CompilationResult Generate(Module *mod) = 0;
+	virtual CompilationResult Generate(Module *mod, const CompilationOptions *options) = 0;
 
 	/// Very special case flag for compiling Wren 'standard library' stuff, like the methods for List and String.
 	/// This makes things behave a bit... weird, disabling some parts of the class generation so we can cleanly

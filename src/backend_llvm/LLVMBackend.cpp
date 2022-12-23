@@ -112,7 +112,7 @@ class LLVMBackendImpl : public LLVMBackend {
   public:
 	LLVMBackendImpl();
 
-	CompilationResult Generate(Module *mod) override;
+	CompilationResult Generate(Module *mod, const CompilationOptions *options) override;
 
   private:
 	/// We pretend that a Value is a pointer in another address space. This helps with the safepoint stuff.
@@ -165,6 +165,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	std::unique_ptr<llvm::DIBuilder> m_debugInfo;
 	llvm::DISubprogram *m_dbgSubProgramme = nullptr;
 	IRNode *m_dbgCurrentNode = nullptr;
+	bool m_dbgEnable = false;
 
 	llvm::Function *m_initFunc = nullptr;
 
@@ -282,7 +283,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_getModuleVariable = m_module.getOrInsertFunction("wren_get_module_global", getModuleVariableType);
 }
 
-CompilationResult LLVMBackendImpl::Generate(Module *mod) {
+CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOptions *options) {
 	// TODO create the module with the source file name
 
 	if (mod->sourceFilePath) {
@@ -291,6 +292,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 		m_module.setSourceFileName(parts.back());
 	}
 
+	m_dbgEnable = options->includeDebugInfo;
 	SetupDebugInfo(mod);
 
 	// Create all the system variables with the correct linkage
@@ -376,7 +378,9 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 
 	// We're done writing functions at this point, so finalise the debug information - this is also the latest
 	// we can wait since we have to do it before dumping/optimising/etc the IR.
-	m_debugInfo->finalize();
+	if (m_dbgEnable) {
+		m_debugInfo->finalize();
+	}
 	m_debugInfo.reset();
 
 	// Print out the LLVM IR for debugging
@@ -491,12 +495,14 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	}
 
 	// Set up the function's debug information
-	llvm::DISubroutineType *dbgSubType =
-	    m_debugInfo->createSubroutineType(m_debugInfo->getOrCreateTypeArray(debugTypeArgs));
-	int lineNum = func->debugInfo.lineNumber;
-	m_dbgSubProgramme = m_debugInfo->createFunction(m_dbgCompileUnit, func->debugName, llvm::StringRef(), m_dbgFile,
-	    lineNum, dbgSubType, lineNum, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
-	function->setSubprogram(m_dbgSubProgramme);
+	if (m_dbgEnable) {
+		llvm::DISubroutineType *dbgSubType =
+		    m_debugInfo->createSubroutineType(m_debugInfo->getOrCreateTypeArray(debugTypeArgs));
+		int lineNum = func->debugInfo.lineNumber;
+		m_dbgSubProgramme = m_debugInfo->createFunction(m_dbgCompileUnit, func->debugName, llvm::StringRef(), m_dbgFile,
+		    lineNum, dbgSubType, lineNum, llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+		function->setSubprogram(m_dbgSubProgramme);
+	}
 
 	// This should be null here, just make sure it is - this is done by WriteNodeDebugInfo anyway, but
 	// putting it here for clarity.
@@ -946,6 +952,19 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 }
 
 void LLVMBackendImpl::SetupDebugInfo(Module *mod) {
+	// Clear everything out, in case it was left over from a previous module (for now we only use a backend instance
+	// to compile a single module, but that might change at some point).
+	m_debugInfo.reset();
+	m_dbgFile = nullptr;
+	m_dbgSubProgramme = nullptr;
+	m_dbgCompileUnit = nullptr;
+	m_dbgCurrentNode = nullptr;
+	m_dbgValueType = nullptr;
+	m_dbgUpvaluePackType = nullptr;
+
+	if (!m_dbgEnable)
+		return;
+
 	m_debugInfo = std::make_unique<llvm::DIBuilder>(m_module);
 
 	if (mod->sourceFilePath) {
@@ -1162,6 +1181,9 @@ StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
 }
 
 void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
+	if (!m_dbgEnable)
+		return;
+
 	if (!node) {
 		// Used in the function prologue, to tell the debugger that it's not user-defined code
 		m_builder.SetCurrentDebugLocation(llvm::DebugLoc());

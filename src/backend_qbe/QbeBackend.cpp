@@ -34,7 +34,7 @@ static const std::string SYM_GLOBALS_FUNC_TBL = "global_table_";
 QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
-CompilationResult QbeBackend::Generate(Module *mod) {
+CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *options) {
 	std::string moduleName = MangleUniqueName(mod->Name().value_or("unknown"), false);
 
 	// Make the upvalue pack for each function that needs them
