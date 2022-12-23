@@ -228,7 +228,32 @@ int main(int argc, char **argv) {
 			exit(1);
 		}
 	} else if (compileOnly) {
-		runAssembler(assemblyFiles, outputFile);
+		if (objectFiles.size() == 1) {
+			// Copy over the object into the output file
+			std::ifstream input;
+			std::ofstream output;
+			try {
+				input.exceptions(std::ios::badbit | std::ios::failbit);
+				output.exceptions(std::ios::badbit | std::ios::failbit);
+
+				input.open(objectFiles.at(0), std::ios::binary);
+				output.open(outputFile, std::ios::binary);
+
+				// Copy the whole thing across
+				output << input.rdbuf();
+			} catch (const std::fstream::failure &ex) {
+				fmt::print(stderr, "Failed to copy object file: {}\n", ex.what());
+				exit(1);
+			}
+		} else if (!objectFiles.empty()) {
+			// We could link together the two or more object files, but really
+			// the user can just compile them separately.
+			fmt::print(stderr, "Cannot use -c option with more than one output object file\n");
+			exit(1);
+		} else {
+			// We must be using assembly files
+			runAssembler(assemblyFiles, outputFile);
+		}
 	} else {
 		// FIXME use a proper temporary file
 		if (!assemblyFiles.empty()) {
