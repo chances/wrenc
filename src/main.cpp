@@ -18,7 +18,7 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-                                     bool main);
+    bool main);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
 
@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
 }
 
 static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
-                                     bool main) {
+    bool main) {
 	std::string source;
 	{
 		// Quick way to read an entire stream

@@ -62,7 +62,19 @@ bool StmtJump::IsUnconditionalBranch() { return condition == nullptr; }
 
 static std::unordered_map<std::string, int> buildSysVarNames() {
 	std::vector<const char *> names = {
-	    "Bool", "Class", "Fiber", "Fn", "List", "Map", "Null", "Num", "Object", "Range", "Sequence", "String", "System",
+	    "Bool",
+	    "Class",
+	    "Fiber",
+	    "Fn",
+	    "List",
+	    "Map",
+	    "Null",
+	    "Num",
+	    "Object",
+	    "Range",
+	    "Sequence",
+	    "String",
+	    "System",
 	};
 	std::unordered_map<std::string, int> result;
 	for (const char *value : names) {

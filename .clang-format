@@ -3,3 +3,10 @@ IndentWidth: 4
 UseTab: ForIndentation
 TabWidth: 4
 ColumnLimit: 120
+
+# Aligning was getting too painful, trying to push stuff to the right of the screen when there was a long
+# function call.
+AlignAfterOpenBracket: DontAlign
+
+# Try to avoid putting *all* the arguments on one line.
+PenaltyBreakOpenParenthesis: 20

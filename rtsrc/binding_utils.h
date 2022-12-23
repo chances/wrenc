@@ -51,7 +51,7 @@ template <typename T> T *checkArg(const char *method, int arg, Value value, bool
 	T *casted = dynamic_cast<T *>(obj);
 	if (!casted) {
 		errors::wrenAbort("Native function %s: argument %d is invalid type '%s'!\n", method, arg,
-		                  obj->type->name.c_str());
+		    obj->type->name.c_str());
 	}
 
 	return casted;

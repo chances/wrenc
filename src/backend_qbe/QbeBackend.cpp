@@ -135,7 +135,7 @@ CompilationResult QbeBackend::Generate(Module *mod) {
 			UpvaluePackDef *pack = upvaluePackIter->second.get();
 			for (UpvalueVariable *upvalue : pack->variables) {
 				Print("\tw {}, # Parent stack position of variable '{}'", pack->valuesOnParentStack.at(upvalue),
-				      upvalue->parent->Name());
+				    upvalue->parent->Name());
 				words += 1;
 			}
 		}
@@ -241,7 +241,7 @@ QbeBackend::VLocal *QbeBackend::Snippet::Add(Snippet *other) {
 	// Copy over the lines, and return the result. It's fine for the caller to ignore the result, QBE will optimise
 	// it away in that case.
 	lines.insert(lines.end(), std::make_move_iterator(other->lines.begin()),
-	             std::make_move_iterator(other->lines.end()));
+	    std::make_move_iterator(other->lines.end()));
 	return other->result;
 }
 
@@ -291,7 +291,7 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		std::string varName = fmt::format("tmp_class_{}", cls->info->name);
 		std::string classNameSym = GetStringPtr(cls->info->name);
 		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{}, l %{})", varName, PTR_TYPE, classNameSym,
-		      PTR_TYPE, cls->info->name, supertypeLocal->name);
+		    PTR_TYPE, cls->info->name, supertypeLocal->name);
 
 		// System classes are registered, but we don't do anything with the result - we're just telling C++ what
 		// methods exist on them.
@@ -313,7 +313,7 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		std::string name = GetClosureName(fn);
 		std::string dataName = fmt::format("tmp_upvalue_{}", name);
 		Print("%{} ={} call $wren_register_closure({} ${}{})", dataName, PTR_TYPE, PTR_TYPE, SYM_CLOSURE_DATA_TBL,
-		      name);
+		    name);
 		Print("store{} %{}, ${}{}", PTR_TYPE, dataName, SYM_CLOSURE_DESC_OBJ, name);
 	}
 
@@ -443,7 +443,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 		// Put it in the local stack variables array, so we know to access it on the stack and what it's index is
 		if (m_stackVariables.contains(var)) {
 			fmt::print(stderr, "Cannot add variable '{}' to the stack again in function '{}'\n", var->Name(),
-			           node->debugName);
+			    node->debugName);
 		}
 		m_stackVariables[var] = stackIndex;
 
@@ -453,15 +453,14 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 			auto iter = m_functionUpvaluePacks.find(up->containingFunction);
 			if (iter == m_functionUpvaluePacks.end()) {
 				fmt::print(stderr, "Upvalue '{}' references function '{}' which doesn't have an upvalue pack\n",
-				           up->parent->Name(), up->containingFunction->debugName);
+				    up->parent->Name(), up->containingFunction->debugName);
 				abort();
 			}
 
 			UpvaluePackDef *pack = iter->second.get();
 
 			if (pack->valuesOnParentStack.contains(up)) {
-				fmt::print(
-				    stderr,
+				fmt::print(stderr,
 				    "Upvalue '{}' in function '{}' has already been allocated a source stack position when building "
 				    "function '{}'\n",
 				    up->parent->Name(), up->containingFunction->debugName, node->debugName);
@@ -524,7 +523,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtAssign(StmtAssign *node) {
 	if (stackLocalIter != m_stackVariables.end()) {
 		VLocal *localDerefTemp = AddTemporary("assign_stack_local_ptr_" + node->var->Name());
 		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
-		          stackLocalIter->second * sizeof(Value));
+		    stackLocalIter->second * sizeof(Value));
 		snip->Add("storel %{}, %{}", input->name, localDerefTemp->name);
 	} else if (local) {
 		snip->Add("%{} ={} copy %{}", LookupVariable(local)->name, PTR_TYPE, input->name);
@@ -564,7 +563,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprConst(ExprConst *node) {
 	}
 	case CcValue::BOOL:
 		snip->Add("%{} ={} load{} {}", tmp->name, PTR_TYPE, PTR_TYPE,
-		          node->value.b ? "$wren_sys_bool_true" : "$wren_sys_bool_false");
+		    node->value.b ? "$wren_sys_bool_true" : "$wren_sys_bool_false");
 		return snip;
 	default:
 		abort();
@@ -593,7 +592,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprFuncCall(ExprFuncCall *node) {
 	uint64_t signature = hash_util::findSignatureId(signatureStr);
 	// Print the signature string as a comment to aid manually reading IR
 	snip->Add("%{} ={} call $wren_virtual_method_lookup({} %{}, l {}) # {}", funcPtr->name, PTR_TYPE, PTR_TYPE,
-	          receiver->name, signature, signatureStr);
+	    receiver->name, signature, signatureStr);
 
 	// Emit all the arguments
 	std::string argStr = fmt::format("{} %{}, ", PTR_TYPE, receiver->name);
@@ -639,7 +638,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
 	if (stackLocalIter != m_stackVariables.end()) {
 		VLocal *localDerefTemp = AddTemporary("stack_local_ptr_" + node->var->Name());
 		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
-		          stackLocalIter->second * sizeof(Value));
+		    stackLocalIter->second * sizeof(Value));
 		snip->Add("%{} =l loadl %{}", snip->result->name, localDerefTemp->name);
 	} else if (local) {
 		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
@@ -825,7 +824,7 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 	std::string listHeadName = listHead ? "%" + listHead->name : "0";
 	snip->result = AddTemporary("closure_result_" + node->func->debugName);
 	snip->Add("%{} =l call $wren_create_closure({} %{}, {} {}, l 0, {} {})", snip->result->name, PTR_TYPE,
-	          descObj->name, PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
+	    descObj->name, PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
 
 	return snip;
 }
@@ -936,7 +935,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues 
 			VLocal *valuePtr = AddTemporary("upvalue_ptr_" + relocation.local->name);
 			VLocal *value = AddTemporary("upvalue_" + relocation.local->name);
 			snip->Add("%{} ={} add %stack_locals, {}", valuePtr->name, PTR_TYPE,
-			          relocation.variableStackPos * sizeof(Value));
+			    relocation.variableStackPos * sizeof(Value));
 			snip->Add("%{} =l loadl %{}", value->name, valuePtr->name);
 
 			// Store the value into the relocation memory
@@ -958,14 +957,14 @@ QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues 
 		// it's upvalues live.
 		VLocal *packPtr = AddTemporary("fn_upvalue_pack_" + fn->debugName);
 		snip->Add("%{} ={} call $wren_get_closure_upvalue_pack({} %{})", packPtr->name, PTR_TYPE, PTR_TYPE,
-		          closureListValue->name);
+		    closureListValue->name);
 
 		for (FnRelocInfo &relocation : fnRelocs) {
 			// Find the index of the value in the closure's relocation pack
 			auto idIter = upvaluePack->variableIds.find(relocation.upvalue);
 			if (idIter == upvaluePack->variableIds.end()) {
 				fmt::print(stderr, "No upvalue pack entry for variable '{}' in function using relocations '{}'\n",
-				           relocation.info.local->name, fn->debugName);
+				    relocation.info.local->name, fn->debugName);
 				abort();
 			}
 
@@ -977,7 +976,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues 
 
 		// Go to the next closure in the linked list, before jumping back to the start of the loop again
 		snip->Add("%{} ={} call $wren_get_closure_chain_next({} %{})", closureListValue->name, PTR_TYPE, PTR_TYPE,
-		          closureListValue->name);
+		    closureListValue->name);
 		snip->Add("jmp @{}", loopRelocateFn);
 
 		snip->Add("@{}", skipRelocations);

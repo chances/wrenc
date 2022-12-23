@@ -137,7 +137,7 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 
 	if (!is_object(parentClassValue)) {
 		errors::wrenAbort("Invalid non-object parent class for '%s': 0x%" PRIx64 "\n", name,
-		                  (uint64_t)parentClassValue);
+		    (uint64_t)parentClassValue);
 	}
 
 	Obj *parentClassObj = get_object_value(parentClassValue);
@@ -148,7 +148,7 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 	ObjClass *parentClass = dynamic_cast<ObjClass *>(parentClassObj);
 	if (!parentClass) {
 		errors::wrenAbort("Cannot inherit from non-class object '%s' for '%s'\n", parentClassObj->type->name.c_str(),
-		                  name);
+		    name);
 	}
 
 	// System classes poke their methods into the parent class

@@ -92,7 +92,7 @@ template <> std::optional<Value> invokePtr<-1>(void *func, const SpecialSpan &va
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	if ((int)values.size() != spec->arity) {
 		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
-		                  (int)values.size(), spec->arity);
+		    (int)values.size(), spec->arity);
 	}
 
 	SpecialSpan span;
@@ -111,7 +111,7 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	std::optional<Value> result = invokePtr<16>(spec->funcPtr, span);
 	if (!result) {
 		errors::wrenAbort("Cannot call closure '%s': internal call failure, could not find call impl (arity %d)\n",
-		                  spec->name.c_str(), (int)values.size());
+		    spec->name.c_str(), (int)values.size());
 	}
 
 	return result.value();

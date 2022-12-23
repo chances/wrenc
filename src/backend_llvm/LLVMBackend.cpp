@@ -259,13 +259,13 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		std::string name = "wren_sys_var_" + entry.first;
 		m_systemVars[entry.first] = new llvm::GlobalVariable(m_module, m_valueType, false,
-		                                                     llvm::GlobalVariable::InternalLinkage, m_nullValue, name);
+		    llvm::GlobalVariable::InternalLinkage, m_nullValue, name);
 	}
 
 	m_valueTruePtr = new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage,
-	                                          m_nullValue, "gbl_trueValue");
+	    m_nullValue, "gbl_trueValue");
 	m_valueFalsePtr = new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage,
-	                                           m_nullValue, "gbl_falseValue");
+	    m_nullValue, "gbl_falseValue");
 
 	llvm::FunctionType *initFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(m_context), false);
 	m_initFunc = llvm::Function::Create(initFuncType, llvm::Function::PrivateLinkage, "module_init", &m_module);
@@ -278,9 +278,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 	for (IRFn *func : mod->GetClosures()) {
 		// Make a global variable for the ClosureSpec
 		FnData *fnData = func->GetBackendData<FnData>();
-		fnData->closureSpec =
-		    new llvm::GlobalVariable(m_module, m_pointerType, false, llvm::GlobalVariable::InternalLinkage,
-		                             m_nullPointer, "spec_" + func->debugName);
+		fnData->closureSpec = new llvm::GlobalVariable(m_module, m_pointerType, false,
+		    llvm::GlobalVariable::InternalLinkage, m_nullPointer, "spec_" + func->debugName);
 
 		// Make the upvalue pack for each function that needs them
 		std::unique_ptr<UpvaluePackDef> pack = std::make_unique<UpvaluePackDef>();
@@ -301,17 +300,15 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 		if (cls->info->IsSystemClass())
 			continue;
 
-		llvm::GlobalVariable *classObj =
-		    new llvm::GlobalVariable(m_module, m_valueType, false, llvm::GlobalVariable::InternalLinkage, m_nullValue,
-		                             "class_obj_" + cls->info->name);
+		llvm::GlobalVariable *classObj = new llvm::GlobalVariable(m_module, m_valueType, false,
+		    llvm::GlobalVariable::InternalLinkage, m_nullValue, "class_obj_" + cls->info->name);
 
 		// Add fields to store the offset of the member fields in each class. This is required since we
 		// can currently have classes extending from classes in another file, and they don't know how
 		// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
 		// we have to add it to the object pointer to get the fields area.
-		llvm::GlobalVariable *memberOffset =
-		    new llvm::GlobalVariable(m_module, m_int32Type, false, llvm::GlobalVariable::InternalLinkage,
-		                             CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
+		llvm::GlobalVariable *memberOffset = new llvm::GlobalVariable(m_module, m_int32Type, false,
+		    llvm::GlobalVariable::InternalLinkage, CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
 
 		ClassData *classData = new ClassData;
 		classData->object = classObj;
@@ -336,7 +333,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod) {
 		FnData *data = mod->GetMainFunction()->GetBackendData<FnData>();
 		llvm::Function *main = data->llvmFunc;
 		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
-		                         "wrenStandaloneMainFunc");
+		    "wrenStandaloneMainFunc");
 	}
 
 	// Print out the LLVM IR for debugging
@@ -620,7 +617,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 				UpvalueVariable *nested = dynamic_cast<UpvalueVariable *>(upvalue->parent);
 				if (!nested) {
 					fmt::print(stderr, "Upvalue {} has non-local, non-upvalue parent scope {}.\n", upvalue->Name(),
-					           upvalue->parent->Scope());
+					    upvalue->parent->Scope());
 					abort();
 				}
 
@@ -641,7 +638,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 			if (!parentData->closedAddressPositions.contains(target)) {
 				fmt::print(stderr, "Function {} doesn't have closeable local {}, used by closure {}.\n",
-				           parentFn->debugName, target->Name(), fn->debugName);
+				    parentFn->debugName, target->Name(), fn->debugName);
 				abort();
 			}
 			int index = parentData->closedAddressPositions.at(target);
@@ -651,9 +648,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		llvm::Constant *constant = llvm::ConstantStruct::get(closureSpecType, structContent);
 
-		llvm::GlobalVariable *specData =
-		    new llvm::GlobalVariable(m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage,
-		                             constant, "closure_spec_" + fn->debugName);
+		llvm::GlobalVariable *specData = new llvm::GlobalVariable(m_module, constant->getType(), true,
+		    llvm::GlobalVariable::PrivateLinkage, constant, "closure_spec_" + fn->debugName);
 
 		// And generate the registration code
 		std::vector<llvm::Value *> args = {specData};
@@ -779,9 +775,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		llvm::ArrayType *dataBlockType = llvm::ArrayType::get(m_int64Type, values.size());
 		llvm::Constant *dataConstant = llvm::ConstantArray::get(dataBlockType, values);
-		llvm::GlobalVariable *classDataBlock =
-		    new llvm::GlobalVariable(m_module, dataBlockType, true, llvm::GlobalVariable::PrivateLinkage, dataConstant,
-		                             "class_data_" + cls->info->name);
+		llvm::GlobalVariable *classDataBlock = new llvm::GlobalVariable(m_module, dataBlockType, true,
+		    llvm::GlobalVariable::PrivateLinkage, dataConstant, "class_data_" + cls->info->name);
 
 		// Inherits from Object by default
 		llvm::Value *supertype = objValue;
@@ -796,7 +791,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			ExprLoad *classVar = dynamic_cast<ExprLoad *>(cls->info->parentClass);
 			if (!classVar) {
 				fmt::print(stderr, "Complicated superclasses for class {} are not yet supported in the LLVM backend.\n",
-				           cls->info->name);
+				    cls->info->name);
 				abort();
 			}
 
@@ -809,7 +804,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			IRClass *superclass = global->targetClass;
 			if (!superclass) {
 				fmt::print(stderr, "Class {} cannot extend a variable that is not statically known to be a class\n",
-				           cls->info->name);
+				    cls->info->name);
 				abort();
 			}
 
@@ -839,8 +834,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		sigTable.push_back(0);
 
 		llvm::Constant *constant = llvm::ConstantDataArray::get(m_context, sigTable);
-		llvm::GlobalVariable *var = new llvm::GlobalVariable(
-		    m_module, constant->getType(), true, llvm::GlobalVariable::PrivateLinkage, constant, "signatures_table");
+		llvm::GlobalVariable *var = new llvm::GlobalVariable(m_module, constant->getType(), true,
+		    llvm::GlobalVariable::PrivateLinkage, constant, "signatures_table");
 		m_builder.CreateCall(m_registerSignatureTable, {var});
 	}
 
@@ -876,8 +871,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		llvm::ArrayType *arrayType = llvm::ArrayType::get(m_pointerType, components.size());
 		llvm::Constant *value = llvm::ConstantArray::get(arrayType, components);
-		llvm::GlobalVariable *globalsTable = new llvm::GlobalVariable(
-		    m_module, arrayType, true, llvm::GlobalVariable::PrivateLinkage, value, "globals_table");
+		llvm::GlobalVariable *globalsTable = new llvm::GlobalVariable(m_module, arrayType, true,
+		    llvm::GlobalVariable::PrivateLinkage, value, "globals_table");
 
 		m_builder.CreateRet(globalsTable);
 	}
@@ -894,7 +889,7 @@ llvm::Constant *LLVMBackendImpl::GetStringConst(const std::string &str) {
 	std::string name = "str_" + FilterStringLiteral(str);
 	llvm::Constant *constant = llvm::ConstantDataArray::get(m_context, data);
 	llvm::GlobalVariable *var = new llvm::GlobalVariable(m_module, constant->getType(), true,
-	                                                     llvm::GlobalVariable::PrivateLinkage, constant, name);
+	    llvm::GlobalVariable::PrivateLinkage, constant, name);
 
 	m_stringConstants[str] = var;
 	return var;
@@ -917,8 +912,8 @@ llvm::GlobalVariable *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
 	if (iter != m_globalVariables.end())
 		return iter->second;
 
-	llvm::GlobalVariable *var = new llvm::GlobalVariable(
-	    m_module, m_valueType, false, llvm::GlobalVariable::PrivateLinkage, m_nullValue, "gbl_" + global->Name());
+	llvm::GlobalVariable *var = new llvm::GlobalVariable(m_module, m_valueType, false,
+	    llvm::GlobalVariable::PrivateLinkage, m_nullValue, "gbl_" + global->Name());
 	m_globalVariables[global] = var;
 	return var;
 }
@@ -1105,8 +1100,8 @@ ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
-	llvm::Value *fieldPointer = m_builder.CreateGEP(
-	    m_valueType, ctx->fieldPointer, {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
+	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, ctx->fieldPointer,
+	    {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
 
 	llvm::Value *result = m_builder.CreateLoad(m_valueType, fieldPointer, "field_" + node->var->Name());
 	return {result};
@@ -1137,13 +1132,13 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 		IRClass *cls = ctx->currentWrenFunc->enclosingClass;
 		if (!cls) {
 			fmt::print(stderr, "error: Found super call to {} from {}, which is not a method!\n", name,
-			           ctx->currentWrenFunc->debugName);
+			    ctx->currentWrenFunc->debugName);
 			abort();
 		}
 
 		if (dynamic_cast<ExprLoadReceiver *>(node->receiver) == nullptr) {
 			fmt::print(stderr, "error: Found super call to {} from {}, on non-ExprLoadReceiver receiver!\n", name,
-			           ctx->currentWrenFunc->debugName);
+			    ctx->currentWrenFunc->debugName);
 			abort();
 		}
 
@@ -1185,7 +1180,7 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadReceiver *node) {
 	if (!ctx->receiver) {
 		fmt::print(stderr, "Found VisitExprLoadReceiver in function {} without receiver!\n",
-		           ctx->currentFunc->getName());
+		    ctx->currentFunc->getName());
 		abort();
 	}
 	return {ctx->receiver};
@@ -1233,8 +1228,8 @@ StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) 
 StmtRes LLVMBackendImpl::VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssign *node) {
 	ExprRes res = VisitExpr(ctx, node->value);
 
-	llvm::Value *fieldPointer = m_builder.CreateGEP(
-	    m_valueType, ctx->fieldPointer, {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
+	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, ctx->fieldPointer,
+	    {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
 
 	m_builder.CreateStore(res.value, fieldPointer);
 	return {};

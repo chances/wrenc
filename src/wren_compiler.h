@@ -1,9 +1,9 @@
 // Derived from the wren source code, src/vm/wren_compiler.h
 #pragma once
 
+#include "CompContext.h"
 #include "IRNode.h"
 #include "Module.h"
-#include "CompContext.h"
 
 // Compiles [source], a string of Wren source code located in [module], to an
 // [IRFn] that contains any top-level (not in function or method) code, or nullptr

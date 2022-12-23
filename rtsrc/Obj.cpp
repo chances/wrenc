@@ -38,7 +38,7 @@ std::string Obj::ConvertToString() {
 	ObjString *str = dynamic_cast<ObjString *>(obj);
 	if (!str) {
 		errors::wrenAbort("Object '%s' toString returned non-string object type '%s'\n", type->name.c_str(),
-		                  obj->type->name.c_str());
+		    obj->type->name.c_str());
 	}
 
 	return str->m_value;

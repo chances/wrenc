@@ -430,17 +430,30 @@ typedef struct {
 
 // The table of reserved words and their associated token types.
 static Keyword keywords[] = {
-    {"break", 5, TOKEN_BREAK},   {"continue", 8, TOKEN_CONTINUE},
-    {"class", 5, TOKEN_CLASS},   {"construct", 9, TOKEN_CONSTRUCT},
-    {"else", 4, TOKEN_ELSE},     {"false", 5, TOKEN_FALSE},
-    {"for", 3, TOKEN_FOR},       {"foreign", 7, TOKEN_FOREIGN},
-    {"if", 2, TOKEN_IF},         {"import", 6, TOKEN_IMPORT},
-    {"as", 2, TOKEN_AS},         {"in", 2, TOKEN_IN},
-    {"is", 2, TOKEN_IS},         {"null", 4, TOKEN_NULL},
-    {"return", 6, TOKEN_RETURN}, {"static", 6, TOKEN_STATIC},
-    {"super", 5, TOKEN_SUPER},   {"this", 4, TOKEN_THIS},
-    {"true", 4, TOKEN_TRUE},     {"var", 3, TOKEN_VAR},
-    {"while", 5, TOKEN_WHILE},   {NULL, 0, TOKEN_EOF} // Sentinel to mark the end of the array.
+    // clang-format off
+    {"break", 5, TOKEN_BREAK},
+    {"continue", 8, TOKEN_CONTINUE},
+    {"class", 5, TOKEN_CLASS},
+    {"construct", 9, TOKEN_CONSTRUCT},
+    {"else", 4, TOKEN_ELSE},
+    {"false", 5, TOKEN_FALSE},
+    {"for", 3, TOKEN_FOR},
+    {"foreign", 7, TOKEN_FOREIGN},
+    {"if", 2, TOKEN_IF},
+    {"import", 6, TOKEN_IMPORT},
+    {"as", 2, TOKEN_AS},
+    {"in", 2, TOKEN_IN},
+    {"is", 2, TOKEN_IS},
+    {"null", 4, TOKEN_NULL},
+    {"return", 6, TOKEN_RETURN},
+    {"static", 6, TOKEN_STATIC},
+    {"super", 5, TOKEN_SUPER},
+    {"this", 4, TOKEN_THIS},
+    {"true", 4, TOKEN_TRUE},
+    {"var", 3, TOKEN_VAR},
+    {"while", 5, TOKEN_WHILE},
+    {NULL, 0, TOKEN_EOF} // Sentinel to mark the end of the array.
+    // clang-format on
 };
 
 // Returns true if [c] is a valid (non-initial) identifier character.
@@ -1176,7 +1189,7 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 				//   var b = 1
 				if (wrenIsLocalName(token->contents)) {
 					error(compiler, "Variable '%s' referenced before this definition (first use at line %d).",
-					      token->contents.c_str(), current->undeclaredLineUsed.value());
+					    token->contents.c_str(), current->undeclaredLineUsed.value());
 				}
 
 				current->undeclaredLineUsed = std::optional<int>();
@@ -1688,7 +1701,7 @@ static std::vector<IRExpr *> finishArgumentList(Compiler *compiler, Signature *s
 // If [toAdd] is non-nullptr, then the method is added to the block and nullptr is returned (to avoid accidentally using
 // the expression twice). This is merely a convenience to avoid having to manually add the method to a block.
 static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExpr *receiver, std::vector<IRExpr *> args,
-                                StmtBlock *toAdd = nullptr) {
+    StmtBlock *toAdd = nullptr) {
 	Signature *sig = normaliseSignature(compiler, Signature::Parse(signature));
 
 	ASSERT((int)args.size() == sig->arity, "callMethod signature and args have different arities");
@@ -2684,8 +2697,8 @@ static IRStmt *forStatement(Compiler *compiler) {
 	// Try to avoid running code that'd fail with interpreted Wren.
 	if (compiler->locals.VariableCount() + 2 > MAX_LOCALS) {
 		error(compiler,
-		      "Cannot declare more than %d variables in one scope. (Not enough space for for-loops internal variables)",
-		      MAX_LOCALS);
+		    "Cannot declare more than %d variables in one scope. (Not enough space for for-loops internal variables)",
+		    MAX_LOCALS);
 		// Keep parsing to find other issues
 	}
 	LocalVariable *seqSlot = addLocal(compiler, "seq ");
@@ -2923,7 +2936,7 @@ static MethodInfo *declareMethod(Compiler *compiler, Signature *signature, bool 
 		const char *staticPrefix = classInfo->inStatic ? "static " : "";
 		std::string sigStr = signature->ToString();
 		error(compiler, "Class %s already defines a %smethod '%s' at line %d.", compiler->enclosingClass->name.c_str(),
-		      staticPrefix, sigStr.c_str(), existing->second->lineNum);
+		    staticPrefix, sigStr.c_str(), existing->second->lineNum);
 	}
 
 	methods[signature] = std::make_unique<MethodInfo>();
@@ -2998,7 +3011,7 @@ static std::unique_ptr<AttributePack> matchAttribute(Compiler *compiler) {
 				CcValue value;
 				if (match(compiler, TOKEN_EQ)) {
 					value = consumeLiteral(compiler,
-					                       "Expect a Bool, Num, String or Identifier literal for an attribute value.");
+					    "Expect a Bool, Num, String or Identifier literal for an attribute value.");
 				}
 				pack->attributes[key].push_back(valueToAttribute(runtimeAccess, value));
 			} else if (match(compiler, TOKEN_LEFT_PAREN)) {
@@ -3012,8 +3025,8 @@ static std::unique_ptr<AttributePack> matchAttribute(Compiler *compiler) {
 						AttrKey key = {.group = group, .name = name};
 						CcValue value;
 						if (match(compiler, TOKEN_EQ)) {
-							value = consumeLiteral(
-							    compiler, "Expect a Bool, Num, String or Identifier literal for an attribute value.");
+							value = consumeLiteral(compiler,
+							    "Expect a Bool, Num, String or Identifier literal for an attribute value.");
 						}
 						pack->attributes[key].push_back(valueToAttribute(runtimeAccess, value));
 
@@ -3441,7 +3454,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 				// If it explicitly defined, fail
 				if (!global) {
 					error(&compiler, "Module-level variable for class '%s' is already defined",
-					      classDecl->info->name.c_str());
+					    classDecl->info->name.c_str());
 					continue;
 				}
 

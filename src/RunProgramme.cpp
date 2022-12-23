@@ -56,7 +56,7 @@ void RunProgramme::Run() {
 	size_t written = write(stdinPipePair[1], input.c_str(), input.size());
 	if (written != (size_t)input.size()) {
 		fmt::print(stderr, "Failed to fully write to sub-programme (wrote {}/{} bytes) {}: error {} {}\n", written,
-		           input.size(), args.at(0), errno, strerror(errno));
+		    input.size(), args.at(0), errno, strerror(errno));
 		exit(1);
 	}
 
@@ -75,7 +75,7 @@ void RunProgramme::Run() {
 
 	if (deadPid != pid) {
 		fmt::print(stderr, "Failed to wait for sub-programme termination ({} vs {}) - error {} {}\n", deadPid, pid,
-		           errno, strerror(errno));
+		    errno, strerror(errno));
 		exit(1);
 	}
 
