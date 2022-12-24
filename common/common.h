@@ -9,6 +9,12 @@
 
 class Obj;
 
+/// The position of the GC word, relative to an Obj. This is an essential part of the ABI, as any GC code
+/// embedded by the compiler (reference-counting in particular uses this extensively) depends on this.
+/// This might vary if/when 32-bit support is added, between platforms, etc - but in all of those cases
+/// there isn't ABI compatibility for another reason anyway.
+#define GC_WORD_OFFSET 8
+
 #define NAN_MASK 0x7ff8000000000000 // Includes the mantissa MSB to make it a quiet NaN
 #define CONTENT_MASK 0x0007ffffffffffff
 #define SIGN_MASK 0x8000000000000000

@@ -30,6 +30,8 @@ llvm = dependency('llvm',
   required: get_option('use_llvm'),
   modules: [
     'core',
+    'passes',
+    'codegen',
     'all-targets', # Include target (eg amd64, aarch64) specific libraries for all available targets
   ],
 )
@@ -47,6 +49,7 @@ common_lib = static_library('common-lib',
   'common/common.cpp',
   'common/AttributePack.cpp',
   'common/ClassDescription.cpp',
+  'common/StackMapDescription.cpp',
   'common/HashUtil.cpp',
   include_directories: ['common'],
 )
@@ -68,6 +71,25 @@ rtlib_main_stub = executable('wren-rtlib-stub',
   # - Disable the default libraries. Since ld won't search for shared objects in relocatable mode (at least I think
   #   that's what's happening), it can't find libgcc_s.so. We'll put those libraries back in at the end.
   link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
+)
+
+# Functionality that will be used by LLVM when processing this IR. This is provided as a separate library so you
+# can manually run LLVM passes (loading this with -load plugin.dll) for testing purposes.
+llvm_plugin = shared_library('wren_llvm_plugin',
+  'src/backend_llvm/WrenGCStrategy.cpp',
+  'src/backend_llvm/WrenGCMetadataPrinter.cpp',
+
+  name_prefix: '',  # Don't use a 'lib' prefix on Linux
+  dependencies: [
+    llvm,
+    common,
+    fmt,
+  ],
+  cpp_args: [
+    # Extending a class with a vtable and with RTTI on generates a reference to the parent's RTTI info, and
+    # since LLVM is usually compiled without RTTI this causes a link error.
+    '-fno-rtti',
+  ],
 )
 
 wrenc = executable('wrencc',
@@ -95,6 +117,9 @@ wrenc = executable('wrencc',
     fmt,
     common,
     llvm,
+  ],
+  link_with: [
+    llvm_plugin,
   ],
   cpp_args: [
     '-fPIC', # Required for Qt on my system

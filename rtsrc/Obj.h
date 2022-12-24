@@ -31,13 +31,16 @@ class Obj {
 	Obj(const Obj &) = delete;
 	Obj &operator=(const Obj &) = delete;
 
+	/// The GC word is a 64-bit value that the GC system can use however it wants. For tracing
+	/// GCs this would hold state data (eg for a tricolour collector, it'd be a white/grey/black
+	/// value), and for reference-counting GCs this is a reference count.
+	uint64_t gcWord = 0;
+
 	/// This class's metaclass. This is represented by double arrows in the diagram in
 	/// ObjClass's file header.
 	/// For metaclasses, this always points to the root 'Class' class.
 	/// For non-ObjClass objects, this points to the object's ObjClass.
 	ObjClass *type = nullptr;
-
-	// TODO reference counting
 
 	inline Value ToValue() { return encode_object(this); }
 

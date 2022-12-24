@@ -6,6 +6,11 @@
 
 #ifdef USE_LLVM
 
+// LLVM Backend
+#include "WrenGCMetadataPrinter.h"
+#include "WrenGCStrategy.h"
+
+// Rest of the compiler
 #include "ClassDescription.h"
 #include "ClassInfo.h"
 #include "CompContext.h"
@@ -23,18 +28,23 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/Debug.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/ModRef.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
+#include <llvm/Transforms/Scalar/RewriteStatepointsForGC.h>
 
 #include <fmt/format.h>
 
+#include <fstream>
+#include <llvm/Passes/PassBuilder.h>
 #include <map>
 
 using CInt = llvm::ConstantInt;
@@ -115,9 +125,6 @@ class LLVMBackendImpl : public LLVMBackend {
 	CompilationResult Generate(Module *mod, const CompilationOptions *options) override;
 
   private:
-	/// We pretend that a Value is a pointer in another address space. This helps with the safepoint stuff.
-	static constexpr int VALUE_ADDR_SPACE = 1;
-
 	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
 	void SetupDebugInfo(Module *mod);
@@ -229,7 +236,7 @@ class ScopedDebugGuard {
 };
 
 LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", m_context) {
-	m_valueType = llvm::PointerType::get(m_context, VALUE_ADDR_SPACE);
+	m_valueType = llvm::PointerType::get(m_context, WrenGCStrategy::VALUE_ADDR_SPACE);
 	m_signatureType = llvm::Type::getInt64Ty(m_context);
 	m_pointerType = llvm::PointerType::get(m_context, 0);
 	m_int8Type = llvm::Type::getInt8Ty(m_context);
@@ -240,26 +247,33 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_nullValue = llvm::ConstantExpr::getIntToPtr(CInt::get(m_int64Type, encode_object(nullptr)), m_valueType);
 	m_nullPointer = llvm::ConstantPointerNull::get(m_pointerType);
 
+	// Mark for functions during which GC stack scanning won't occur - generally if something allocates memory then
+	// it probably shouldn't be marked with this.
+	llvm::AttributeList gcLeafFunc =
+	    llvm::AttributeList::get(m_context, llvm::AttributeList::FunctionIndex, {"gc-leaf-function"});
+
 	std::vector<llvm::Type *> fnLookupArgs = {m_valueType, m_signatureType};
 	llvm::FunctionType *fnLookupType = llvm::FunctionType::get(m_pointerType, fnLookupArgs, false);
-	m_virtualMethodLookup = m_module.getOrInsertFunction("wren_virtual_method_lookup", fnLookupType);
+	m_virtualMethodLookup = m_module.getOrInsertFunction("wren_virtual_method_lookup", fnLookupType, gcLeafFunc);
 
 	llvm::FunctionType *superLookupType =
 	    llvm::FunctionType::get(m_pointerType, {m_valueType, m_valueType, m_int64Type, m_int8Type}, false);
-	m_superMethodLookup = m_module.getOrInsertFunction("wren_super_method_lookup", superLookupType);
+	m_superMethodLookup = m_module.getOrInsertFunction("wren_super_method_lookup", superLookupType, gcLeafFunc);
 
 	std::vector<llvm::Type *> newClosureArgs = {m_pointerType, m_pointerType, m_pointerType, m_pointerType};
 	llvm::FunctionType *newClosureTypes = llvm::FunctionType::get(m_valueType, newClosureArgs, false);
 	m_createClosure = m_module.getOrInsertFunction("wren_create_closure", newClosureTypes);
 
+	// This allocates memory, but it's a GC leaf function anyway since the closure packs will be stored separately
 	llvm::FunctionType *allocUpvalueStorageType = llvm::FunctionType::get(m_pointerType, {m_int32Type}, false);
-	m_allocUpvalueStorage = m_module.getOrInsertFunction("wren_alloc_upvalue_storage", allocUpvalueStorageType);
+	m_allocUpvalueStorage =
+	    m_module.getOrInsertFunction("wren_alloc_upvalue_storage", allocUpvalueStorageType, gcLeafFunc);
 
 	llvm::FunctionType *getUpvaluePackType = llvm::FunctionType::get(m_pointerType, {m_pointerType}, false);
-	m_getUpvaluePack = m_module.getOrInsertFunction("wren_get_closure_upvalue_pack", getUpvaluePackType);
+	m_getUpvaluePack = m_module.getOrInsertFunction("wren_get_closure_upvalue_pack", getUpvaluePackType, gcLeafFunc);
 
 	llvm::FunctionType *getNextClosureType = llvm::FunctionType::get(m_pointerType, {m_pointerType}, false);
-	m_getNextClosure = m_module.getOrInsertFunction("wren_get_closure_chain_next", getNextClosureType);
+	m_getNextClosure = m_module.getOrInsertFunction("wren_get_closure_chain_next", getNextClosureType, gcLeafFunc);
 
 	llvm::FunctionType *allocObjectType = llvm::FunctionType::get(m_valueType, {m_valueType}, false);
 	m_allocObject = m_module.getOrInsertFunction("wren_alloc_obj", allocObjectType);
@@ -383,6 +397,40 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	}
 	m_debugInfo.reset();
 
+	// Run the middle-end passes - optimisation and any lowering we need
+	// TODO make these (except for RS4GC) optional
+	llvm::OptimizationLevel level = llvm::OptimizationLevel::O0;
+	if (1) {
+		// See https://llvm.org/docs/NewPassManager.html
+		llvm::PassBuilder pb;
+
+		// Register all the basic analyses with the managers.
+		llvm::LoopAnalysisManager lam;
+		llvm::FunctionAnalysisManager fam;
+		llvm::CGSCCAnalysisManager cgam;
+		llvm::ModuleAnalysisManager mam;
+
+		pb.registerModuleAnalyses(mam);
+		pb.registerCGSCCAnalyses(cgam);
+		pb.registerFunctionAnalyses(fam);
+		pb.registerLoopAnalyses(lam);
+		pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+		llvm::ModulePassManager mpm;
+		if (level == llvm::OptimizationLevel::O0) {
+			mpm = pb.buildO0DefaultPipeline(level);
+		} else {
+			mpm = pb.buildPerModuleDefaultPipeline(level);
+		}
+
+		// Add the RS4GC pass - without this, we won't have any statepoints
+		// Run this regardless of if statepoints are enabled, since it won't do anything if
+		// a function doesn't have a GC strategy set.
+		mpm.addPass(llvm::RewriteStatepointsForGC());
+
+		mpm.run(m_module, mam);
+	}
+
 	// Print out the LLVM IR for debugging
 	const char *dumpIrStr = getenv("DUMP_LLVM_IR");
 	if (dumpIrStr && dumpIrStr == std::string("1")) {
@@ -450,6 +498,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	}
 
 	pass.run(m_module);
+
+	// Flush what we can now, a bit more might come out when the pass manager's destructor runs
 	dest.flush();
 
 	return CompilationResult{
@@ -486,6 +536,15 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
 
 	llvm::Function *function = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, func->debugName, &m_module);
+	if (m_enableStatepoints) {
+		// Turning on the GC significantly alters the generated code from the RS4GC (RewriteStatepointsForGC) LLVM
+		// pass. This spills all the Value-s to the stack before most function calls, and loads them back afterwards.
+		// This allows the GC to relocate objects and update the values without the programme noticing, but does
+		// have a performance compared to not doing so.
+		// TODO make an annotation to disable this for a function - but be clear that will prevent the GC from running
+		//  if that function is on the stack.
+		function->setGC(WrenGCStrategy::GetStrategyName());
+	}
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", function);
 	m_builder.SetInsertPoint(bb);
 
@@ -937,6 +996,16 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		if (mod->Name()) {
 			components.push_back(GetStringConst("<INTERNAL>::module_name"));
 			components.push_back(GetStringConst(mod->Name().value()));
+		}
+		if (m_enableStatepoints) {
+			// WrenGCMetadataPrinter writes out a symbol of this name at the start of its stack map region
+			// Specify external linkage, but that gets ignored since we set it as dso_local anyway
+			llvm::GlobalVariable *global = new llvm::GlobalVariable(m_module, m_pointerType, true,
+			    llvm::GlobalVariable::ExternalLinkage, nullptr, WrenGCMetadataPrinter::GetStackMapSymbol());
+			global->setDSOLocal(true);
+
+			components.push_back(GetStringConst("<INTERNAL>::stack_map"));
+			components.push_back(global);
 		}
 
 		// Terminating null

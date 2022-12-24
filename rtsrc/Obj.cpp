@@ -8,7 +8,11 @@
 #include "ObjNum.h"
 #include "ObjString.h"
 
+#include <cstddef>
 #include <string>
+
+// The position of the GC word is part of the ABI
+static_assert(offsetof(Obj, gcWord) == GC_WORD_OFFSET, "The GC-word is not at the ABI-defined location!");
 
 Obj::~Obj() = default;
 Obj::Obj(ObjClass *type) : type(type) {}
