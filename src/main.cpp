@@ -355,7 +355,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	}
 
 	backend->compileWrenCore = globalBuildCoreLib;
-	backend->defineStandaloneMainFunc = !globalBuildCoreLib && main;
+	backend->defineStandaloneMainModule = !globalBuildCoreLib && main;
 	CompilationResult result = backend->Generate(&mod, opts);
 
 	if (!result.successful) {

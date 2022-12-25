@@ -154,6 +154,10 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	for (IRGlobalDecl *global : mod->GetGlobalVariables()) {
 		Print("\t{} {}, {} {},", PTR_TYPE, GetStringPtr(global->Name()), PTR_TYPE, MangleGlobalName(global));
 	}
+	// Add the init function to the globals table
+	std::string mainFuncName = MangleUniqueName(mod->GetMainFunction()->debugName, false);
+	Print("\t{} {}, {} ${},", PTR_TYPE, GetStringPtr("<INTERNAL>::init_func"), PTR_TYPE, mainFuncName);
+	// End out the globals table
 	Print("l 0 }} # End with a null string pointer");
 
 	// Add the strings
@@ -204,13 +208,13 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	}
 	Print("b 0 }} # End with repeated zero");
 
-	if (defineStandaloneMainFunc) {
-		// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
+	if (defineStandaloneMainModule) {
+		// Emit a pointer to the global table function. This is picked up by the stub the programme gets linked to.
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		std::string mainFuncName = MangleUniqueName(mod->GetMainFunction()->debugName, false);
-		Print("section \".data\" export data $wrenStandaloneMainFunc = {{ {} ${} }}", PTR_TYPE, mainFuncName);
+		Print("section \".data\" export data $wrenStandaloneMainModule = {{ {} ${}_get_globals }}", PTR_TYPE,
+		    moduleName);
 	}
 
 	std::string result = m_output.str();

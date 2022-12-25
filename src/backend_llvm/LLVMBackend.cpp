@@ -175,6 +175,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	bool m_dbgEnable = false;
 
 	llvm::Function *m_initFunc = nullptr;
+	llvm::Function *m_getGlobals = nullptr;
 
 	llvm::FunctionCallee m_virtualMethodLookup;
 	llvm::FunctionCallee m_superMethodLookup;
@@ -299,6 +300,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOptions *options) {
 	// TODO create the module with the source file name
+	m_getGlobals = nullptr;
 
 	if (mod->sourceFilePath) {
 		// Assuming it wants just the filename, not the full path
@@ -379,15 +381,14 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	GenerateInitialiser(mod);
 
 	// Identify this module as containing the main function
-	if (defineStandaloneMainFunc) {
+	if (defineStandaloneMainModule) {
 		// Emit a pointer to the main module function. This is picked up by the stub the programme gets linked to.
 		// This stub (in rtsrc/standalone_main_stub.cpp) uses the OS's standard crti/crtn and similar objects to
 		// make a working executable, and it'll load this pointer when we link this object to it.
 		// Also, put it in .data not .rodata since it contains a relocation.
-		FnData *data = mod->GetMainFunction()->GetBackendData<FnData>();
-		llvm::Function *main = data->llvmFunc;
-		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, main,
-		    "wrenStandaloneMainFunc");
+		assert(m_getGlobals);
+		new llvm::GlobalVariable(m_module, m_pointerType, true, llvm::GlobalVariable::ExternalLinkage, m_getGlobals,
+		    "wrenStandaloneMainModule");
 	}
 
 	// We're done writing functions at this point, so finalise the debug information - this is also the latest
@@ -974,14 +975,15 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 	// Functions must return!
 	m_builder.CreateRetVoid();
 
-	// Finally, generate the get-global-table function, if this module has a name - otherwise it can't be imported
-	// anyway. The name here is important, as it's part of the ABI.
-	if (mod->Name()) {
+	// Finally, generate the get-global-table function. Do this even if the module doesn't have a name, as this
+	// is how we tell the standalone executable stub about our main function.
+	{
+		std::string moduleName = mod->Name() ? mod->Name().value() : "<unnamed_module>";
 		std::string getGlobalName = mod->Name().value() + "_get_globals";
 		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
-		llvm::Function *getGlobalsFunc =
+		m_getGlobals =
 		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
-		m_builder.SetInsertPoint(llvm::BasicBlock::Create(m_context, "entry", getGlobalsFunc));
+		m_builder.SetInsertPoint(llvm::BasicBlock::Create(m_context, "entry", m_getGlobals));
 
 		// Create the globals table
 		std::vector<llvm::Constant *> components;

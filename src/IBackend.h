@@ -36,6 +36,6 @@ class IBackend {
 	/// add the methods onto core types defined in C++.
 	bool compileWrenCore = false;
 
-	/// If true, this generates the wrenStandaloneMainFunc symbol. This should only be enabled for a single module.
-	bool defineStandaloneMainFunc = false;
+	/// If true, this generates the wrenStandaloneMainModule symbol. This should only be enabled for a single module.
+	bool defineStandaloneMainModule = false;
 };

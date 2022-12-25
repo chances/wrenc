@@ -128,3 +128,7 @@ inline Value encode_object(Obj *obj) {
 // Null is just nullptr encoded with our NaN masking scheme, which
 // simplifies down to just the mask.
 #define NULL_VAL NAN_MASK
+
+// Set up the symbols to export stuff from a shared library
+// TODO Windows DLL support
+#define DLL_EXPORT __attribute__((visibility("default")))

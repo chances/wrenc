@@ -14,10 +14,10 @@ class RtModule;
 
 class WrenRuntime {
   public:
-	static WrenRuntime &Instance();
+	DLL_EXPORT static WrenRuntime &Instance();
 
 	/// Do all the first-time Wren setup stuff, like initialising the standard library.
-	__attribute__((visibility("default"))) static void Initialise();
+	DLL_EXPORT static void Initialise();
 
 	template <typename T, typename... Args> T *New(Args &&...args) {
 		void *mem = AllocateMem(sizeof(T), alignof(T));
@@ -27,9 +27,9 @@ class WrenRuntime {
 	void *AllocateMem(int size, int alignment);
 	// TODO freeing memory
 
-	Value GetCoreGlobal(const std::string &name);
+	DLL_EXPORT Value GetCoreGlobal(const std::string &name);
 
-	RtModule *GetOrInitModule(void *getGlobalsFunction);
+	DLL_EXPORT RtModule *GetOrInitModule(void *getGlobalsFunction);
 
   private:
 	WrenRuntime();
