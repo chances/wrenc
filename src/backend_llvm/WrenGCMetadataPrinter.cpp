@@ -15,10 +15,15 @@
 #include <llvm/MC/MCStreamer.h>
 #include <llvm/Target/TargetMachine.h>
 
+#include <deque>
+
 // There's a lot of nested structs we need to access, so use a short alias
 using SM = llvm::StackMaps;
 using SMD = StackMapDescription;
 using ObjectID = SMD::ObjectID;
+
+// The function info itself doesn't contain a pointer to the start of the function
+using FullFuncInfo = std::pair<const llvm::MCSymbol *, const SM::FunctionInfo *>;
 
 // https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf - section 3.36
 constexpr int RSP_DWARF_ID = 7;
@@ -62,6 +67,19 @@ static int alignTo64(int value) {
 	return value;
 }
 
+static void writeFunction(FullFuncInfo func, llvm::AsmPrinter &printer) {
+	llvm::MCStreamer &os = *printer.OutStreamer;
+
+	SMD::MapObjectRepr repr = {
+	    .id = ObjectID::FUNCTION,
+	    .sectionSize = 16,
+	};
+	writeObjectHeader(printer, repr);
+	os.emitSymbolValue(func.first, 8); // Function pointer
+	os.emitInt32(func.second->RecordCount);
+	os.emitInt32(func.second->StackSize);
+}
+
 bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinter &printer) {
 	llvm::MCContext &outContext = printer.OutStreamer->getContext();
 	llvm::MCStreamer &os = *printer.OutStreamer;
@@ -82,7 +100,27 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 	os.emitInt16(0); // Flags
 	os.emitInt16(0); // Unused
 
+	// Put the functions into a deque. Each function has a count for the number of callsites it contains, and
+	// the instruction pointer in those callsites are all relative to the start of the function. We'll thus
+	// write a function entry before all the callsites that it contains.
+	// Thus the actual writing of these functions will be done in the callsites loop.
+	std::deque<FullFuncInfo> functions;
+	for (const auto &entry : maps.getFnInfos()) {
+		functions.push_back({entry.first, &entry.second});
+	}
+
+	// Track how many callsites are left before we need to progress to the next function
+	int remainingCallsites = -1;
+
 	for (const SM::CallsiteInfo &cs : maps.getCSInfos()) {
+		// Write out functions until we find the next one that has at least one unwritten callsite.
+		while (remainingCallsites < 1) {
+			writeFunction(functions.front(), printer);
+			remainingCallsites = functions.front().second->RecordCount;
+			functions.pop_front();
+		}
+		remainingCallsites--;
+
 		// AFAIK liveouts are only for statepoints/patchpoints, and should never occur for statepoints.
 		if (!cs.LiveOuts.empty()) {
 			fmt::print(stderr, "Found non-empty liveout array in stackmap generation!\n");
@@ -195,6 +233,11 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 		}
 
 		os.emitValueToAlignment(eightByteAlignment);
+	}
+
+	// Write out any remaining functions that don't have statepoints
+	for (FullFuncInfo func : functions) {
+		writeFunction(func, printer);
 	}
 
 	// Write a special section to mark the end of the stackmap
