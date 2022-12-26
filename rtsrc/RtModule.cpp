@@ -4,6 +4,8 @@
 
 #include "RtModule.h"
 
+#include "StackMapDescription.h"
+
 RtModule::RtModule(void *globalsTable) {
 	// Read in all the global table items and put them in our map
 	struct {
@@ -24,7 +26,15 @@ RtModule::RtModule(void *globalsTable) {
 	} else {
 		moduleName = rawName;
 	}
+
+	// Parse the stackmap, if present
+	const void *stackMapPtr = GetOrNull("<INTERNAL>::stack_map");
+	if (stackMapPtr) {
+		m_stackMap = std::make_unique<StackMapDescription>(stackMapPtr);
+	}
 }
+
+RtModule::~RtModule() {}
 
 Value *RtModule::GetOrNull(const std::string &varName) {
 	auto iter = m_globals.find(varName);
@@ -33,3 +43,5 @@ Value *RtModule::GetOrNull(const std::string &varName) {
 	}
 	return iter->second;
 }
+
+StackMapDescription *RtModule::GetStackMap() { return m_stackMap.get(); }
