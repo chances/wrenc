@@ -46,75 +46,20 @@ ObjClass *ObjFn::Class() {
 
 ObjFn *ObjFn::New(ObjFn *fn) { return fn; }
 
-// We *should* be safe to pass more parameters than the function takes, but this might pose some
-// portability problems down the line. It's fairly easy to do it properly though, so use the correct
-// number of arguments (it's also an excuse to generate some horrible-to-read but fun-to-write template goo.
-struct SpecialSpan {
-	std::optional<Value> first; // If this function has upvalues, this is the upvalue pointer
-	std::span<const Value> remaining;
-
-	size_t Size() const { return remaining.size() + (first.has_value() ? 1 : 0); }
-};
-template <int i, typename To> struct MapArg {
-	using Result = To;
-};
-template <size_t idx> Value listGet(const SpecialSpan &span) { return span.remaining[idx - 1]; }
-template <> Value listGet<0>(const SpecialSpan &span) { return span.first.value(); }
-template <size_t... arg_indices>
-std::optional<Value> invokePtrSeq(std::index_sequence<arg_indices...> seq, void *func, const SpecialSpan &values) {
-
-	// If we're the wrong size, go down the chain
-	if (values.Size() != seq.size()) {
-		return std::optional<Value>();
-	}
-
-	// Make a typedef for a function that takes the number of parameters given by arg_indices
-	typedef Value (*func_t)(typename MapArg<arg_indices, Value>::Result...);
-
-	func_t a = (func_t)func;
-
-	// Call it, with listGet adding the index in it's template to the values pointer
-	return a(listGet<arg_indices>(values)...);
-}
-
-template <int max_arg_count> std::optional<Value> invokePtr(void *func, const SpecialSpan &values) {
-	std::optional<Value> result = invokePtrSeq(std::make_index_sequence<max_arg_count>(), func, values);
-	if (result)
-		return result;
-
-	return invokePtr<max_arg_count - 1>(func, values);
-}
-
-// This line is very important, clang will happily eat all your memory infinitely recursing if you leave it out
-// It stops the recursion by saying you can't have a negative number of arguments
-template <> std::optional<Value> invokePtr<-1>(void *func, const SpecialSpan &values) { return std::optional<Value>(); }
-
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	if ((int)values.size() != spec->arity) {
 		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
 		    (int)values.size(), spec->arity);
 	}
 
-	SpecialSpan span;
-	if (spec->upvalueOffsets.empty()) {
-		// No upvalue table? Put the arguments in, but if there's no arguments don't
-		// try to get the first item.
-		if (values.size() != 0) {
-			span.first = *values.begin();
-			span.remaining = std::span(values.begin() + 1, values.end());
-		}
-	} else {
-		span.first = (Value)upvaluePointers.data();
-		span.remaining = std::span(values.begin(), values.end());
+	void *upvalueData = nullptr;
+	if (!spec->upvalueOffsets.empty()) {
+		upvalueData = upvaluePointers.data();
 	}
 
-	std::optional<Value> result = invokePtr<16>(spec->funcPtr, span);
-	if (!result) {
-		errors::wrenAbort("Cannot call closure '%s': internal call failure, could not find call impl (arity %d)\n",
-		    spec->name.c_str(), (int)values.size());
-	}
+	Value result = FunctionDispatch(spec->funcPtr, upvalueData, values);
 
-	return result.value();
+	return result;
 }
 
 struct SerialisedClosureSpec {

@@ -75,6 +75,11 @@ class ObjFn : public Obj {
 	// Our actual upvalues. The data of this vector gets passed in as the upvalue pack when this function is called, if
 	// there's a non-zero number of upvalues (if there's no upvalues, there's no need to waste a register).
 	std::vector<Value *> upvaluePointers;
+
+  private:
+	// Implemented in bindings.gen.cpp
+	// If upvaluePack is nullptr, then it won't be passed as an argument
+	static Value FunctionDispatch(void *fnPtr, void *upvaluePack, const std::initializer_list<Value> &args);
 };
 
 /// Stores information about a closure, allocated on module load.
