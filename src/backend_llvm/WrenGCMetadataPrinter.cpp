@@ -210,9 +210,9 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 			abort();
 		}
 
-		// 8 for the pointer to the call, then one byte per offset.
+		// 4 for the offset to the call, then one byte per offset.
 		// We then round up to a multiple of 8, so it's properly aligned.
-		int size = alignTo64(8 + valueOffsets.size());
+		int size = alignTo64(4 + valueOffsets.size());
 
 		if (size >= UINT16_MAX) {
 			fmt::print(stderr, "Stackmap statepoint entry too large: {}\n", valueOffsets.size());
@@ -226,7 +226,8 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 		};
 		writeObjectHeader(printer, repr);
 
-		os.emitValue(cs.CSOffsetExpr, 8);
+		// This is the pointer to the statepoint minus the function pointer, so four bytes is plenty
+		os.emitValue(cs.CSOffsetExpr, 4);
 
 		for (uint8_t offset : valueOffsets) {
 			os.emitInt8(offset);
