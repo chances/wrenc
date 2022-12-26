@@ -11,6 +11,7 @@
 #include <utility>
 
 class RtModule;
+class GCTracingScanner;
 
 class WrenRuntime {
   public:
@@ -31,10 +32,17 @@ class WrenRuntime {
 
 	DLL_EXPORT RtModule *GetOrInitModule(void *getGlobalsFunction);
 
+	DLL_EXPORT void RunGC();
+
   private:
 	WrenRuntime();
 	~WrenRuntime();
 
 	std::unique_ptr<RtModule> m_coreModule;
 	std::unordered_map<void *, std::unique_ptr<RtModule>> m_userModules;
+
+	std::unique_ptr<GCTracingScanner> m_gcScanner;
+
+	// The GC needs special access to all the loaded modules
+	friend GCTracingScanner;
 };

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "Errors.h"
+#include "GCTracingScanner.h"
 #include "GenEntry.h"
 #include "ObjClass.h"
 #include "RtModule.h"
@@ -63,6 +64,10 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 	RtModule *ptr = mod.get();
 	m_userModules[getGlobalsFunction] = std::move(mod);
 
+	// Destroy the GC, which will need to rebuild it's function table with the newly-added functions in the
+	// stackmap table.
+	m_gcScanner.reset();
+
 	// Run this module's initialiser function - be sure to do this AFTER inserting the module into
 	// the user modules map, since this module might call GetOrInitModule again and eventually reference
 	// itself, even though it's not done loading.
@@ -75,4 +80,14 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 	initFunc();
 
 	return ptr;
+}
+
+void WrenRuntime::RunGC() {
+	if (!m_gcScanner) {
+		// Note that when creating the scanner, it'll dig through our list of loaded modules.
+		m_gcScanner = std::make_unique<GCTracingScanner>();
+	}
+
+	// TODO when we support multithreading, mark all the threads
+	m_gcScanner->MarkCurrentThreadRoots();
 }

@@ -5,6 +5,7 @@
 #include "ObjSystem.h"
 #include "CoreClasses.h"
 #include "Errors.h"
+#include "WrenRuntime.h"
 
 ObjSystem::ObjSystem() : ObjNativeClass("System", "ObjSystem") {}
 
@@ -14,3 +15,5 @@ void ObjSystem::WriteString_(std::string value) {
 		errors::wrenAbort("Could not complete write string syscall");
 	}
 }
+
+void ObjSystem::Gc() { WrenRuntime::Instance().RunGC(); }

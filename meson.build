@@ -187,13 +187,17 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjFn.cpp',
   'rtsrc/ObjManaged.cpp',
   'rtsrc/CoreClasses.cpp',
+  'rtsrc/GCTracingScanner.cpp',
   'rtsrc/RtModule.cpp',
   'rtsrc/WrenRuntime.cpp',
   rtlib_wren_core,
   rtlib_bindings,
   include_directories: ['rtsrc'],
   override_options: ['cpp_std=c++20'],
-  dependencies: [common],
+  dependencies: [
+    common,
+    dependency('libunwind'),
+  ],
 
   # Hide symbols. This is not only good practice, but without it we'd have to have all of wren_core's
   # symbols go through the GOT which would be a big pain.

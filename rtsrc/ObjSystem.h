@@ -11,4 +11,6 @@ class ObjSystem : public ObjNativeClass {
 	ObjSystem();
 
 	WREN_METHOD() static void WriteString_(std::string value);
+
+	WREN_METHOD() static void Gc();
 };
