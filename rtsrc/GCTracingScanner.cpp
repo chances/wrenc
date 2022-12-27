@@ -63,9 +63,14 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 		decltype(m_functions)::iterator match =
 		    std::lower_bound(m_functions.begin(), m_functions.end(), ip, functionCompare);
 
-		// No function found?
-		if (match == m_functions.end())
+		// We've found the first function whose pointer is greater than the instruction pointer - thus (assuming
+		// we didn't get the first item, in which case there's no match) we have to decrement the iterator to
+		// find the function proceeding our instruction.
+		// Note that if lower_bound returns m_functions.end(), then that's still valid - we're going to decrement
+		// it, so we do get a valid iterator.
+		if (match == m_functions.begin())
 			continue;
+		match--;
 
 		// Look for this statepoint
 		std::optional<SMD::StatepointDescriptor> maybeStatepoint = match->stackMap->Lookup((void *)ip);
