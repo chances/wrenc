@@ -428,7 +428,16 @@ class IRVisitor {
   public:
 	virtual ~IRVisitor();
 
-	virtual void Visit(IRNode *node);
+	virtual void VisitReadOnly(IRNode *node); // Can't switch out the referenced node, try to avoid this
+
+	// Visit takes a reference to a pointer: this allows the visitor to overwrite the pointer passed in. These
+	// should be called with a reference to the pointer stored in the parent node, so that if the visitor
+	// changes the expression/statement then the node will be updated appropriately.
+	// This is required to let visitors substitute one node for another without having to handle all the
+	// possible nodes that could contain the one it wants to substitute.
+	virtual void Visit(IRExpr *&node);
+	virtual void Visit(IRStmt *&node);
+
 	virtual void VisitVar(VarDecl *var);
 
 	virtual void VisitFn(IRFn *node);
@@ -476,7 +485,7 @@ class IRPrinter : private IRVisitor {
 		bool isInline = false;
 	};
 
-	void Visit(IRNode *node) override;
+	void VisitReadOnly(IRNode *node) override;
 	void VisitVar(VarDecl *var) override;
 
 	void FullTag(const std::string &str);

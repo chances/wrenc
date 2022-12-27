@@ -7,7 +7,7 @@
 #include <set>
 
 void IRCleanup::Process(IRNode *root) {
-	Visit(root);
+	VisitReadOnly(root);
 
 	// Remove all the unused labels
 	std::set<StmtBlock *> blocksToUpdate;
@@ -44,9 +44,9 @@ IRNode *IRCleanup::GetParent(int index) {
 	return m_parents.at(id);
 }
 
-void IRCleanup::Visit(IRNode *node) {
+void IRCleanup::VisitReadOnly(IRNode *node) {
 	m_parents.push_back(node);
-	IRVisitor::Visit(node);
+	IRVisitor::VisitReadOnly(node);
 	m_parents.pop_back();
 }
 

@@ -18,7 +18,7 @@ class IRCleanup : private IRVisitor {
 	/// parent's parent and so on.
 	IRNode *GetParent(int index = 0);
 
-	void Visit(IRNode *node) override;
+	void VisitReadOnly(IRNode *node) override;
 	void VisitBlock(StmtBlock *node) override;
 	void VisitStmtLabel(StmtLabel *node) override;
 	void VisitStmtJump(StmtJump *node) override;

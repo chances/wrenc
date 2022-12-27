@@ -107,10 +107,12 @@ void ExprGetClassVar::Accept(IRVisitor *visitor) { visitor->VisitExprGetClassVar
 
 // IRVisitor
 
-void IRVisitor::Visit(IRNode *node) {
+void IRVisitor::VisitReadOnly(IRNode *node) {
 	if (node)
 		node->Accept(this);
 }
+void IRVisitor::Visit(IRExpr *&node) { VisitReadOnly(node); }
+void IRVisitor::Visit(IRStmt *&node) { VisitReadOnly(node); }
 void IRVisitor::VisitVar(VarDecl *var) {
 	if (var)
 		var->Accept(this);
@@ -140,7 +142,7 @@ void IRVisitor::VisitStmtFieldAssign(StmtFieldAssign *node) {
 }
 void IRVisitor::VisitStmtEvalAndIgnore(StmtEvalAndIgnore *node) { Visit(node->expr); }
 void IRVisitor::VisitBlock(StmtBlock *node) {
-	for (IRStmt *stmt : node->statements)
+	for (IRStmt *&stmt : node->statements)
 		Visit(stmt);
 }
 void IRVisitor::VisitStmtLabel(StmtLabel *node) {}
@@ -156,7 +158,7 @@ void IRVisitor::VisitExprLoad(ExprLoad *node) { VisitVar(node->var); }
 void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) {}
 void IRVisitor::VisitExprFuncCall(ExprFuncCall *node) {
 	Visit(node->receiver);
-	for (IRExpr *expr : node->args)
+	for (IRExpr *&expr : node->args)
 		Visit(expr);
 }
 void IRVisitor::VisitExprClosure(ExprClosure *node) {
@@ -234,7 +236,7 @@ void IRPrinter::EndTag() {
 
 std::unique_ptr<std::stringstream> IRPrinter::Extract() { return std::move(m_stream); }
 
-void IRPrinter::Visit(IRNode *node) {
+void IRPrinter::VisitReadOnly(IRNode *node) {
 	if (!node)
 		return;
 
@@ -244,11 +246,11 @@ void IRPrinter::Visit(IRNode *node) {
 	if (PRINT_ADDR)
 		header += fmt::format(" {}", (void *)node);
 	StartTag(header, INLINE_NODES.contains(name));
-	IRVisitor::Visit(node);
+	IRVisitor::VisitReadOnly(node);
 	EndTag();
 }
 
-void IRPrinter::Process(IRNode *root) { Visit(root); }
+void IRPrinter::Process(IRNode *root) { VisitReadOnly(root); }
 
 void IRPrinter::VisitVar(VarDecl *var) { FullTag(std::string(typeid(*var).name()) + ":" + var->Name()); }
 
