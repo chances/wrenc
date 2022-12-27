@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 
 #include "IRNode.h"
+#include "IRPrinter.h"
 #include "RunProgramme.h"
 #include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
