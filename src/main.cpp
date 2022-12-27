@@ -321,7 +321,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	if (!rootFn)
 		return CompilationResult{.successful = false};
 
-	IRCleanup cleanup;
+	IRCleanup cleanup(&ctx.alloc);
 	for (IRFn *fn : mod.GetFunctions())
 		cleanup.Process(fn);
 

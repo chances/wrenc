@@ -3,8 +3,13 @@
 //
 
 #include "IRCleanup.h"
+#include "ArenaAllocator.h"
+#include "CompContext.h"
+#include "Scope.h"
 
 #include <set>
+
+IRCleanup::IRCleanup(ArenaAllocator *allocator) : m_allocator(allocator) {}
 
 void IRCleanup::Process(IRNode *root) {
 	VisitReadOnly(root);
@@ -50,9 +55,30 @@ void IRCleanup::VisitReadOnly(IRNode *node) {
 	m_parents.pop_back();
 }
 
+void IRCleanup::Visit(IRExpr *&node) {
+	// Handle ExprRunStatements specially, since we flatten out it's statements and want to replace it with
+	// a variable load node.
+	// Note we don't return after running a substitution, since that substitution might not do anything and
+	// thus need it's contents to be examined here.
+	ExprRunStatements *runStatements = dynamic_cast<ExprRunStatements *>(node);
+	if (runStatements) {
+		node = SubstituteExprRunStatements(runStatements);
+	}
+
+	ExprFuncCall *funcCall = dynamic_cast<ExprFuncCall *>(node);
+	if (funcCall) {
+		node = SubstituteExprFuncCall(funcCall);
+	}
+
+	IRVisitor::Visit(node);
+}
+
 void IRCleanup::VisitBlock(StmtBlock *node) { VisitBlock(node, true); }
 
 void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
+	RunStatementsTarget lastBlock = m_runStatementsTarget;
+	m_runStatementsTarget = RunStatementsTarget{.block = node};
+
 	// If we flatten a block the statements list will get longer, but that's fine - how it is now we'll
 	// go over all the nodes we flatten, so long as we decrement i after removing a block.
 	for (int i = 0; i < node->statements.size(); i++) {
@@ -71,8 +97,22 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 			continue;
 		}
 
-		if (recurse)
-			Visit(stmt);
+		if (!recurse)
+			continue;
+
+		m_runStatementsTarget.insertIndex = i;
+
+		// Have to reset this, otherwise we'll end up in an infinite loop if it's ever set to true.
+		m_runStatementsTarget.inserted = false;
+
+		VisitReadOnly(stmt);
+
+		// If one or more statements were inserted (before the one we just looked at now), then we need to stay
+		// at the current loop index to avoid inspecting it again.
+		// TODO this means visiting nodes twice, which is potentially a performance concern but shouldn't
+		//  be a correctness one.
+		if (m_runStatementsTarget.inserted)
+			i--;
 	}
 
 	// Remove returns *after* we're done flattening, since otherwise if there's a label in a block we wouldn't find it
@@ -91,6 +131,8 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 			}
 		}
 	}
+
+	m_runStatementsTarget = lastBlock;
 }
 
 void IRCleanup::VisitStmtLabel(StmtLabel *node) {
@@ -105,4 +147,62 @@ void IRCleanup::VisitStmtJump(StmtJump *node) {
 		m_labelData[node->target].used = true;
 	}
 	IRVisitor::VisitStmtJump(node);
+}
+
+void IRCleanup::VisitFn(IRFn *node) {
+	m_fnParents.push_back(node);
+	IRVisitor::VisitFn(node);
+	m_fnParents.pop_back();
+}
+
+IRExpr *IRCleanup::SubstituteExprRunStatements(ExprRunStatements *node) {
+	// Increment the insert index, so later substitutions will go after this one - if we didn't do this, multiple
+	// ExprRunStatements would end up in the reverse order, as each one would be inserted before the previous one.
+	int insertIdx = m_runStatementsTarget.insertIndex++;
+
+	// Let VisitBlock know we've actually done something, so it knows to visit it
+	m_runStatementsTarget.inserted = true;
+
+	StmtBlock *target = m_runStatementsTarget.block;
+	target->statements.insert(target->statements.begin() + insertIdx, node->statement);
+
+	// Make a new load
+	ExprLoad *load = m_allocator->New<ExprLoad>(node->temporary);
+	load->debugInfo = node->debugInfo;
+	return load;
+}
+
+IRExpr *IRCleanup::SubstituteExprFuncCall(ExprFuncCall *node) {
+	// Function calls in assignments are fine - that's where we'd be moving it anyway.
+	// Note we have to pass -1 to GetParent which is normally invalid, since our current node hasn't
+	// been pushed onto the parents stack.
+	IRNode *parent = GetParent(-1);
+	if (dynamic_cast<StmtAssign *>(parent))
+		return node;
+
+	// Similarly, StmtEvalAndIgnore is fine - it only evaluates a single expression, so there can't be
+	// any ordering issues. It'd also be a bit silly to make a temporary variable for it.
+	if (dynamic_cast<StmtEvalAndIgnore *>(parent))
+		return node;
+
+	// Move the function call out, so that when ExprRunStatements are pulled out all the observed actions still
+	// occur in the same order.
+
+	// Make a temporary variable, and set it to the result of the call
+	LocalVariable *tmpVar = m_allocator->New<LocalVariable>();
+	tmpVar->name = "tmp_call_res_" + node->signature->name;
+	m_fnParents.back()->locals.push_back(tmpVar);
+
+	StmtAssign *newAssignment = m_allocator->New<StmtAssign>(tmpVar, node);
+	newAssignment->debugInfo = node->debugInfo;
+
+	int insertIdx = m_runStatementsTarget.insertIndex++;
+	StmtBlock *target = m_runStatementsTarget.block;
+	target->statements.insert(target->statements.begin() + insertIdx, newAssignment);
+	m_runStatementsTarget.inserted = true;
+
+	// Replace the call with a load from the variable
+	ExprLoad *load = m_allocator->New<ExprLoad>(tmpVar);
+	load->debugInfo = parent->debugInfo; // Use the parent's debug info, so we don't needlessly jump in the debugger
+	return load;
 }
