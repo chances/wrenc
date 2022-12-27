@@ -1263,6 +1263,10 @@ void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
 
 	IRDebugInfo &di = node->debugInfo;
 
+	// If this node doesn't bear any direct resemblance to the source code, don't write debug information for it
+	if (di.synthetic)
+		return;
+
 	if (di.lineNumber == -1) {
 		fprintf(stderr, "dbginfo: Missing line num for node %s\n", typeid(*node).name());
 		abort();

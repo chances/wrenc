@@ -1119,10 +1119,22 @@ std::string QbeBackend::MangleRawName(const std::string &str, bool permitAmbigui
 	return name;
 }
 
+QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) {
+	// The only allowed nesting is basic blocks inside a single outer block.
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	ASSERT(node->isBasicBlock, "Nested blocks are only supported if they're basic blocks");
+
+	for (IRStmt *stmt : node->statements) {
+		snip->Add(VisitStmt(stmt));
+	}
+
+	return snip;
+}
+
 // Unimplemented Visitors //
 
 QbeBackend::Snippet *QbeBackend::VisitClass(IRClass *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitGlobalDecl(IRGlobalDecl *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitImport(IRImport *node) { return HandleUnimplemented(node); }
-QbeBackend::Snippet *QbeBackend::VisitBlock(StmtBlock *node) { return HandleUnimplemented(node); }
 QbeBackend::Snippet *QbeBackend::VisitStmtLoadModule(StmtLoadModule *node) { return HandleUnimplemented(node); }

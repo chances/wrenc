@@ -4,6 +4,7 @@
 #include "RunProgramme.h"
 #include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
+#include "passes/BasicBlockPass.h"
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
 
@@ -324,6 +325,10 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	IRCleanup cleanup(&ctx.alloc);
 	for (IRFn *fn : mod.GetFunctions())
 		cleanup.Process(fn);
+
+	BasicBlockPass ssa(&ctx.alloc);
+	for (IRFn *fn : mod.GetFunctions())
+		ssa.Process(fn);
 
 	IRPrinter printer;
 	for (IRFn *fn : mod.GetFunctions())

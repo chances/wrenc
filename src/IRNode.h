@@ -62,6 +62,10 @@ class IRDebugInfo {
 	// The line number and column of the start (or thereabout) of the token that caused this node to be created.
 	int lineNumber = -1;
 	int column = -1;
+
+	/// If true, this node was created by a pass or something like that, such that it doesn't have any real
+	/// resemblance to the source code.
+	bool synthetic = false;
 };
 
 // //////////////////// //
@@ -246,6 +250,12 @@ class StmtBlock : public IRStmt {
 	void Accept(IRVisitor *visitor) override;
 
 	std::vector<IRStmt *> statements;
+
+	/// Is this block a basic block? This means the block starts with a label and ends with a control flow
+	/// statement (either a jump or a return). Blocks are converted to basic blocks by the basic block pass.
+	/// The only exception is for conditional jumps: then the last two statements must both be jumps, first
+	/// a conditional jump then an unconditional jump.
+	bool isBasicBlock = false;
 };
 
 /// Not really a statement, this designates a point the jump instruction can jump to
