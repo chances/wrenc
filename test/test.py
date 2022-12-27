@@ -65,7 +65,13 @@ IGNORED_ERR_LINES = {"Parse errors found, aborting"}
 OVERRIDE_SHOULD_SUCCEED: Set[str] = set()
 OVERRIDE_SHOULD_FAIL_COMPILATION: Dict[str, str] = dict()
 
+# This is the list of tests that are known to currently fail, so we can differentiate tests
+# that are failing due to regressions and those that need to be delt with for the first time.
+EXPECTED_FAILURES: Set[str] = set()
+
 passed = 0
+expected_failed_passed = []
+expected_failed = 0
 failed = 0
 num_skipped = 0
 skipped = defaultdict(int)
@@ -77,6 +83,7 @@ class Test:
 
     def __init__(self, path: Path):
         self.path = path
+        self.name = str(self.path.relative_to(WREN_DIR))  # eg test/language/something.wren
         self.output = []
         self.compile_errors = set()
         self.runtime_error_line = 0
@@ -86,6 +93,7 @@ class Test:
         self.input_bytes = None
         self.failures = []
         self.compiler_args = None
+        self.expected_to_fail = self.name in EXPECTED_FAILURES
 
     def parse(self):
         global num_skipped
@@ -96,9 +104,8 @@ class Test:
         line_num = 1
 
         # Check if this test is supposed to succeed or fail differently in wrencc
-        rel_path = str(self.path.relative_to(WREN_DIR))
-        override_success = rel_path in OVERRIDE_SHOULD_SUCCEED
-        override_compile_time_fail = OVERRIDE_SHOULD_FAIL_COMPILATION.get(rel_path, None)
+        override_success = self.name in OVERRIDE_SHOULD_SUCCEED
+        override_compile_time_fail = OVERRIDE_SHOULD_FAIL_COMPILATION.get(self.name, None)
 
         # Note #1: we have unicode tests that require utf-8 decoding.
         # Note #2: python `open` on 3.x modifies contents regarding newlines.
@@ -504,6 +511,7 @@ def print_line(line=None, keep=False):
 
 def run_script(app, path: Path, type):
     global passed
+    global expected_failed
     global failed
     global num_skipped
 
@@ -518,8 +526,8 @@ def run_script(app, path: Path, type):
             return
 
     # Update the status line.
-    print_line('({}) Passed: {} Failed: {} Skipped: {} '.format(
-        os.path.relpath(app, WREN_DIR), green(passed), red(failed), yellow(num_skipped)))
+    print_line('({}) Passed: {} Failed: {} XFailed: {} Skipped: {} '.format(
+        os.path.relpath(app, WREN_DIR), green(passed), yellow(expected_failed), red(failed), yellow(num_skipped)))
 
     # Make a nice short path relative to the working directory.
 
@@ -541,6 +549,18 @@ def run_script(app, path: Path, type):
             print_line(green('PASS') + ': ' + rel_path, keep=True)
             if args.show_cmdline:
                 print('      ' + cmdline_str)
+
+        if test.expected_to_fail:
+            print_line(
+                red(f"The test {rel_path} was expected to fail, but passed! Please update expected-failures.txt."),
+                keep=True)
+            expected_failed_passed.append(test.name)
+    elif test.expected_to_fail:
+        expected_failed += 1
+        # Expected to fail, so don't show the full details
+        print_line(yellow('XFAIL') + ': ' + rel_path, keep=True)
+        if args.show_cmdline:
+            print('      ' + cmdline_str)
     else:
         failed += 1
         print_line(red('FAIL') + ': ' + rel_path, keep=True)
@@ -607,6 +627,7 @@ def main():
     # Load the override list
     OVERRIDE_SHOULD_SUCCEED.update(load_list(WRENCC_DIR / 'test' / 'should-succeed.txt'))
     OVERRIDE_SHOULD_FAIL_COMPILATION.update(load_list(WRENCC_DIR / 'test' / 'should-fail-compilation.txt'))
+    EXPECTED_FAILURES.update(load_list(WRENCC_DIR / 'test' / 'expected-failures.txt'))
 
     walk(WREN_DIR / 'test', run_test, ignored=['api', 'benchmark'])
     walk(WREN_DIR / 'test' / 'api', run_api_test)
@@ -615,12 +636,20 @@ def main():
     print_line()
     if failed == 0:
         print('All ' + green(passed) + ' tests passed (' + str(expectations) +
-              ' expectations).')
+              ' expectations), with ' + str(expected_failed) + ' expected failures.')
     else:
-        print(green(passed) + ' tests passed. ' + red(failed) + ' tests failed.')
+        print(green(passed) + ' tests passed. ' + yellow(expected_failed) + ' tests failed expectedly. ' + red(
+            failed) + ' tests failed.')
 
     for key in sorted(skipped.keys()):
         print('Skipped ' + yellow(skipped[key]) + ' tests: ' + key)
+
+    # We print a warning for each test, but re-print them here to make it super obvious
+    if len(expected_failed_passed) != 0:
+        print(red("The following tests were expected to fail, but passed! Please update expected-failures.txt,"))
+        print(red(" to make sure someone notices if they are later broken!"))
+        for name in expected_failed_passed:
+            print("   " + name)
 
     if failed != 0:
         sys.exit(1)

@@ -1,0 +1,47 @@
+# These tests are expected to fail, as we haven't implemented the parts of the language necessary for them to
+# function yet. Unlike the other files listing tests in this directory, these fail because we haven't implemented
+# the stuff they need yet (or have done so wrongly) - this list should ultimately end up empty.
+# If you make one of these tests pass, remove it from this list. The point of this list is to identify functions
+# that used to work but now don't, so we can use it for regression testing.
+
+test/language/class/foreign_class_inherit_fields.wren
+test/language/many_reallocations.wren
+test/language/function/parameters.wren
+test/language/fiber/closure.wren
+test/language/inheritance/inherit_from_nonclass.wren
+test/language/inheritance/inherit_from_closure.wren
+test/language/inheritance/inherited_fields_in_closure.wren
+test/language/inheritance/inherit_from_null.wren
+test/language/list/grow_shrink.wren
+test/language/deeply_nested_gc.wren
+test/language/for/closure_in_body.wren
+test/language/for/close_over_loop_variable.wren
+test/language/while/closure_in_body.wren
+test/language/interpolation/switch_fiber.wren
+test/language/this/nested_class.wren
+test/language/this/nested_closure.wren
+test/language/this/this_in_static_method.wren
+test/language/this/closure.wren
+test/language/static_field/nested_class.wren
+test/language/static_field/multiple.wren
+test/language/static_field/in_instance_method.wren
+test/language/static_field/default_to_null.wren
+test/language/static_field/closure.wren
+test/language/static_field/use_before_set.wren
+test/language/super/closure.wren
+test/language/super/super_at_top_level.wren
+test/language/super/super_in_closure_in_inherited_method.wren
+test/language/break/in_method_in_loop.wren
+test/language/field/nested_class.wren
+test/language/field/closure.wren
+test/language/field/in_static_method_in_nested_class.wren
+test/language/continue/in_method_in_loop.wren
+test/language/implicit_receiver/nested_class.wren
+test/language/method/many_methods.wren
+test/language/module/implicitly_imports_core/implicitly_imports_core.wren
+test/language/module/unknown_variable/unknown_variable.wren
+test/language/module/compile_error/compile_error.wren
+test/language/module/unknown_module.wren
+test/language/variable/too_many_locals_nested.wren
+test/language/variable/local_outside_method.wren
+test/language/foreign/unknown_method.wren
