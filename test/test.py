@@ -634,9 +634,8 @@ def main():
     walk(WREN_DIR / 'example', run_example)
 
     print_line()
-    if failed == 0:
-        print('All ' + green(passed) + ' tests passed (' + str(expectations) +
-              ' expectations), with ' + str(expected_failed) + ' expected failures.')
+    if failed == 0 and expected_failed == 0:
+        print('All ' + green(passed) + ' tests passed (' + str(expectations) + ' expectations)')
     else:
         print(green(passed) + ' tests passed. ' + yellow(expected_failed) + ' tests failed expectedly. ' + red(
             failed) + ' tests failed.')
