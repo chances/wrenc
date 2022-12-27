@@ -17,6 +17,11 @@ OPERATOR_TYPES = {
     "Minus": "-",
     "Multiply": "*",
     "Divide": "/",
+    "And": "&",
+    "Or": "|",
+    "XOr": "^",
+    "LeftShift": "<<",
+    "RightShift": ">>",
 
     "EqualTo": "==",
     "NotEqual": "!=",

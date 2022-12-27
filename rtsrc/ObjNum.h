@@ -30,6 +30,13 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() double OperatorMultiply(double receiver, double other);
 	WREN_METHOD() double OperatorDivide(double receiver, double other);
 
+	// Bitwise binary operators
+	WREN_METHOD() double OperatorAnd(double receiver, double other);
+	WREN_METHOD() double OperatorOr(double receiver, double other);
+	WREN_METHOD() double OperatorXOr(double receiver, double other);
+	WREN_METHOD() double OperatorLeftShift(double receiver, double other);
+	WREN_METHOD() double OperatorRightShift(double receiver, double other);
+
 	WREN_METHOD() bool OperatorEqualTo(double receiver, Value other);
 	WREN_METHOD() bool OperatorNotEqual(double receiver, Value other);
 	WREN_METHOD() bool OperatorLessThan(double receiver, double other);

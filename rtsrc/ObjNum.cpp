@@ -87,6 +87,33 @@ double ObjNumClass::OperatorMinus(double receiver, double other) { return receiv
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }
 double ObjNumClass::OperatorDivide(double receiver, double other) { return receiver / other; }
 
+// All of these cast without warning - see DEF_NUM_BITWISE in Wren
+double ObjNumClass::OperatorAnd(double receiver, double other) {
+	uint32_t left = (uint32_t)receiver;
+	uint32_t right = (uint32_t)other;
+	return left & right;
+}
+double ObjNumClass::OperatorOr(double receiver, double other) {
+	uint32_t left = (uint32_t)receiver;
+	uint32_t right = (uint32_t)other;
+	return left | right;
+}
+double ObjNumClass::OperatorXOr(double receiver, double other) {
+	uint32_t left = (uint32_t)receiver;
+	uint32_t right = (uint32_t)other;
+	return left ^ right;
+}
+double ObjNumClass::OperatorLeftShift(double receiver, double other) {
+	uint32_t left = (uint32_t)receiver;
+	uint32_t right = (uint32_t)other;
+	return left << right;
+}
+double ObjNumClass::OperatorRightShift(double receiver, double other) {
+	uint32_t left = (uint32_t)receiver;
+	uint32_t right = (uint32_t)other;
+	return left >> right;
+}
+
 // Equals and not-equals are a bit different to the others - it's not an error to pass an object to them
 bool ObjNumClass::OperatorEqualTo(double receiver, Value other) {
 	if (is_object(other))
