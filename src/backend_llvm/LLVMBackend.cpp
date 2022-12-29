@@ -1431,7 +1431,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	llvm::FunctionType *type = llvm::FunctionType::get(m_valueType, argTypes, false);
 
 	// Invoke it
-	llvm::CallInst *result = m_builder.CreateCall(type, func, args);
+	llvm::CallInst *result = m_builder.CreateCall(type, func, args, "result_" + name);
 
 	return {result};
 }
