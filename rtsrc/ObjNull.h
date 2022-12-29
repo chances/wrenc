@@ -16,6 +16,8 @@ class ObjNull : public Obj {
 
 	static ObjClass *Class();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	WREN_METHOD(getter) std::string ToString();
 
 	// Reimplement some basic operators, since the normal Obj ones won't work with null receivers

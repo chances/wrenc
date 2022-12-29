@@ -24,3 +24,8 @@ bool ObjNull::OperatorBoolNegate() {
 	return true;
 }
 bool ObjNull::Is(ObjClass *cls) { return Class()->Extends(cls); }
+
+void ObjNull::MarkGCValues(GCMarkOps *ops) {
+	// Never called - it can't be, since no instances of this class are ever created :)
+	abort();
+}

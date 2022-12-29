@@ -19,6 +19,8 @@ class ObjManaged : public Obj {
 	ObjManaged(ObjManagedClass *type);
 	~ObjManaged();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	/// Field storage area accessed by Wren
 	Value fields[];
 };
@@ -38,6 +40,8 @@ class ObjManagedClass : public ObjClass {
 	ObjManagedClass(const std::string &name, std::unique_ptr<ClassDescription> spec, ObjClass *parent);
 	~ObjManagedClass();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	bool CanScriptSubclass() override;
 
 	Value Attributes() override;
@@ -51,6 +55,10 @@ class ObjManagedClass : public ObjClass {
 
 	/// The byte size of an ObjManaged instance representing this class, including all the fields.
 	int size;
+
+	/// The total number of fields in this class - this is here mostly for the ObjManaged GC mark method, where
+	/// it needs to know this very quickly.
+	int totalFieldCount;
 
   private:
 	void InitialiseAttributes();

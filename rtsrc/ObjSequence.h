@@ -11,4 +11,7 @@
 class ObjSequence : public Obj {
   public:
 	static ObjClass *Class();
+
+	// Be clear that this is still an abstract type.
+	void MarkGCValues(GCMarkOps *ops) = 0;
 };

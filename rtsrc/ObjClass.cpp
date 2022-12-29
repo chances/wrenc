@@ -120,6 +120,13 @@ bool ObjClass::Extends(ObjClass *other) {
 	return false;
 }
 
+void ObjClass::MarkGCValues(GCMarkOps *ops) {
+	// Mark our parent type. This is not our metaclass type, which the MarkGCValues comment
+	// says not to mark - all classes have a metaclass, but only ObjClass instances have
+	// a parent class, and the latter is what we're reporting here.
+	ops->ReportObject(ops, parentClass);
+}
+
 std::string ObjClass::GetDefaultMetaclassName() { return name + " metaclass"; }
 
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {

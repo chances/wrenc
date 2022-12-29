@@ -66,6 +66,8 @@ class ObjFn : public Obj {
 
 	static ObjClass *Class();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	ClosureSpec *spec;
 
 	// The 'next' pointer in a linked list of functions used by the compiler to keep track of what functions

@@ -20,6 +20,8 @@ class ObjBool : public Obj {
 
 	static ObjClass *Class();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	WREN_METHOD(getter) std::string ToString();
 	WREN_METHOD(getter) bool OperatorBoolNegate();
 

@@ -12,6 +12,8 @@ class ObjSystem : public Obj {
 
 	static ObjClass *Class();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	WREN_METHOD() static void WriteString_(std::string value);
 
 	WREN_METHOD() static void Gc();

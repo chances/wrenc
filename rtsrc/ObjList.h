@@ -17,6 +17,8 @@ class ObjList : public Obj {
 
 	static ObjClass *Class();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	void ValidateIndex(int index, const char *argName) const;
 
 	WREN_METHOD() static ObjList *New();

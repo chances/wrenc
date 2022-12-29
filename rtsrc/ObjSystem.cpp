@@ -30,3 +30,8 @@ void ObjSystem::WriteString_(std::string value) {
 }
 
 void ObjSystem::Gc() { WrenRuntime::Instance().RunGC(); }
+
+void ObjSystem::MarkGCValues(GCMarkOps *ops) {
+	// This class doesn't have any constructors, so no instances of it should exist.
+	abort();
+}

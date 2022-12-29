@@ -17,3 +17,7 @@ ObjClass *ObjFibre::Class() {
 	static ObjFibreClass cls;
 	return &cls;
 }
+
+void ObjFibre::MarkGCValues(GCMarkOps *ops) {
+	// Fibres are not yet implemented.
+}

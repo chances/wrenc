@@ -160,6 +160,13 @@ void ObjMap::ValidateKey(Value key) {
 	errors::wrenAbort("Key must be a value type.");
 }
 
+void ObjMap::MarkGCValues(GCMarkOps *ops) {
+	for (const auto &[key, value] : m_contents) {
+		ops->ReportValue(ops, key);
+		ops->ReportValue(ops, value);
+	}
+}
+
 std::size_t simpleHash(Value value) {
 	// No particular logic in this, other than picking primes because that's usually a good idea?
 	return (value * 23) ^ ((11 * value) << 7) ^ (value >> 31);

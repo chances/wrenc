@@ -127,6 +127,8 @@ class ObjClass : public Obj {
 	/// be returned as a hex value. With allowUnknown not set, we'll crash if we don't know what it is.
 	static std::string LookupSignatureFromId(SignatureId id, bool allowUnknown);
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	// Wren functions:
 	WREN_METHOD(getter) std::string Name() const;
 	WREN_METHOD(getter) ObjClass *Supertype() const;

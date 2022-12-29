@@ -32,4 +32,6 @@ class ObjFibre : public Obj {
 	ObjFibre();
 
 	static ObjClass *Class();
+
+	void MarkGCValues(GCMarkOps *ops) override;
 };

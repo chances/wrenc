@@ -86,3 +86,7 @@ void ObjString::ValidateIndex(int index, const char *argName) const {
 		errors::wrenAbort("%s out of bounds.\n", argName);
 	}
 }
+
+void ObjString::MarkGCValues(GCMarkOps *ops) {
+	// Nothing to do.
+}

@@ -18,6 +18,8 @@ class ObjString : public Obj {
 	static ObjString *New(const std::string &value);
 	static ObjString *New(std::string &&value);
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	WREN_METHOD(getter) Value ToString();
 	// Maybe we should implement Count for performance? Otherwise wren_core does it.
 	WREN_METHOD(getter) int ByteCount_();

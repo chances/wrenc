@@ -62,6 +62,14 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	return result;
 }
 
+void ObjFn::MarkGCValues(GCMarkOps *ops) {
+	for (Value *valuePtr : upvaluePointers) {
+		ops->ReportValue(ops, *valuePtr);
+	}
+
+	// Don't include upvalueFixupList - it's a utility for the compiler and is never cleared.
+}
+
 struct SerialisedClosureSpec {
 	void *func;
 	const char *name;

@@ -69,3 +69,7 @@ std::string ObjRange::ToString() const {
 	str += ObjNumClass::Instance()->ToString(to);
 	return str;
 }
+
+void ObjRange::MarkGCValues(GCMarkOps *ops) {
+	// Nothing to be marked, only have numbers.
+}

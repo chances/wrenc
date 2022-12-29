@@ -19,6 +19,16 @@ class ObjRange;
 // A macro read by the bindings generator to mark a method as being accessible from Wren.
 #define WREN_METHOD(...)
 
+/// A collection of functions provided by the GC to objects which are reporting their contents.
+struct GCMarkOps {
+	void (*ReportValue)(GCMarkOps *thisObj, Value value);
+	void (*ReportValues)(GCMarkOps *thisObj, const Value *values, int count);
+
+	// Reporting null pointers is allowed.
+	void (*ReportObject)(GCMarkOps *thisObj, Obj *object);
+	void (*ReportObjects)(GCMarkOps *thisObj, Obj *const *objects, int count);
+};
+
 /// An object refers to basically anything accessible by Wren (maybe except for future inline classes).
 class Obj {
   public:
@@ -40,6 +50,12 @@ class Obj {
 	ObjClass *type = nullptr;
 
 	inline Value ToValue() { return encode_object(this); }
+
+	/// Called when the GC runs, and the object must report all object pointers or values it
+	/// contains. Not doing so could easily lead to freeing reachable objects.
+	/// The exception is that classes do not not need (and indeed, should not) mark their
+	/// type ObjClass instance - that's handled by the GC.
+	virtual void MarkGCValues(GCMarkOps *ops) = 0;
 
 	// By default, compare identity
 	WREN_METHOD() bool OperatorEqualTo(Value other);

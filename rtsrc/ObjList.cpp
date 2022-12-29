@@ -23,6 +23,8 @@ ObjClass *ObjList::Class() {
 	return &cls;
 }
 
+void ObjList::MarkGCValues(GCMarkOps *ops) { ops->ReportValues(ops, items.data(), items.size()); }
+
 void ObjList::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)items.size()) {
 		// TODO throw Wren error with this exact message

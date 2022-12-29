@@ -12,6 +12,8 @@ class ObjRange : public Obj {
 
 	ObjRange(double from, double to, bool inclusive = false);
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	double from = 0;
 	double to = 0;
 	bool inclusive = false;

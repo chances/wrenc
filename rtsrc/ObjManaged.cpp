@@ -15,6 +15,11 @@
 ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {}
 ObjManaged::~ObjManaged() = default;
 
+void ObjManaged::MarkGCValues(GCMarkOps *ops) {
+	ObjManagedClass *cls = (ObjManagedClass *)type;
+	ops->ReportValues(ops, fields, cls->totalFieldCount);
+}
+
 // Make sure the fields are at the end of the class, and there's no padding or anything like that interfering
 static_assert(sizeof(ObjManaged) == offsetof(ObjManaged, fields), "ObjManaged.fields are not at the end of the class!");
 
@@ -38,19 +43,23 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 	// guaranteed by CanScriptSubclass returning true).
 	ObjManagedClass *managedParent = dynamic_cast<ObjManagedClass *>(parentClass);
 
+	int fieldCount = this->spec->fields.size();
+
 	if (managedParent) {
 		// Our fields start where the parent class ended
 		fieldOffset = managedParent->size;
+		totalFieldCount = managedParent->totalFieldCount + fieldCount;
 	} else {
 		// Put the fields at the end of the class
 		fieldOffset = sizeof(ObjManaged);
+		totalFieldCount = fieldCount;
 	}
 
 	// Inherit our parent's methods
 	functions = parentClass->functions;
 
 	// Our size is the start of the field area plus the size taken by the fields
-	size = fieldOffset + this->spec->fields.size() * sizeof(Value);
+	size = fieldOffset + fieldCount * sizeof(Value);
 
 	InitialiseAttributes();
 }
@@ -141,6 +150,11 @@ ObjMap *ObjManagedClass::BuildAttributes(const AttributePack *attributes) {
 	}
 
 	return map;
+}
+
+void ObjManagedClass::MarkGCValues(GCMarkOps *ops) {
+	ObjClass::MarkGCValues(ops);
+	ops->ReportValue(ops, m_attributes);
 }
 
 ObjManagedMetaClass::ObjManagedMetaClass() {

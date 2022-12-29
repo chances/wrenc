@@ -14,6 +14,8 @@ class ObjMap : public Obj {
 
 	ObjMap();
 
+	void MarkGCValues(GCMarkOps *ops) override;
+
 	WREN_METHOD() static ObjMap *New();
 
 	WREN_METHOD() void Clear();
