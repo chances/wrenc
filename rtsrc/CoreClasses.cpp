@@ -29,6 +29,11 @@ CoreClasses::CoreClasses() {
 	// Bind the Obj and ObjClass functions
 	ObjClass::Bind(&m_object, "Obj", false);
 	ObjClass::Bind(&m_rootClass, "ObjClass", false);
+
+	// Bind the metaclass last, since it inherits it's methods from ObjClass.
+	// Without this, you couldn't call 'Object.name' as that's inherited from ObjClass.
+	m_objectMeta.functions = m_objectMeta.parentClass->functions;
+	ObjClass::Bind(&m_objectMeta, "Obj", true);
 }
 
 CoreClasses *CoreClasses::Instance() {
