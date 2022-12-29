@@ -437,6 +437,18 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		pb.registerLoopAnalyses(lam);
 		pb.crossRegisterProxies(lam, fam, cgam, mam);
 
+		// If we're going to run RS4GC, we ALWAYS ALWAYS have to run mem2reg before it. RS4GC ignores
+		// values intentionally placed on the stack with alloca, so if there's anything that doesn't
+		// get moved to registers we can end up freeing something that's still reachable!
+		// Fortunately, mem2reg is guaranteed to pick up all our local variable allocations (for the specific
+		// logic see llvm::isAllocaPromotable, but in short if it's just non-volatile loads/stores and
+		// the pointer to the alloca-d region is never passed to anything else, then it'll always be transformed).
+		// Do this first, before anything else, as moving our local variables from the heap to registers is a
+		// pretty essential pass for basically everything else.
+		pb.registerPipelineStartEPCallback([](llvm::ModulePassManager &mpm, llvm::OptimizationLevel level) {
+			mpm.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::PromotePass()));
+		});
+
 		llvm::ModulePassManager mpm;
 		if (level == llvm::OptimizationLevel::O0) {
 			mpm = pb.buildO0DefaultPipeline(level);
