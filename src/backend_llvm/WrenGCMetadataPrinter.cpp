@@ -163,6 +163,12 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 				abort();
 			}
 
+			// If we've found a constant, that'll be for a floating-point literal that RS4GC found, and can safely
+			// be ignored (after all, we don't have the address of anything dynamically allocated at compile time).
+			if (base.Type == SM::Location::Constant || base.Type == SM::Location::ConstantIndex) {
+				continue;
+			}
+
 			// Everything should be spilled onto the stack, so it can be relocated.
 			if (base.Type != SM::Location::Indirect) {
 				fmt::print(stderr, "Found non-indirect stackmap entry\n");

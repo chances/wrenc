@@ -20,6 +20,7 @@
 #include "Utils.h"
 #include "common.h"
 
+#include <fmt/format.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -32,6 +33,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Host.h>
@@ -40,11 +42,10 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Transforms/Scalar/RewriteStatepointsForGC.h>
-
-#include <fmt/format.h>
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
+#include <llvm/Transforms/Utils/Mem2Reg.h>
 
 #include <fstream>
-#include <llvm/Passes/PassBuilder.h>
 #include <map>
 
 using CInt = llvm::ConstantInt;
@@ -189,6 +190,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_registerSignatureTable;
 	llvm::FunctionCallee m_importModule;
 	llvm::FunctionCallee m_getModuleVariable;
+	llvm::FunctionCallee m_dummyPtrBitcast;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
@@ -203,7 +205,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::DIFile *m_dbgFile = nullptr;
 	llvm::DICompileUnit *m_dbgCompileUnit = nullptr;
 
-	llvm::Constant *m_nullValue = nullptr;
+	llvm::Constant *m_nullValue = nullptr; // This must NOT be used in function bodies - see m_dummyPtrBitcast
 	llvm::Constant *m_nullPointer = nullptr;
 
 	std::map<std::string, llvm::GlobalVariable *> m_systemVars;
@@ -296,6 +298,24 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	llvm::FunctionType *getModuleVariableType =
 	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType}, false);
 	m_getModuleVariable = m_module.getOrInsertFunction("wren_get_module_global", getModuleVariableType);
+
+	// RS4GC really doesn't like inttoptr bitcasts, and they make it think one value is derived from another.
+	// See https://llvm.org/docs/Statepoints.html#mixing-references-and-raw-pointers
+	// To solve this, we make a dummy function that's not implemented anywhere that takes an i64 and produces
+	// a value (which itself is a pointer in a different address space). We'll then replace it with a real
+	// bitcast after running RS4GC.
+	llvm::AttributeSet castAttrs = llvm::AttributeSet::get(m_context,
+	    {
+	        llvm::Attribute::getWithMemoryEffects(m_context, llvm::MemoryEffects::none()),
+	        llvm::Attribute::get(m_context, llvm::Attribute::NoUnwind),
+	        llvm::Attribute::get(m_context, llvm::Attribute::WillReturn),
+	        llvm::Attribute::get(m_context, "gc-leaf-function"),
+	    });
+	llvm::AttributeList castAttrList =
+	    llvm::AttributeList::get(m_context, llvm::AttributeList::FunctionIndex, castAttrs);
+
+	llvm::FunctionType *dummyPtrCastType = llvm::FunctionType::get(m_valueType, {m_int64Type}, false);
+	m_dummyPtrBitcast = m_module.getOrInsertFunction("!!dummy_ptr_bitcast", dummyPtrCastType, castAttrList);
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOptions *options) {
@@ -430,6 +450,31 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		mpm.addPass(llvm::RewriteStatepointsForGC());
 
 		mpm.run(m_module, mam);
+	}
+
+	// Replace all usages of our bitcast function with a real function, now we're done with the RS4GC pass.
+	for (llvm::User *user : m_dummyPtrBitcast.getCallee()->users()) {
+		llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(user);
+		if (!call) {
+			fmt::print(stderr, "dummy bitcast used by non-call user: {}\n", user->getName());
+			user->print(llvm::errs());
+			abort();
+		}
+
+		llvm::Value *arg = call->getArgOperand(0);
+		llvm::Constant *constArg = llvm::dyn_cast<llvm::Constant>(arg);
+
+		if (constArg) {
+			llvm::Constant *asPtr = llvm::ConstantExpr::getIntToPtr(constArg, m_valueType);
+
+			llvm::BasicBlock::iterator iter(call);
+			llvm::ReplaceInstWithValue(iter, asPtr);
+		} else {
+			// TODO if we need to support non-constant ints, use BitCastInst and ReplaceInstWithInst
+			fmt::print(stderr, "dummy bitcast used with non-const arg (not implemented): {}\n", user->getName());
+			user->print(llvm::errs());
+			abort();
+		}
 	}
 
 	// Print out the LLVM IR for debugging
@@ -1279,9 +1324,12 @@ void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
 ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	llvm::Value *value;
 	switch (node->value.type) {
-	case CcValue::NULL_TYPE:
-		value = m_nullValue;
+	case CcValue::NULL_TYPE: {
+		// We can't use m_nullValue in a function body, we have to use the dummy cast function so as
+		// to avoid confusing the RS4GC pass.
+		value = m_builder.CreateCall(m_dummyPtrBitcast, {CInt::get(m_int64Type, NULL_VAL)});
 		break;
+	}
 	case CcValue::STRING: {
 		llvm::Value *ptr = GetManagedStringValue(node->value.s);
 		std::string name = "strobj_" + FilterStringLiteral(node->value.s);
@@ -1298,7 +1346,7 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	case CcValue::NUM: {
 		// Since valueType is a pointer, we have to produce the value as an integer then cast it in
 		llvm::Constant *intValue = CInt::get(m_int64Type, encode_number(node->value.n));
-		value = llvm::ConstantExpr::getIntToPtr(intValue, m_valueType);
+		value = m_builder.CreateCall(m_dummyPtrBitcast, {intValue});
 		break;
 	}
 	default:
