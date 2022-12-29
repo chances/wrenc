@@ -120,11 +120,13 @@ bool ObjClass::Extends(ObjClass *other) {
 	return false;
 }
 
+std::string ObjClass::GetDefaultMetaclassName() { return name + " metaclass"; }
+
 ObjNativeClass::ObjNativeClass(const std::string &name, const std::string &bindingName) {
 	type = &m_defaultMetaClass;
 	this->name = name;
 
-	m_defaultMetaClass.name = name;
+	m_defaultMetaClass.name = GetDefaultMetaclassName();
 	m_defaultMetaClass.parentClass = m_defaultMetaClass.type = &CoreClasses::Instance()->RootClass();
 	m_defaultMetaClass.isMetaClass = true;
 

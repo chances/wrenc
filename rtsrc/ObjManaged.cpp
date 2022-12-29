@@ -23,7 +23,7 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 
 	type = &meta;
 	this->name = name;
-	meta.name = name + " metaclass";
+	meta.name = GetDefaultMetaclassName();
 	parentClass = parent ? parent : &CoreClasses::Instance()->Object();
 
 	// Note the root-level ObjClass returns false, but it can be safely subclassed anyway (read the

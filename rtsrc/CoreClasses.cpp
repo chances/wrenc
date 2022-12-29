@@ -17,7 +17,7 @@ CoreClasses::CoreClasses() {
 	m_object.type = &m_objectMeta;
 
 	// Normally we wouldn't make the metaclass ourselves, but for Object it's a bit special.
-	m_objectMeta.name = m_object.name;
+	m_objectMeta.name = m_object.GetDefaultMetaclassName();
 	m_objectMeta.isMetaClass = true;
 	m_objectMeta.parentClass = &m_rootClass;
 	m_objectMeta.type = &m_rootClass;

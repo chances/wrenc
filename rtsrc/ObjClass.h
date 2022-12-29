@@ -145,6 +145,10 @@ class ObjClass : public Obj {
 	/// The implementation of this function itself is auto-generated.
 	static void Bind(ObjClass *cls, const std::string &type, bool isMetaClass);
 
+	/// Get the name the metaclass should be. This is intended for use when setting up the metaclass, not
+	/// for looking it up later or anything like that.
+	std::string GetDefaultMetaclassName();
+
 	// CoreClasses needs to be able to bind methods
 	friend CoreClasses;
 };
