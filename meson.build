@@ -9,22 +9,7 @@ fmt = declare_dependency(
   include_directories: ['lib/fmt-8.1.1/include'],
 )
 
-subdir('lib/antlr')
 subdir('lib/qbe-1.0')
-
-java = find_program('java')
-antlr_src = custom_target('gen_antlr',
-  input: ['lib/antlr/antlr-4.10.1-complete.jar', 'src/Wren.g4'],
-  output: [
-    'WrenBaseListener.cpp',
-    'WrenListener.cpp',
-    'WrenBaseVisitor.cpp',
-    'WrenVisitor.cpp',
-    'WrenLexer.cpp',
-    'WrenParser.cpp',
-  ],
-  command: [java, '-jar', '@INPUT0@', '@INPUT1@', '-o', '@OUTDIR@', '-Dlanguage=Cpp', '-Xexact-output-dir', '-visitor'],
-)
 
 llvm = dependency('llvm',
   required: get_option('use_llvm'),
@@ -112,10 +97,8 @@ wrenc = executable('wrencc',
   'src/passes/BasicBlockPass.cpp',
   'src/backend_qbe/QbeBackend.cpp',
   'src/backend_llvm/LLVMBackend.cpp',
-  antlr_src,
 
   dependencies: [
-    antlr,
     fmt,
     common,
     llvm,
