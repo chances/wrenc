@@ -5,6 +5,7 @@
 #include "IRPrinter.h"
 #include "ClassInfo.h"
 #include "CompContext.h"
+#include "HashUtil.h"
 #include "Scope.h"
 
 #include <memory>
@@ -33,6 +34,7 @@ void IRPrinter::FullTag(const std::string &str) {
 void IRPrinter::StartTag(const std::string &str, bool isInline) {
 	m_tagStack.emplace_back(Tag{
 	    .header = str,
+	    .indent = "  ",
 	    .isInline = isInline,
 	});
 }
@@ -42,19 +44,17 @@ void IRPrinter::EndTag() {
 	std::stringstream result;
 	result << "[" << tag.header;
 
-	std::string indent = "  ";
-
 	for (std::string part : tag.components) {
 		if (tag.isInline)
 			result << " ";
 		else
-			result << "\n" << indent;
+			result << "\n" << tag.indent;
 
 		// Add a level of indentation
 		for (int i = part.length() - 1; i >= 0; i--) {
 			if (part.at(i) != '\n')
 				continue;
-			part.insert(i + 1, indent);
+			part.insert(i + 1, tag.indent);
 		}
 
 		result << part;
@@ -128,7 +128,8 @@ void IRPrinter::VisitExprFuncCall(ExprFuncCall *node) {
 	IRVisitor::VisitExprFuncCall(node);
 }
 void IRPrinter::VisitStmtLabel(StmtLabel *node) {
-	m_tagStack.back().header += " id:" + GetLabelId(node);
+	// Don't colourise the label name - this way, the colours always indicate a jump
+	m_tagStack.back().header += " id:" + GetLabelId(node, false);
 	IRVisitor::VisitStmtLabel(node);
 }
 void IRPrinter::VisitStmtJump(StmtJump *node) {
@@ -137,11 +138,11 @@ void IRPrinter::VisitStmtJump(StmtJump *node) {
 		header += " LOOPING";
 	if (node->jumpOnFalse)
 		header += " INVERTED";
-	header += " target:" + GetLabelId(node->target);
+	header += " target:" + GetLabelId(node->target, true);
 	IRVisitor::VisitStmtJump(node);
 }
 
-std::string IRPrinter::GetLabelId(StmtLabel *label) {
+std::string IRPrinter::GetLabelId(StmtLabel *label, bool colourise) {
 	if (label == nullptr)
 		return "null";
 
@@ -158,6 +159,13 @@ std::string IRPrinter::GetLabelId(StmtLabel *label) {
 	if (!label->debugName.empty())
 		str += label->debugName + " ";
 	str += std::to_string(id);
+
+	// If we're in basic-block form, colour-code the name to match the basic block it's contained in.
+	// This just makes it easier to see what's jumping where at a glance.
+	if (label->basicBlock && colourise) {
+		str = Colourise(label->basicBlock, str);
+	}
+
 	return str;
 }
 
@@ -208,4 +216,53 @@ void IRPrinter::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {
 	for (LocalVariable *var : node->variables)
 		m_tagStack.back().header += " " + var->name;
 	IRVisitor::VisitStmtRelocateUpvalues(node);
+}
+
+void IRPrinter::VisitBlock(StmtBlock *node) {
+	if (node->isBasicBlock) {
+		Tag &tag = m_tagStack.back();
+		tag.header += " BASIC";
+		tag.indent = Colourise(node, "| ");
+	}
+
+	IRVisitor::VisitBlock(node);
+}
+
+std::string IRPrinter::Colourise(const void *ptr, const std::string &input) {
+	// Make up an HSV colour for this item, which we can use to refer to it in jump nodes etc
+	// See https://en.wikipedia.org/wiki/HSL_and_HSV#HSV_to_RGB
+	// We'll do this by hashing the pointer - not a particularly elegant way to do things, but it works
+	int hue = hash_util::hashData((const uint8_t *)&ptr, sizeof(void *), 1234) % 360;
+
+	int chroma = 255; // Assuming saturation and value are both 1
+	int section = hue / 60;
+	int minor = hue % 60;
+	if (section % 2 == 1)
+		minor = 60 - minor;
+	minor = (minor * 255) / 60;
+	struct {
+		int r, g, b;
+	} colour;
+	switch (section) {
+	case 0:
+		colour = {chroma, minor, 0};
+		break;
+	case 1:
+		colour = {minor, chroma, 0};
+		break;
+	case 2:
+		colour = {0, chroma, minor};
+		break;
+	case 3:
+		colour = {0, minor, chroma};
+		break;
+	case 4:
+		colour = {minor, 0, chroma};
+		break;
+	case 5:
+		colour = {chroma, 0, minor};
+		break;
+	}
+
+	return fmt::format("\x1b[38;2;{};{};{}m{}\x1b[m", colour.r, colour.g, colour.b, input);
 }

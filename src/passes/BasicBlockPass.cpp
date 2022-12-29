@@ -2,8 +2,8 @@
 // Created by znix on 28/12/22.
 //
 
-#include "ArenaAllocator.h"
 #include "BasicBlockPass.h"
+#include "ArenaAllocator.h"
 
 #include <fmt/format.h>
 
@@ -46,11 +46,13 @@ void BasicBlockPass::Process(IRFn *fn) {
 			// Then put the label as the first instruction of the new block
 			current = CreateBasicBlock();
 			current->statements.push_back(statement);
+			statement->basicBlock = current;
 
 			continue;
 		}
 
 		current->statements.push_back(statement);
+		statement->basicBlock = current;
 
 		// Unconditional branches (which includes returns) end the current block, without a proceeding one. No
 		// statements should appear until the next label.

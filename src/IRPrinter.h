@@ -18,6 +18,7 @@ class IRPrinter : private IRVisitor {
   private:
 	struct Tag {
 		std::string header;
+		std::string indent;
 		std::vector<std::string> components;
 		bool isInline = false;
 	};
@@ -41,8 +42,12 @@ class IRPrinter : private IRVisitor {
 	void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) override;
 	void VisitExprClosure(ExprClosure *node) override;
 	void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) override;
+	void VisitBlock(StmtBlock *node) override;
 
-	std::string GetLabelId(StmtLabel *label);
+	std::string GetLabelId(StmtLabel *label, bool colourise);
+
+	/// Colourise (using ANSI escape codes) a given string, with a colour derived by hashing a pointer.
+	static std::string Colourise(const void *ptr, const std::string &input);
 
 	std::vector<Tag> m_tagStack;
 	std::unique_ptr<std::stringstream> m_stream;

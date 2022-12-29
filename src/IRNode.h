@@ -25,6 +25,7 @@ class ClassInfo;       // From ClassInfo.h
 class MethodInfo;      // From ClassInfo.h
 class IRVisitor;
 class IRPrinter;
+class StmtBlock;
 
 // //////////////////// //
 // //// INTERFACES //// //
@@ -205,6 +206,9 @@ class IRImport : public IRNode {
 class IRStmt : public IRNode {
   public:
 	virtual bool IsUnconditionalBranch();
+
+	/// If this statement is contained within a basic block, then this points to that block.
+	StmtBlock *basicBlock = nullptr;
 };
 
 /// Assign a value to a local or global variable
