@@ -10,3 +10,7 @@ AlignAfterOpenBracket: DontAlign
 
 # Try to avoid putting *all* the arguments on one line.
 PenaltyBreakOpenParenthesis: 20
+
+# If we're passing an array into a function as a non-first argument, this is required to make it break
+# and not align to keep everything left.
+AlignOperands: DontAlign
