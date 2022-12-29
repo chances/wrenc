@@ -88,6 +88,8 @@ void WrenRuntime::RunGC() {
 		m_gcScanner = std::make_unique<GCTracingScanner>();
 	}
 
+	m_gcScanner->BeginGCCycle();
 	// TODO when we support multithreading, mark all the threads
 	m_gcScanner->MarkCurrentThreadRoots();
+	m_gcScanner->EndGCCycle();
 }

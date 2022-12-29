@@ -13,10 +13,25 @@
 
 #include <cstdio>
 #include <libunwind.h>
+#include <stdint.h>
 
 using SMD = StackMapDescription;
 
 constexpr bool PRINT_STACK_WALK_DBG = false;
+
+// This is a simple tri-colour GC. Each object can be marked as black (unvisited, might be unreachable), grey (reachable
+// but we haven't yet examined it) and white (reachable and we have examined it). All reachable objects are first
+// marked as grey, and later on when the object is analysed and objects reachable via it are marked as grey, it
+// changes to white to indicate further analysis isn't required.
+//
+// We have a single 64-bit value reserved in the object for our use. We'll use this to store both the current colour
+// of the object, and as a linked list of all the grey objects. We'll have a number that the GC considers white,
+// and any object marked with that number is white. Any object marked with a different number is black (they might
+// have been white in a previous GC cycle, but the global white-ness number will change with each cycle to avoid
+// having to edit this word for every object between cycles. Anything with a pointer will be grey.
+// We'll encode numbers and pointers using our standard NaN-tagging system. There's no reason we have to use it
+// instead of any other scheme, as the GC is the only thing that uses this word, but it's convenient since we already
+// have it available.
 
 GCTracingScanner::GCTracingScanner() {
 	// Build the functions list
@@ -39,6 +54,17 @@ GCTracingScanner::GCTracingScanner() {
 }
 
 GCTracingScanner::~GCTracingScanner() {}
+
+void GCTracingScanner::BeginGCCycle() {
+	// Make sure there wasn't an ongoing GC cycle previously.
+	if (m_greyList) {
+		fprintf(stderr, "Started a GC cycle with remaining grey objects - this is not allowed!\n");
+		abort();
+	}
+
+	// This effectively clears out the old root set. Any previously-white values are redefined as black.
+	m_currentWhiteNumber++;
+}
 
 void GCTracingScanner::MarkCurrentThreadRoots() {
 	unw_cursor_t cursor;
@@ -95,10 +121,81 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 
 void GCTracingScanner::MarkValueAsRoot(Value value) {
 	// Numbers and null don't need marking
-	if (value == NULL_VAL || is_value_float(value))
+	if (is_value_float(value))
 		return;
 
-	// TODO implement
-	std::string str = Obj::ToString(value);
-	printf("TODO IMPLEMENT: Marking object '%s' as GC root\n", str.c_str());
+	AddToGreyList(get_object_value(value));
+}
+
+void GCTracingScanner::AddToGreyList(Obj *obj) {
+	if (!obj)
+		return;
+
+	Value gcWord = (Value)obj->gcWord;
+
+	// If we've found an already-grey value, then we don't need to do anything.
+	if (is_object(gcWord))
+		return;
+
+	// Similarly, white objects have already been scanned.
+	if (get_number_value(gcWord) == m_currentWhiteNumber)
+		return;
+
+	// Mark an object as grey by inserting it into the linked list of grey objects
+	obj->gcWord = encode_object(m_greyList);
+	m_greyList = obj;
+}
+
+void GCTracingScanner::EndGCCycle() {
+	// Walk over all the objects, effectively performing a depth-first (since we're using a singly-linked list and
+	// are thus inserting and removing at the same end, we can only do depth-first walks - but that's just fine).
+
+	MarkOpsImpl ops = {};
+	ops.ReportValue = OpsReportValue;
+	ops.ReportValues = OpsReportValues;
+	ops.ReportObject = OpsReportObject;
+	ops.ReportObjects = OpsReportObjects;
+	ops.scanner = this;
+
+	while (m_greyList) {
+		Obj *obj = m_greyList;
+		Value gcWord = (Value)obj->gcWord;
+		if (!is_object(gcWord)) {
+			fprintf(stderr,
+			    "Found object with non-grey GC word in the grey list. White marker %x, encoded word %" PRIx64 ".",
+			    m_currentWhiteNumber, gcWord);
+			abort();
+		}
+		m_greyList = get_object_value(gcWord);
+
+		obj->MarkGCValues(&ops);
+	}
+
+	// TODO deallocate all black objects, as we've confirmed they're unreachable.
+}
+
+void GCTracingScanner::OpsReportValue(GCMarkOps *thisObj, Value value) {
+	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
+
+	if (is_object(value))
+		impl->scanner->AddToGreyList(get_object_value(value));
+}
+void GCTracingScanner::OpsReportValues(GCMarkOps *thisObj, const Value *values, int count) {
+	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
+
+	for (int i = 0; i < count; i++) {
+		Value value = values[i];
+		if (is_object(value))
+			impl->scanner->AddToGreyList(get_object_value(value));
+	}
+}
+void GCTracingScanner::OpsReportObject(GCMarkOps *thisObj, Obj *object) {
+	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
+	impl->scanner->AddToGreyList(object);
+}
+void GCTracingScanner::OpsReportObjects(GCMarkOps *thisObj, Obj *const *objects, int count) {
+	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
+	for (int i = 0; i < count; i++) {
+		impl->scanner->AddToGreyList(objects[count]);
+	}
 }
