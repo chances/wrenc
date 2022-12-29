@@ -6,9 +6,11 @@
 
 #include "ObjClass.h"
 
-class ObjSystem : public ObjNativeClass {
+class ObjSystem : public Obj {
   public:
 	ObjSystem();
+
+	static ObjClass *Class();
 
 	WREN_METHOD() static void WriteString_(std::string value);
 

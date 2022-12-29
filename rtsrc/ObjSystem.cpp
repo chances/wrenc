@@ -7,7 +7,20 @@
 #include "Errors.h"
 #include "WrenRuntime.h"
 
-ObjSystem::ObjSystem() : ObjNativeClass("System", "ObjSystem") {}
+class ObjSystemClass : public ObjNativeClass {
+  public:
+	ObjSystemClass() : ObjNativeClass("System", "ObjSystem") {}
+};
+
+ObjSystem::ObjSystem() : Obj(Class()) {
+	printf("Cannot instantiate System!\n");
+	abort();
+}
+
+ObjClass *ObjSystem::Class() {
+	static ObjSystemClass sysClass;
+	return &sysClass;
+}
 
 void ObjSystem::WriteString_(std::string value) {
 	int result = write(1 /* stdout */, value.c_str(), value.size());

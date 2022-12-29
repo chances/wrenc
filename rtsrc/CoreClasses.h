@@ -24,16 +24,10 @@ class CoreClasses {
 	/// The class every other class eventually uses as it's superclass
 	inline ObjClass &RootClass() { return m_rootClass; }
 
-	ObjSystem *System();
-	ObjClass *String();
-
   private:
 	CoreClasses();
 
 	ObjClass m_object;
 	ObjClass m_objectMeta;
 	ObjClass m_rootClass;
-
-	// All other classes must be lazy-initialised to avoid them calling Instance while it's first running
-	std::unique_ptr<ObjSystem> m_system;
 };

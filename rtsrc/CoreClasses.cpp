@@ -5,7 +5,6 @@
 #include "CoreClasses.h"
 
 #include "ObjString.h"
-#include "ObjSystem.h"
 
 CoreClasses::~CoreClasses() = default;
 
@@ -36,11 +35,3 @@ CoreClasses *CoreClasses::Instance() {
 	static CoreClasses instance;
 	return &instance;
 }
-
-ObjSystem *CoreClasses::System() {
-	if (!m_system)
-		m_system = std::make_unique<ObjSystem>();
-	return m_system.get();
-}
-
-ObjClass *CoreClasses::String() { return ObjString::Class(); }

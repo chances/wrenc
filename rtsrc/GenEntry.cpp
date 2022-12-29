@@ -280,7 +280,7 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("List", ObjList::Class()->ToValue());
 	GET_CLASS("Num", ObjNumClass::Instance()->ToValue());
 	GET_CLASS("String", ObjString::Class()->ToValue());
-	GET_CLASS("System", CoreClasses::Instance()->System()->ToValue());
+	GET_CLASS("System", ObjSystem::Class()->ToValue());
 	GET_CLASS("Range", ObjRange::Class()->ToValue());
 	GET_CLASS("Null", ObjNull::Class()->ToValue());
 	GET_CLASS("Map", ObjMap::Class()->ToValue());

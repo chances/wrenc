@@ -12,12 +12,9 @@
 class ObjClass;
 
 // These other classes aren't so special, they're just declared here for convenience.
-class ObjSystem;
 class ObjMap;
 class ObjString;
-class ObjNull;
 class ObjRange;
-class ObjSequence;
 
 // A macro read by the bindings generator to mark a method as being accessible from Wren.
 #define WREN_METHOD(...)
