@@ -11,6 +11,7 @@
 #include "GenEntry.h"
 #include "ObjClass.h"
 #include "RtModule.h"
+#include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
 
 extern "C" {
@@ -19,7 +20,7 @@ void wren_core_3a_3a__root_func();
 void *wren_core_get_globals();
 }
 
-WrenRuntime::WrenRuntime() {}
+WrenRuntime::WrenRuntime() : m_objectAllocator(std::make_unique<SlabObjectAllocator>()) {}
 WrenRuntime::~WrenRuntime() {}
 
 WrenRuntime &WrenRuntime::Instance() {
@@ -42,6 +43,8 @@ void WrenRuntime::Initialise() {
 
 	ObjNativeClass::FinaliseSetup();
 }
+
+SlabObjectAllocator *WrenRuntime::GetObjectAllocator() { return m_objectAllocator.get(); }
 
 Value WrenRuntime::GetCoreGlobal(const std::string &name) {
 	Value *global = m_coreModule->GetOrNull(name);

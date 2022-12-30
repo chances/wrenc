@@ -5,7 +5,7 @@
 #include "ObjString.h"
 #include "Errors.h"
 #include "ObjBool.h"
-#include "WrenRuntime.h"
+#include "SlabObjectAllocator.h"
 
 class ObjStringClass : public ObjNativeClass {
   public:
@@ -20,13 +20,13 @@ ObjNativeClass *ObjString::Class() {
 ObjString::ObjString() : Obj(Class()) {}
 
 ObjString *ObjString::New(const std::string &value) {
-	ObjString *obj = WrenRuntime::Instance().New<ObjString>();
+	ObjString *obj = SlabObjectAllocator::GetInstance()->AllocateNative<ObjString>();
 	obj->m_value = value;
 	return obj;
 }
 
 ObjString *ObjString::New(std::string &&value) {
-	ObjString *obj = WrenRuntime::Instance().New<ObjString>();
+	ObjString *obj = SlabObjectAllocator::GetInstance()->AllocateNative<ObjString>();
 	obj->m_value = std::move(value);
 	return obj;
 }
@@ -64,7 +64,7 @@ Value ObjString::IterateImpl(Value previous, bool unicode) const {
 	// TODO unicode handling
 	position++;
 
-	if (position >= m_value.size())
+	if (position >= (int)m_value.size())
 		return encode_object(ObjBool::Get(false));
 
 	return encode_number(position);

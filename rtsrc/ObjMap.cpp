@@ -9,7 +9,7 @@
 #include "ObjClass.h"
 #include "ObjRange.h"
 #include "ObjString.h"
-#include "WrenRuntime.h"
+#include "SlabObjectAllocator.h"
 
 class ObjMapClass : public ObjNativeClass {
   public:
@@ -23,7 +23,7 @@ ObjClass *ObjMap::Class() {
 
 ObjMap::ObjMap() : Obj(Class()) {}
 
-ObjMap *ObjMap::New() { return WrenRuntime::Instance().New<ObjMap>(); }
+ObjMap *ObjMap::New() { return SlabObjectAllocator::GetInstance()->AllocateNative<ObjMap>(); }
 
 void ObjMap::Clear() { m_contents.clear(); }
 

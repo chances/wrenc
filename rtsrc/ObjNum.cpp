@@ -6,7 +6,7 @@
 
 #include "Errors.h"
 #include "ObjRange.h"
-#include "WrenRuntime.h"
+#include "SlabObjectAllocator.h"
 
 #include <math.h>
 
@@ -128,10 +128,10 @@ bool ObjNumClass::OperatorGreaterThan(double receiver, double other) { return re
 bool ObjNumClass::OperatorGreaterThanEq(double receiver, double other) { return receiver >= other; }
 
 ObjRange *ObjNumClass::OperatorDotDot(double receiver, double other) {
-	return WrenRuntime::Instance().New<ObjRange>(receiver, other, true);
+	return SlabObjectAllocator::GetInstance()->AllocateNative<ObjRange>(receiver, other, true);
 }
 ObjRange *ObjNumClass::OperatorDotDotDot(double receiver, double other) {
-	return WrenRuntime::Instance().New<ObjRange>(receiver, other, false);
+	return SlabObjectAllocator::GetInstance()->AllocateNative<ObjRange>(receiver, other, false);
 }
 
 // NOLINTEND(readability-convert-member-functions-to-static)

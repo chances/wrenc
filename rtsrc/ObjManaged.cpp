@@ -12,7 +12,12 @@
 #include "WrenRuntime.h"
 #include "common/ClassDescription.h"
 
-ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {}
+ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {
+	// Null-initialise all the fields
+	for (int i = 0; i < type->totalFieldCount; i++) {
+		fields[i] = NULL_VAL;
+	}
+}
 ObjManaged::~ObjManaged() = default;
 
 void ObjManaged::MarkGCValues(GCMarkOps *ops) {
@@ -118,7 +123,7 @@ void ObjManagedClass::InitialiseAttributes() {
 
 ObjMap *ObjManagedClass::BuildAttributes(const AttributePack *attributes) {
 	// The map should be null if there's nothing in it, so we lazy-initialise it
-	ObjMap *map = attributes->attributes.empty() ? nullptr : WrenRuntime::Instance().New<ObjMap>();
+	ObjMap *map = attributes->attributes.empty() ? nullptr : ObjMap::New();
 
 	std::map<std::string, ObjMap *> groups;
 

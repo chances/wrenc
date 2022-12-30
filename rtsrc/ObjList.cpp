@@ -6,7 +6,7 @@
 #include "Errors.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
-#include "WrenRuntime.h"
+#include "SlabObjectAllocator.h"
 
 #include <sstream>
 
@@ -32,7 +32,7 @@ void ObjList::ValidateIndex(int index, const char *argName) const {
 	}
 }
 
-ObjList *ObjList::New() { return WrenRuntime::Instance().New<ObjList>(); }
+ObjList *ObjList::New() { return SlabObjectAllocator::GetInstance()->AllocateNative<ObjList>(); }
 
 Value ObjList::Add(Value toAdd) {
 	items.push_back(toAdd);

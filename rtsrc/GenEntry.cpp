@@ -22,6 +22,7 @@
 #include "ObjString.h"
 #include "ObjSystem.h"
 #include "RtModule.h"
+#include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
 #include "common.h"
 #include "common/ClassDescription.h"
@@ -111,8 +112,7 @@ void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signatu
 }
 
 Value wren_init_string_literal(const char *literal, int length) {
-	ObjString *str = WrenRuntime::Instance().New<ObjString>();
-	str->m_value = std::string(literal, length);
+	ObjString *str = ObjString::New(std::string(literal, length));
 	return encode_object(str);
 }
 
@@ -200,15 +200,7 @@ Value wren_alloc_obj(Value classVar) {
 	}
 
 	// We have to allocate managed objects specially, to account for their variable-sized field area
-	void *mem = WrenRuntime::Instance().AllocateMem(cls->size, alignof(ObjManaged));
-	memset(mem, 0, cls->size);                   // Zero as a matter of good practice
-	ObjManaged *obj = new (mem) ObjManaged(cls); // Initialise with placement-new
-
-	// Null-initialise all the fields
-	Value *fieldsEnd = (Value *)((uint64_t)obj + cls->size);
-	for (Value *i = obj->fields; i < fieldsEnd; i++) {
-		*i = NULL_VAL;
-	}
+	ObjManaged *obj = WrenRuntime::Instance().GetObjectAllocator()->AllocateManaged(cls);
 
 	return encode_object(obj);
 }
@@ -237,7 +229,7 @@ Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, Ob
 	}
 
 	// Stack may be null if we have no upvalues
-	ObjFn *closure = WrenRuntime::Instance().New<ObjFn>(spec, stack, upvalueTable);
+	ObjFn *closure = SlabObjectAllocator::GetInstance()->AllocateNative<ObjFn>(spec, stack, upvalueTable);
 
 	// Add this object to the linked list of all the other functions of the same type that have been created
 	// This is used for tracking which closures need to be fixed up when their upvalues escape.

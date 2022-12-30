@@ -12,6 +12,7 @@
 
 class RtModule;
 class GCTracingScanner;
+class SlabObjectAllocator;
 
 class WrenRuntime {
   public:
@@ -28,6 +29,8 @@ class WrenRuntime {
 	void *AllocateMem(int size, int alignment);
 	// TODO freeing memory
 
+	SlabObjectAllocator *GetObjectAllocator();
+
 	DLL_EXPORT Value GetCoreGlobal(const std::string &name);
 
 	DLL_EXPORT RtModule *GetOrInitModule(void *getGlobalsFunction);
@@ -41,6 +44,7 @@ class WrenRuntime {
 	std::unique_ptr<RtModule> m_coreModule;
 	std::unordered_map<void *, std::unique_ptr<RtModule>> m_userModules;
 
+	std::unique_ptr<SlabObjectAllocator> m_objectAllocator;
 	std::unique_ptr<GCTracingScanner> m_gcScanner;
 
 	// The GC needs special access to all the loaded modules
