@@ -16,5 +16,7 @@ class ObjSystem : public Obj {
 
 	WREN_METHOD() static void WriteString_(std::string value);
 
+	WREN_METHOD(getter) static double Clock();
+
 	WREN_METHOD() static void Gc();
 };

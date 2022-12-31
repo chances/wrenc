@@ -35,3 +35,8 @@ void ObjSystem::MarkGCValues(GCMarkOps *ops) {
 	// This class doesn't have any constructors, so no instances of it should exist.
 	abort();
 }
+
+double ObjSystem::Clock() {
+	// This is the same implementation as Wren, so it should be accurate.
+	return (double)clock() / CLOCKS_PER_SEC;
+}
