@@ -39,7 +39,7 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 	// Note the root-level ObjClass returns false, but it can be safely subclassed anyway (read the
 	// comment on CanScriptSubclass to see why).
 	if (!parentClass->CanScriptSubclass() && parentClass != &CoreClasses::Instance()->Object()) {
-		errors::wrenAbort("Class '%s' extends C++ type '%s' which cannot be subclassed in Wren\n", name.c_str(),
+		errors::wrenAbort("Class '%s' cannot inherit from built-in class '%s'.", name.c_str(),
 		    parentClass->name.c_str());
 	}
 

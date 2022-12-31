@@ -136,15 +136,11 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 	std::unique_ptr<ClassDescription> spec = std::make_unique<ClassDescription>();
 	spec->Parse(dataBlock);
 
-	if (!is_object(parentClassValue)) {
-		errors::wrenAbort("Invalid non-object parent class for '%s': 0x%" PRIx64 "\n", name,
-		    (uint64_t)parentClassValue);
+	if (!is_object(parentClassValue) || parentClassValue == NULL_VAL) {
+		errors::wrenAbort("Class '%s' cannot inherit from a non-class object.", name);
 	}
 
 	Obj *parentClassObj = get_object_value(parentClassValue);
-	if (!parentClassObj) {
-		errors::wrenAbort("Cannot inherit null parent class for '%s'\n", name);
-	}
 
 	ObjClass *parentClass = dynamic_cast<ObjClass *>(parentClassObj);
 	if (!parentClass) {
