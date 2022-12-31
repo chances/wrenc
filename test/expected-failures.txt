@@ -5,7 +5,6 @@
 # that used to work but now don't, so we can use it for regression testing.
 
 test/language/class/foreign_class_inherit_fields.wren
-test/language/many_reallocations.wren
 test/language/function/parameters.wren
 test/language/fiber/closure.wren
 test/language/inheritance/inherit_from_nonclass.wren
@@ -13,7 +12,6 @@ test/language/inheritance/inherit_from_closure.wren
 test/language/inheritance/inherited_fields_in_closure.wren
 test/language/inheritance/inherit_from_null.wren
 test/language/list/grow_shrink.wren
-test/language/deeply_nested_gc.wren
 test/language/for/closure_in_body.wren
 test/language/for/close_over_loop_variable.wren
 test/language/while/closure_in_body.wren

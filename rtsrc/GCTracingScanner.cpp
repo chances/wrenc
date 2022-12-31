@@ -8,6 +8,7 @@
 #include "GCTracingScanner.h"
 #include "Obj.h"
 #include "RtModule.h"
+#include "SlabObjectAllocator.h"
 #include "StackMapDescription.h"
 #include "WrenRuntime.h"
 
@@ -178,7 +179,8 @@ void GCTracingScanner::EndGCCycle() {
 		obj->gcWord = encode_number(m_currentWhiteNumber);
 	}
 
-	// TODO deallocate all black objects, as we've confirmed they're unreachable.
+	// Deallocate all black objects, as we've confirmed they're unreachable.
+	SlabObjectAllocator::GetInstance()->DeallocateUnreachableObjects(encode_number(m_currentWhiteNumber));
 }
 
 void GCTracingScanner::OpsReportValue(GCMarkOps *thisObj, Value value) {

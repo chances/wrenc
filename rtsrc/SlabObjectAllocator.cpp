@@ -214,6 +214,8 @@ void *SlabObjectAllocator::AllocateRaw(ObjClass *cls, int requestedSize) {
 		slab->SwapOrDeleteShim(freeShim, newShim);
 	}
 
+	slab->currentObjects++;
+
 	// The FreeShim was a placeholder, occupying the memory where an object
 	// will be allocated until it's used for an actual Object.
 	void *mem = (void *)freeShim;
@@ -279,6 +281,110 @@ SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::
 	return slab;
 }
 
+void SlabObjectAllocator::DeallocateUnreachableObjects(uint64_t reachableGCWord) {
+	// Run the free sweep on each slab individually
+	for (const auto &entry : m_sizes) {
+		SizeCategory *size = entry.second.get();
+		for (Slab *slab = size->allSlabs.start; slab != nullptr; slab = slab->allNext) {
+			DeallocateUnreachableObjectsForSlab(slab, reachableGCWord);
+		}
+	}
+}
+
+void SlabObjectAllocator::DeallocateUnreachableObjectsForSlab(Slab *slab, uint64_t reachableGCWord) {
+	// Walk through every object, and collapse them into free blocks if they don't have the GC word
+	// indicating they're reachable.
+	void *ptr = slab->GetSectionBaseAddress();
+	void *endPtr = (void *)((uint64_t)ptr + slab->sizeCategory->GetUsableSize());
+
+	// If the last object was a free shim, this is set so we can merge stuff into it
+	FreeShim *lastFreeShim = nullptr;
+
+	// Re-count the number of objects in the slab - this is to produce a new
+	// total, so exclude those we delete.
+	int objectCount = 0;
+
+	while (ptr != endPtr) {
+		assert(ptr < endPtr && "overran slab area during GC free pass");
+
+		// We don't know if there's an object or free shim here, so check the magic
+		FreeShim *freeShim = (FreeShim *)ptr;
+		Obj *obj = (Obj *)ptr;
+
+		// The magic can never appear in a real vtable pointer, since it covers the
+		// upper 32 bits of the vtable pointer and it's upper 16 bits aren't the
+		// same, making it impossible to use on amd64 and aarch64.
+		if (freeShim->magic == FreeShim::MAGIC_VALUE) {
+			if (lastFreeShim != nullptr) {
+				// If there's a free shim behind us too, then merge the two together
+				lastFreeShim->length += freeShim->length;
+				slab->freeSpaceList.Remove(freeShim);
+			} else {
+				// Otherwise, mark this as being the last free shim, and the next
+				// object might merge into it.
+				lastFreeShim = freeShim;
+			}
+
+			// Advance over this shim's size, to get to the next object.
+			// Note that if we just merged this shim into the last one, this is still
+			// the right thing to do.
+			ptr = (void *)((uint64_t)ptr + freeShim->length);
+			continue;
+		}
+
+		// We've got a single object here, so advance the pointer over it now, since this
+		// is the same for both reachable and unreachable objects.
+		ptr = (void *)((uint64_t)ptr + slab->sizeCategory->size);
+
+		// Check if this object is reachable. If so, then jump over it
+		if (obj->gcWord == reachableGCWord) {
+			// Since this object will be the previous one next loop, make sure that
+			// no-one tries to expand the free shim behind us.
+			lastFreeShim = nullptr;
+			objectCount++;
+			continue;
+		}
+
+		// Run this object's destructor to free any resources (eg std::vector) it
+		// might be holding onto.
+		obj->~Obj();
+
+		// Null out the object's vtable pointer, so the user will fault if they try
+		// accessing it. Otherwise the object could go untouched if we expanded in a
+		// previous slab, which could be very annoying to debug.
+		*(void **)obj = nullptr;
+
+		// The object is unreachable, free up it's space.
+		// If there's a free shim behind us then expand that, otherwise make a new one.
+		if (lastFreeShim) {
+			lastFreeShim->length += slab->sizeCategory->size;
+			// Leave lastFreeShim set, since it's still the previous shim
+			continue;
+		}
+
+		// Create a new free shim in this object's space.
+		*freeShim = FreeShim{
+		    .length = slab->sizeCategory->size,
+		    .magic = FreeShim::MAGIC_VALUE,
+		};
+		slab->freeSpaceList.InsertAtEnd(freeShim);
+
+		// Mark this shim as being the last known one, so it'll get expanded
+		// into subsequent free objects.
+		lastFreeShim = freeShim;
+	}
+
+	slab->currentObjects = objectCount;
+
+	// Figure out if this slab was previously on the free slabs list
+	bool wasMarkedFree = slab->sizeCategory->freeSlabs.start == slab || slab->freeSlabsPrev != nullptr;
+
+	// If it wasn't but it now has free space, then add it to that list again
+	if (!wasMarkedFree && slab->freeSpaceList.start != nullptr) {
+		slab->sizeCategory->freeSlabs.InsertAtEnd(slab);
+	}
+}
+
 void *SlabObjectAllocator::Slab::GetSectionBaseAddress() {
 	// Start at our pointer
 	// Add our size, ending up at the end of the slab
@@ -314,4 +420,9 @@ int SlabObjectAllocator::SizeCategory::GetUsableSize() const {
 	int totalAvailable = globalSlabSize - sizeof(Slab);
 	int wasted = totalAvailable % size;
 	return totalAvailable - wasted;
+}
+
+int SlabObjectAllocator::SizeCategory::GetNumSlots() const {
+	int totalAvailable = globalSlabSize - sizeof(Slab);
+	return totalAvailable / size; // rounds down
 }

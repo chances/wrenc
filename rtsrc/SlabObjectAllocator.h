@@ -38,6 +38,10 @@ class SlabObjectAllocator {
 		return obj;
 	}
 
+	/// Deallocate all objects that have a GC word other than the one specified. This should
+	/// really only be called from the GC.
+	void DeallocateUnreachableObjects(uint64_t reachableGCWord);
+
   private:
 	struct Slab;
 	struct FreeShim;
@@ -60,6 +64,9 @@ class SlabObjectAllocator {
 		/// Get the number of bytes where we can actually allocate objects in a slab of this size, when
 		/// accounting for the slab struct at the end and any wasted space immediately before that.
 		int GetUsableSize() const;
+
+		/// Get the number of 'slots' in this slab - a slot being where one object can be stored.
+		int GetNumSlots() const;
 	};
 
 	struct Slab {
@@ -117,6 +124,8 @@ class SlabObjectAllocator {
 	void *AllocateRaw(ObjClass *cls, int size);
 
 	Slab *CreateSlab(SizeCategory *size);
+
+	void DeallocateUnreachableObjectsForSlab(Slab *slab, uint64_t reachableGCWord);
 
 	// Use a sorted map, so we can use lower_bound.
 	// Note we have to use unique_ptr as a pointer to the size categories is embedded in the slabs.
