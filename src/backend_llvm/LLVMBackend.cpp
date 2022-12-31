@@ -117,6 +117,7 @@ class ClassData : public BackendNodeData {
   public:
 	llvm::GlobalVariable *object = nullptr;
 	llvm::GlobalVariable *fieldOffset = nullptr;
+	llvm::GlobalVariable *classDataBlock = nullptr;
 };
 
 class LLVMBackendImpl : public LLVMBackend {
@@ -165,6 +166,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	StmtRes VisitStmtReturn(VisitorContext *ctx, StmtReturn *node);
 	StmtRes VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule *node);
 	StmtRes VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node);
+	StmtRes VisitStmtDefineClass(VisitorContext *ctx, StmtDefineClass *node);
 
 	llvm::LLVMContext m_context;
 	llvm::IRBuilder<> m_builder;
@@ -386,9 +388,19 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		llvm::GlobalVariable *memberOffset = new llvm::GlobalVariable(m_module, m_int32Type, false,
 		    llvm::GlobalVariable::InternalLinkage, CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
 
+		// Create a constant containing information about all our functions, annotations, etc.
+		// The way we'll do this is pretty horrible: create a global variable now to point to another
+		// global variable we create later.
+		// This really isn't very nice, but for both functions and these global tables we generate
+		// the type at the same time as the body, and both reference each other so there's
+		// not really a clean way of removing this layer of indirection.
+		llvm::GlobalVariable *classDataBlock = new llvm::GlobalVariable(m_module, m_pointerType, true,
+		    llvm::GlobalVariable::PrivateLinkage, nullptr, "class_data_ptr_" + cls->info->name);
+
 		ClassData *classData = new ClassData;
 		classData->object = classObj;
 		classData->fieldOffset = memberOffset;
+		classData->classDataBlock = classDataBlock;
 		cls->backendData = std::unique_ptr<BackendNodeData>(classData);
 	}
 
@@ -863,8 +875,6 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
 
-		const ClassData &data = *cls->GetBackendData<ClassData>();
-
 		// Build the data as a list of i64s
 		std::vector<llvm::Constant *> values;
 
@@ -977,48 +987,9 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		llvm::GlobalVariable *classDataBlock = new llvm::GlobalVariable(m_module, dataBlockType, true,
 		    llvm::GlobalVariable::PrivateLinkage, dataConstant, "class_data_" + cls->info->name);
 
-		// Inherits from Object by default
-		llvm::Value *supertype = objValue;
-		if (cls->info->parentClass) {
-			// Be a bit limiting here, and only allow explicitly inheriting from other classes in the same module
-			// So for example, this won't work:
-			//   class A { }
-			//   var B = A
-			//   class C is B {}
-			// TODO improve this
-
-			ExprLoad *classVar = dynamic_cast<ExprLoad *>(cls->info->parentClass);
-			if (!classVar) {
-				fmt::print(stderr, "Complicated superclasses for class {} are not yet supported in the LLVM backend.\n",
-				    cls->info->name);
-				abort();
-			}
-
-			IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(classVar->var);
-			if (!global) {
-				fmt::print(stderr, "Cannot use a local variable as the supertype of class {}\n", cls->info->name);
-				abort();
-			}
-
-			IRClass *superclass = global->targetClass;
-			if (!superclass) {
-				fmt::print(stderr, "Class {} cannot extend a variable that is not statically known to be a class\n",
-				    cls->info->name);
-				abort();
-			}
-
-			ClassData *supertypeData = superclass->GetBackendData<ClassData>();
-			supertype = m_builder.CreateLoad(m_valueType, supertypeData->object, "supertype_" + superclass->info->name);
-		}
-
-		llvm::Constant *className = GetStringConst(cls->info->name);
-		llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, classDataBlock, supertype});
-		m_builder.CreateStore(classValue, data.object);
-
-		// Look up the field offset
-		llvm::Value *fieldOffsetValue =
-		    m_builder.CreateCall(m_getClassFieldOffset, {classValue}, "field_offset_" + cls->info->name);
-		m_builder.CreateStore(fieldOffsetValue, data.fieldOffset);
+		// See the Generate function where the global is created for an explanation of why we're
+		// pointing a global variable at another global variable.
+		cls->GetBackendData<ClassData>()->classDataBlock->setInitializer(classDataBlock);
 	}
 
 	// Register the signatures table
@@ -1304,6 +1275,7 @@ StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
 	DISPATCH(VisitStmtRelocateUpvalues, StmtRelocateUpvalues);
+	DISPATCH(VisitStmtDefineClass, StmtDefineClass);
 
 #undef DISPATCH
 
@@ -1669,6 +1641,39 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
 	// All upvalues in the LLVM implementation are stored on the heap, since things get too complicated with
 	// nested closures otherwise. Thus (until we implement a GC) we don't have to do anything here.
+
+	return {};
+}
+StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineClass *node) {
+	IRClass *cls = node->targetClass;
+	const ClassData &data = *cls->GetBackendData<ClassData>();
+
+	llvm::Value *supertype;
+	if (!cls->info->parentClass) {
+		// Inherits from Object by default
+		supertype = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
+	} else {
+		supertype = VisitExpr(ctx, cls->info->parentClass).value;
+	}
+
+	// The data block stored in the ClassData is a pointer to the actual data block. See where classDataBlock is
+	// initialised for an explanation.
+	llvm::Value *dataBlock = m_builder.CreateLoad(m_pointerType, data.classDataBlock, "class_data_" + cls->info->name);
+
+	llvm::Constant *className = GetStringConst(cls->info->name);
+	llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, dataBlock, supertype});
+	m_builder.CreateStore(classValue, data.object);
+
+	// Look up the field offset - if this class is defined multiple times then we'll be repeating this, but one
+	// would rather hope users won't declare inner classes inside hot loops!
+	// In any case, the actual performance impact of this should be very small.
+	llvm::Value *fieldOffsetValue =
+	    m_builder.CreateCall(m_getClassFieldOffset, {classValue}, "field_offset_" + cls->info->name);
+	m_builder.CreateStore(fieldOffsetValue, data.fieldOffset);
+
+	// Store the class object into the provided variable
+	llvm::Value *varPtr = GetVariablePointer(ctx, node->outputVariable);
+	m_builder.CreateStore(classValue, varPtr);
 
 	return {};
 }

@@ -275,8 +275,6 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 		Print("storel %{}, {}", varName, name);
 	}
 
-	Print("# Register classes");
-
 	Print("# Get true and false pointers, and system class pointers");
 	Print("%true_value =l call $wren_get_bool_value(w 1)");
 	Print("storel %true_value, $wren_sys_bool_true");
@@ -285,40 +283,6 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	for (const auto &[name, id] : ExprSystemVar::SYSTEM_VAR_NAMES) {
 		Print("%sys_class_{} =l call $wren_get_core_class_value({} {})", name, PTR_TYPE, GetStringPtr(name));
 		Print("storel %sys_class_{}, $wren_sys_var_{}", name, name);
-	}
-
-	// Load ObjClass once, since we'll probably use it quite a bit
-	VLocal *objClass = AddTemporary("obj_class");
-	Print("%{} =l loadl $wren_sys_var_Object", objClass->name);
-
-	for (IRClass *cls : mod->GetClasses()) {
-		VLocal *supertypeLocal;
-		if (cls->info->parentClass) {
-			Snippet *supertypeSnippet = VisitExpr(cls->info->parentClass);
-			for (const std::string &line : supertypeSnippet->lines) {
-				Print("{}", line);
-			}
-			supertypeLocal = supertypeSnippet->result;
-		} else {
-			supertypeLocal = objClass;
-		}
-
-		std::string varName = fmt::format("tmp_class_{}", cls->info->name);
-		std::string classNameSym = GetStringPtr(cls->info->name);
-		Print("%{} =l call $wren_init_class({} {}, {} $class_desc_{}, l %{})", varName, PTR_TYPE, classNameSym,
-		    PTR_TYPE, cls->info->name, supertypeLocal->name);
-
-		// System classes are registered, but we don't do anything with the result - we're just telling C++ what
-		// methods exist on them.
-		if (cls->info->IsSystemClass())
-			continue;
-
-		Print("storel %{}, $class_var_{}", varName, cls->info->name);
-
-		// Read the field offset
-		std::string offsetVarName = fmt::format("tmp_field_offset_{}", cls->info->name);
-		Print("%{} =l call $wren_class_get_field_offset(l %{})", offsetVarName, varName);
-		Print("storel %{}, ${}{}", offsetVarName, SYM_FIELD_OFFSET, cls->info->name);
 	}
 
 	Print("# Register upvalues");
@@ -393,6 +357,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
 	DISPATCH(VisitStmtRelocateUpvalues, StmtRelocateUpvalues);
+	DISPATCH(VisitStmtDefineClass, StmtDefineClass);
 
 #undef DISPATCH
 
@@ -937,6 +902,47 @@ QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues 
 
 		snip->Add("@{}", skipRelocations);
 	}
+
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitStmtDefineClass(StmtDefineClass *node) {
+	Snippet *snip = m_alloc.New<Snippet>();
+	IRClass *cls = node->targetClass;
+	ClassInfo *info = cls->info.get();
+
+	VLocal *supertypeLocal;
+	if (info->parentClass) {
+		Snippet *supertypeSnippet = VisitExpr(info->parentClass);
+		for (const std::string &line : supertypeSnippet->lines) {
+			Print("{}", line);
+		}
+		supertypeLocal = supertypeSnippet->result;
+	} else {
+		// Load ObjClass once, since we'll probably use it quite a bit
+		supertypeLocal = AddTemporary("obj_class");
+		Print("%{} =l loadl $wren_sys_var_Object", supertypeLocal->name);
+	}
+
+	VLocal *varName = AddTemporary("tmp_class_" + info->name);
+	std::string classNameSym = GetStringPtr(info->name);
+	snip->Add("%{} =l call $wren_init_class({} {}, {} $class_desc_{}, l %{})", varName->name, PTR_TYPE, classNameSym,
+	    PTR_TYPE, info->name, supertypeLocal->name);
+
+	// System classes are registered, but we don't do anything with the result - we're just telling C++ what
+	// methods exist on them.
+	if (info->IsSystemClass())
+		return snip;
+
+	snip->Add("storel %{}, $class_var_{}", varName->name, info->name);
+
+	// Read the field offset
+	std::string offsetVarName = fmt::format("tmp_field_offset_{}", info->name);
+	snip->Add("%{} =l call $wren_class_get_field_offset(l %{})", offsetVarName, varName->name);
+	snip->Add("storel %{}, ${}{}", offsetVarName, SYM_FIELD_OFFSET, info->name);
+
+	// Write the newly-created class to the destination variable.
+	snip->Add(StoreVariable(node->outputVariable, varName));
 
 	return snip;
 }

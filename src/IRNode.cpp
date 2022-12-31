@@ -82,6 +82,7 @@ void StmtJump::Accept(IRVisitor *visitor) { visitor->VisitStmtJump(this); }
 void StmtReturn::Accept(IRVisitor *visitor) { visitor->VisitStmtReturn(this); }
 void StmtLoadModule::Accept(IRVisitor *visitor) { visitor->VisitStmtLoadModule(this); }
 void StmtRelocateUpvalues::Accept(IRVisitor *visitor) { visitor->VisitStmtRelocateUpvalues(this); }
+void StmtDefineClass::Accept(IRVisitor *visitor) { visitor->VisitStmtDefineClass(this); }
 
 // Expressions
 void ExprConst::Accept(IRVisitor *visitor) { visitor->VisitExprConst(this); }
@@ -143,6 +144,10 @@ void IRVisitor::VisitStmtLoadModule(StmtLoadModule *node) {
 		VisitVar(import.bindTo);
 }
 void IRVisitor::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {}
+void IRVisitor::VisitStmtDefineClass(StmtDefineClass *node) {
+	// Don't visit the class, that's already part of the module
+	VisitVar(node->outputVariable);
+}
 void IRVisitor::VisitExprConst(ExprConst *node) {}
 void IRVisitor::VisitExprLoad(ExprLoad *node) { VisitVar(node->var); }
 void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) {}

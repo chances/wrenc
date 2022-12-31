@@ -136,6 +136,12 @@ class IRClass : public IRNode {
 	void Accept(IRVisitor *visitor) override;
 
 	std::unique_ptr<ClassInfo> info;
+
+	/// Is this class defined somewhere other than the root of the module? This supports things like
+	/// declaring classes in loops, where they might be declared any number of times.
+	/// This is important for static variables, which have to be handled differently in dynamically
+	/// defined classes, since using a global variable won't work since they're supposed to be separate.
+	bool dynamicallyDefined = false;
 };
 
 /// Global variable declaration
@@ -328,6 +334,21 @@ class StmtRelocateUpvalues : public IRStmt {
 	std::vector<LocalVariable *> variables;
 };
 
+/// Define a class. This is matched up to a class definition in Wren, and
+/// at this point the superclass expression is ready.
+/// For dynamically-defined classes, this can be repeated in a loop or similar.
+class StmtDefineClass : public IRStmt {
+  public:
+	void Accept(IRVisitor *visitor) override;
+
+	IRClass *targetClass = nullptr;
+
+	/// The variable to store the class object in. This must not be null - even
+	/// for top-level classes that can also be accessed via ExprGetClassVar, the
+	/// class object must be stored somewhere for GC purposes.
+	VarDecl *outputVariable = nullptr;
+};
+
 // //////////////////// //
 // //// EXPRESSIONS /// //
 // //////////////////// //
@@ -477,6 +498,7 @@ class IRVisitor {
 	virtual void VisitExprSystemVar(ExprSystemVar *node);
 	virtual void VisitExprGetClassVar(ExprGetClassVar *node);
 	virtual void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node);
+	virtual void VisitStmtDefineClass(StmtDefineClass *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
 	virtual void VisitUpvalueVariable(UpvalueVariable *var);

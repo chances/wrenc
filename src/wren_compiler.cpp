@@ -1507,6 +1507,36 @@ static IRNode *finishBlock(Compiler *compiler) {
 		if (!node)
 			continue;
 
+		IRClass *cls = dynamic_cast<IRClass *>(node);
+		if (cls) {
+			// Note we don't have to handle system classes here, as wren_core declares all it's classes
+			// at the top level. We don't have an assertion for it in case someone does - the class
+			// declaration code will produce an error, but we'll just handle it normally rather than
+			// aborting, to reveal any other errors in the file.
+
+			compiler->parser->targetModule->AddNode(cls);
+			cls->dynamicallyDefined = true;
+
+			// Load the previous token, both for debug info when defining the class, and for the
+			// error message if we can't allocate the local.
+			compiler->parser->previous = definitionToken;
+
+			// Declare a local variable to store this class instance
+			LocalVariable *classOutput = addLocal(compiler, cls->info->name);
+			if (!classOutput) {
+				error(compiler, "The local output variable for class '%s' was already defined\n",
+				    cls->info->name.c_str());
+				continue;
+			}
+
+			// Perform the actual class definition
+			StmtDefineClass *classDef = compiler->New<StmtDefineClass>();
+			classDef->targetClass = cls;
+			classDef->outputVariable = classOutput;
+			block->Add(classDef);
+			continue;
+		}
+
 		// Don't support classes declared in blocks etc
 		IRStmt *stmt = dynamic_cast<IRStmt *>(node);
 		if (!stmt) {
@@ -3431,18 +3461,22 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 			// be seldom used and we can use static dispatch to make static functions "just as fast as C"
 			// (including all the usual caveats that apply there) and this will only be used to
 			// maintain the illusion of classes being regular objects, eg for putting them in lists.
+			// We also add a class definition node, which triggers the class to actually be created.
 			IRClass *classDecl = dynamic_cast<IRClass *>(node);
 			if (classDecl) {
-				// If this is a system class, it's special and we don't have to define it
+				// If this is a system class, don't try and define a global variable over it.
+				// Instead, suffix the global variable so it's still picked up for GC purposes etc, but
+				// won't cause any name collision problems.
+				std::string globalName = classDecl->info->name;
 				if (classDecl->info->IsSystemClass()) {
-					continue;
+					globalName += "_gbl";
 				}
 
-				IRGlobalDecl *global = mod->AddVariable(classDecl->info->name);
+				IRGlobalDecl *global = mod->AddVariable(globalName);
 
 				// If the variable was already defined, check if it was implicitly defined
 				if (global == nullptr) {
-					IRGlobalDecl *current = mod->FindVariable(classDecl->info->name);
+					IRGlobalDecl *current = mod->FindVariable(globalName);
 					if (current->undeclaredLineUsed.has_value()) {
 						global = current;
 						global->undeclaredLineUsed = std::optional<int>();
@@ -3458,10 +3492,10 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 
 				global->targetClass = classDecl;
 
-				ExprGetClassVar *classVar = compiler.New<ExprGetClassVar>();
-				classVar->cls = classDecl;
-
-				block->Add(compiler.New<StmtAssign>(global, classVar));
+				StmtDefineClass *defineClass = compiler.New<StmtDefineClass>();
+				defineClass->targetClass = classDecl;
+				defineClass->outputVariable = global;
+				block->Add(defineClass);
 			}
 		}
 		compiler.AddNew<StmtReturn>(block, compiler.New<ExprConst>(CcValue::NULL_TYPE));
