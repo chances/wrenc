@@ -527,7 +527,7 @@ def run_script(app, path: Path, type):
 
     # Update the status line.
     print_line('({}) Passed: {} Failed: {} XFailed: {} Skipped: {} '.format(
-        os.path.relpath(app, WREN_DIR), green(passed), yellow(expected_failed), red(failed), yellow(num_skipped)))
+        os.path.relpath(app, WREN_DIR), green(passed), red(failed), yellow(expected_failed), yellow(num_skipped)))
 
     # Make a nice short path relative to the working directory.
 
