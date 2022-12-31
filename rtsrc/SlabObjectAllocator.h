@@ -50,10 +50,8 @@ class SlabObjectAllocator {
 	struct SizeCategory {
 		int size = -1;
 
-		int numTotal = 0;
 		LinkedList<Slab, LLSlabAllAccess> allSlabs;
 
-		int numFree = 0;
 		LinkedList<Slab, LLSlabFreeAccess> freeSlabs;
 
 		/// The total number of objects stored across all slabs. Equal to the sum of each slab's object count.

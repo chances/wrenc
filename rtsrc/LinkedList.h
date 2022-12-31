@@ -19,8 +19,12 @@
 template <typename T, typename ObjectAccess> class LinkedList {
   public:
 	T *start = nullptr, *end = nullptr;
+	int count = 0;
 
 	void InsertAtStart(T *newObj) {
+		count++;
+		assert(count > 0);
+
 		// If this list is empty, we set both the start and end pointer to this single object.
 		if (start == nullptr) {
 			assert(end == nullptr && "Linked list contained null start pointer, but non-null end pointer");
@@ -38,6 +42,9 @@ template <typename T, typename ObjectAccess> class LinkedList {
 	}
 
 	void InsertAtEnd(T *newObj) {
+		count++;
+		assert(count > 0);
+
 		// Empty list?
 		if (end == nullptr) {
 			assert(start == nullptr && "Linked list contained null end pointer, but a non-null start pointer");
@@ -54,6 +61,9 @@ template <typename T, typename ObjectAccess> class LinkedList {
 	}
 
 	void InsertAfter(T *prev, T *newObject) {
+		count++;
+		assert(count > 0);
+
 		// Find the object that comes after the new object
 		T *next = *ObjectAccess::Next(prev);
 
@@ -73,6 +83,9 @@ template <typename T, typename ObjectAccess> class LinkedList {
 	}
 
 	void Remove(T *object) {
+		count--;
+		assert(count >= 0);
+
 		// Grab the next and previous pointers here to save typing.
 		T *next = *ObjectAccess::Next(object);
 		T *prev = *ObjectAccess::Prev(object);
