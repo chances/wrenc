@@ -11,6 +11,7 @@
 #include <vector>
 
 class StackMapDescription;
+class RtModule;
 
 class GCTracingScanner {
   public:
@@ -30,6 +31,10 @@ class GCTracingScanner {
 
 	/// Mark a given value as a root. Passing in NULL_VAL or a number are both valid, but ignored.
 	void MarkValueAsRoot(Value value);
+
+	/// Add all the roots from the given module. This should be called on all modules prior
+	/// to EndGCCycle.
+	void AddModuleRoots(RtModule *mod);
 
 	/// Walk the object graph using the previously-marked roots, and free everything that's not marked.
 	void EndGCCycle();
@@ -63,6 +68,8 @@ class GCTracingScanner {
 	/// instruction pointer. This is used because functions from different modules might be mixed in with
 	/// each other, and we need to find which module so we know which stackmap to query.
 	std::vector<FunctionInfo> m_functions;
+
+	MarkOpsImpl m_markOps = {};
 
 	/// Implementations of the GCMarkOps field functions
 	static void OpsReportValue(GCMarkOps *thisObj, Value value);

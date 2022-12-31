@@ -35,6 +35,9 @@ class WrenRuntime {
 
 	DLL_EXPORT RtModule *GetOrInitModule(void *getGlobalsFunction);
 
+	/// Similar to GetOrInitModule, but won't initialise a module and works on the core module.
+	RtModule *GetPreInitialisedModule(void *getGlobalsFunction);
+
 	DLL_EXPORT void RunGC();
 
   private:

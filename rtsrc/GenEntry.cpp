@@ -112,7 +112,8 @@ void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signatu
 }
 
 Value wren_init_string_literal(void *getGlobalsFunc, const char *literal, int length) {
-	ObjString *str = ObjString::New(std::string(literal, length));
+	RtModule *mod = WrenRuntime::Instance().GetPreInitialisedModule(getGlobalsFunc);
+	ObjString *str = mod->CreateStringLiteral(std::string(literal, length));
 	return encode_object(str);
 }
 

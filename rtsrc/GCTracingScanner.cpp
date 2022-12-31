@@ -51,6 +51,14 @@ GCTracingScanner::GCTracingScanner() {
 		}
 	} functionSorter;
 	std::sort(m_functions.begin(), m_functions.end(), functionSorter);
+
+	// Set up our marking operations - these are the functions that objects call
+	// when walking the heap.
+	m_markOps.ReportValue = OpsReportValue;
+	m_markOps.ReportValues = OpsReportValues;
+	m_markOps.ReportObject = OpsReportObject;
+	m_markOps.ReportObjects = OpsReportObjects;
+	m_markOps.scanner = this;
 }
 
 GCTracingScanner::~GCTracingScanner() {}
@@ -127,6 +135,10 @@ void GCTracingScanner::MarkValueAsRoot(Value value) {
 	AddToGreyList(get_object_value(value));
 }
 
+void GCTracingScanner::AddModuleRoots(RtModule *mod) {
+	mod->MarkModuleGCValues(&m_markOps);
+}
+
 void GCTracingScanner::AddToGreyList(Obj *obj) {
 	if (!obj)
 		return;
@@ -150,13 +162,6 @@ void GCTracingScanner::EndGCCycle() {
 	// Walk over all the objects, effectively performing a depth-first (since we're using a singly-linked list and
 	// are thus inserting and removing at the same end, we can only do depth-first walks - but that's just fine).
 
-	MarkOpsImpl ops = {};
-	ops.ReportValue = OpsReportValue;
-	ops.ReportValues = OpsReportValues;
-	ops.ReportObject = OpsReportObject;
-	ops.ReportObjects = OpsReportObjects;
-	ops.scanner = this;
-
 	while (m_greyList) {
 		Obj *obj = m_greyList;
 		Value gcWord = (Value)obj->gcWord;
@@ -168,7 +173,7 @@ void GCTracingScanner::EndGCCycle() {
 		}
 		m_greyList = get_object_value(gcWord);
 
-		obj->MarkGCValues(&ops);
+		obj->MarkGCValues(&m_markOps);
 	}
 
 	// TODO deallocate all black objects, as we've confirmed they're unreachable.
@@ -196,6 +201,6 @@ void GCTracingScanner::OpsReportObject(GCMarkOps *thisObj, Obj *object) {
 void GCTracingScanner::OpsReportObjects(GCMarkOps *thisObj, Obj *const *objects, int count) {
 	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
 	for (int i = 0; i < count; i++) {
-		impl->scanner->AddToGreyList(objects[count]);
+		impl->scanner->AddToGreyList(objects[i]);
 	}
 }

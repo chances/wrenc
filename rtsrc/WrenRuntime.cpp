@@ -37,9 +37,11 @@ void *WrenRuntime::AllocateMem(int size, int alignment) {
 }
 
 void WrenRuntime::Initialise() {
-	wren_core_3a_3a__root_func();
-
+	// Create the core module before calling the root func, as we need the module
+	// to create string literals.
 	Instance().m_coreModule = std::make_unique<RtModule>(wren_core_get_globals());
+
+	wren_core_3a_3a__root_func();
 
 	ObjNativeClass::FinaliseSetup();
 }
@@ -85,6 +87,19 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 	return ptr;
 }
 
+RtModule *WrenRuntime::GetPreInitialisedModule(void *getGlobalsFunction) {
+	// Handle the core module as a special case
+	if (getGlobalsFunction == wren_core_get_globals)
+		return m_coreModule.get();
+
+	decltype(m_userModules)::iterator iter = m_userModules.find(getGlobalsFunction);
+	if (iter != m_userModules.end())
+		return iter->second.get();
+
+	errors::wrenAbort("Could not find supposedly pre-initialised module %p\n", getGlobalsFunction);
+	return nullptr;
+}
+
 void WrenRuntime::RunGC() {
 	if (!m_gcScanner) {
 		// Note that when creating the scanner, it'll dig through our list of loaded modules.
@@ -92,7 +107,16 @@ void WrenRuntime::RunGC() {
 	}
 
 	m_gcScanner->BeginGCCycle();
+
+	// Mark all the module roots - this is everything from string constants to global variables.
+	m_gcScanner->AddModuleRoots(m_coreModule.get());
+	for (const auto &entry : m_userModules) {
+		m_gcScanner->AddModuleRoots(entry.second.get());
+	}
+
 	// TODO when we support multithreading, mark all the threads
 	m_gcScanner->MarkCurrentThreadRoots();
+
+	// Walk the heap and clear out the allocator
 	m_gcScanner->EndGCCycle();
 }

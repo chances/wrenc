@@ -4,6 +4,7 @@
 
 #include "RtModule.h"
 
+#include "ObjString.h"
 #include "StackMapDescription.h"
 
 RtModule::RtModule(void *globalsTable) {
@@ -45,3 +46,19 @@ Value *RtModule::GetOrNull(const std::string &varName) {
 }
 
 StackMapDescription *RtModule::GetStackMap() { return m_stackMap.get(); }
+
+void RtModule::MarkModuleGCValues(GCMarkOps *ops) {
+	// Mark all the string constants
+	ops->ReportObjects(ops, (Obj **)m_stringConstants.data(), m_stringConstants.size());
+
+	// Mark all the global variables
+	for (const auto &[key, ptr] : m_globals) {
+		ops->ReportValue(ops, *ptr);
+	}
+}
+
+ObjString *RtModule::CreateStringLiteral(std::string &&str) {
+	ObjString *obj = ObjString::New(str);
+	m_stringConstants.push_back(obj);
+	return obj;
+}
