@@ -123,5 +123,5 @@ class SlabObjectAllocator {
 	std::map<int, std::unique_ptr<SizeCategory>> m_sizes;
 
 	/// The address to allocate the next slab at.
-	void *nextSlabAddr = nullptr;
+	void *m_nextSlabAddr = nullptr;
 };

@@ -231,7 +231,7 @@ SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::
 	// a random address and on a 64-bit system it's extremely unlikely for it to be occupied.
 	// Once we've picked one address, allocate the others adjacent to it (to hopefully
 	// reduce overheads in the kernel's VM system) unless we run into something.
-	if (nextSlabAddr == nullptr) {
+	if (m_nextSlabAddr == nullptr) {
 		std::random_device rng;
 		uint64_t random64 = ((uint64_t)rng() << 32) | rng();
 
@@ -241,23 +241,23 @@ SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::
 		// Align the address to our desired slab size, so the start of the memory is always aligned
 		random64 &= ~(uint64_t)(globalSlabSize - 1);
 
-		nextSlabAddr = (void *)random64;
+		m_nextSlabAddr = (void *)random64;
 	}
 
-	void *mem = mmap(nextSlabAddr, globalSlabSize, PROT_READ | PROT_WRITE,
+	void *mem = mmap(m_nextSlabAddr, globalSlabSize, PROT_READ | PROT_WRITE,
 	    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 	if (mem == MAP_FAILED) {
 		if (errno == EEXIST) {
 			// We ran into something! Try a different random address.
-			nextSlabAddr = nullptr;
+			m_nextSlabAddr = nullptr;
 			return CreateSlab(size);
 		}
 
 		errors::wrenAbort("Failed to allocate new slab (object size %d, slab size %d)\n", size->size, globalSlabSize);
 	}
-	assert(mem == nextSlabAddr);
+	assert(mem == m_nextSlabAddr);
 
-	nextSlabAddr = (void *)((uint64_t)nextSlabAddr + globalSlabSize);
+	m_nextSlabAddr = (void *)((uint64_t)m_nextSlabAddr + globalSlabSize);
 
 	Slab *slab = (Slab *)((uint64_t)mem + globalSlabSize - sizeof(Slab));
 	*slab = {.sizeCategory = size};
