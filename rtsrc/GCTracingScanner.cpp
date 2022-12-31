@@ -30,9 +30,27 @@ constexpr bool PRINT_STACK_WALK_DBG = false;
 // and any object marked with that number is white. Any object marked with a different number is black (they might
 // have been white in a previous GC cycle, but the global white-ness number will change with each cycle to avoid
 // having to edit this word for every object between cycles. Anything with a pointer will be grey.
-// We'll encode numbers and pointers using our standard NaN-tagging system. There's no reason we have to use it
-// instead of any other scheme, as the GC is the only thing that uses this word, but it's convenient since we already
-// have it available.
+// We'll encode numbers and pointers using a custom system (we previously used the standard NaN-tagging system, but
+// that caused some performance problems on the extremely hot AddToGreyList function, that we can solve by not
+// supporting floating-point numbers). Any even number is a pointer, and any odd number is not. Alignment ensures
+// that we won't ever have odd object addresses.
+
+static bool isGrey(uint64_t gcWord) {
+	// Pointers are aligned to 8 bytes, so they're always even.
+	// Black and white values are always kept odd, so this works.
+	// It's a single-byte and, so hopefully it should be very efficient since we'll do this a LOT.
+	return (gcWord & 1) == 0;
+}
+
+static uint64_t pointerToGrey(Obj *ptr) {
+	// Pointers are stored as GC words without modification
+	return (uint64_t)ptr;
+}
+
+static Obj *greyToPointer(uint64_t gcWord) {
+	// Again, pointers are stored without any changes
+	return (Obj *)gcWord;
+}
 
 GCTracingScanner::GCTracingScanner() {
 	// Build the functions list
@@ -72,7 +90,8 @@ void GCTracingScanner::BeginGCCycle() {
 	}
 
 	// This effectively clears out the old root set. Any previously-white values are redefined as black.
-	m_currentWhiteNumber++;
+	// Increment by two to ensure it remains odd.
+	m_currentWhiteNumber += 2;
 }
 
 void GCTracingScanner::MarkCurrentThreadRoots() {
@@ -136,26 +155,24 @@ void GCTracingScanner::MarkValueAsRoot(Value value) {
 	AddToGreyList(get_object_value(value));
 }
 
-void GCTracingScanner::AddModuleRoots(RtModule *mod) {
-	mod->MarkModuleGCValues(&m_markOps);
-}
+void GCTracingScanner::AddModuleRoots(RtModule *mod) { mod->MarkModuleGCValues(&m_markOps); }
 
 void GCTracingScanner::AddToGreyList(Obj *obj) {
 	if (!obj)
 		return;
 
-	Value gcWord = (Value)obj->gcWord;
+	uint64_t gcWord = obj->gcWord;
 
 	// If we've found an already-grey value, then we don't need to do anything.
-	if (is_object(gcWord))
+	if (isGrey(gcWord))
 		return;
 
 	// Similarly, white objects have already been scanned.
-	if (get_number_value(gcWord) == m_currentWhiteNumber)
+	if (gcWord == m_currentWhiteNumber)
 		return;
 
 	// Mark an object as grey by inserting it into the linked list of grey objects
-	obj->gcWord = encode_object(m_greyList);
+	obj->gcWord = pointerToGrey(m_greyList);
 	m_greyList = obj;
 }
 
@@ -165,22 +182,22 @@ void GCTracingScanner::EndGCCycle() {
 
 	while (m_greyList) {
 		Obj *obj = m_greyList;
-		Value gcWord = (Value)obj->gcWord;
-		if (!is_object(gcWord)) {
+		uint64_t gcWord = obj->gcWord;
+		if (!isGrey(gcWord)) {
 			fprintf(stderr,
 			    "Found object with non-grey GC word in the grey list. White marker %x, encoded word %" PRIx64 ".",
 			    m_currentWhiteNumber, gcWord);
 			abort();
 		}
-		m_greyList = get_object_value(gcWord);
+		m_greyList = greyToPointer(gcWord);
 
 		obj->MarkGCValues(&m_markOps);
 
-		obj->gcWord = encode_number(m_currentWhiteNumber);
+		obj->gcWord = m_currentWhiteNumber;
 	}
 
 	// Deallocate all black objects, as we've confirmed they're unreachable.
-	SlabObjectAllocator::GetInstance()->DeallocateUnreachableObjects(encode_number(m_currentWhiteNumber));
+	SlabObjectAllocator::GetInstance()->DeallocateUnreachableObjects(m_currentWhiteNumber);
 }
 
 void GCTracingScanner::OpsReportValue(GCMarkOps *thisObj, Value value) {

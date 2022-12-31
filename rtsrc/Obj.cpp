@@ -4,6 +4,7 @@
 
 #include "Obj.h"
 #include "Errors.h"
+#include "GCTracingScanner.h"
 #include "ObjClass.h"
 #include "ObjNum.h"
 #include "ObjString.h"
@@ -15,7 +16,7 @@
 static_assert(offsetof(Obj, gcWord) == GC_WORD_OFFSET, "The GC-word is not at the ABI-defined location!");
 
 Obj::~Obj() = default;
-Obj::Obj(ObjClass *type) : type(type) {}
+Obj::Obj(ObjClass *type) : gcWord(GCTracingScanner::INITIAL_GC_WORD), type(type) {}
 
 std::string Obj::ConvertToString() {
 	// If this is an object of a string, just read it out directly

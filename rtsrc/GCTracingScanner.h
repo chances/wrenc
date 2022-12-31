@@ -39,6 +39,9 @@ class GCTracingScanner {
 	/// Walk the object graph using the previously-marked roots, and free everything that's not marked.
 	void EndGCCycle();
 
+	/// The value that the GC word should be set to when a new object is created
+	static constexpr uint64_t INITIAL_GC_WORD = 1;
+
   private:
 	struct FunctionInfo {
 		/// The address of this function
@@ -57,7 +60,7 @@ class GCTracingScanner {
 
 	/// The current number stored in the GC word of all objects marked white (reachable and scanned) in the
 	/// tri-colour GC system. See the comment at the start of the cpp file for more information.
-	uint32_t m_currentWhiteNumber = 0xabcd;
+	uint32_t m_currentWhiteNumber = 0xabcd01;
 
 	/// The queue of nodes we've yet to scan: nodes should be added when they change from black to grey, and
 	/// removed when they change from grey to white (the latter happens by popping a value and processing it).

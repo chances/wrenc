@@ -41,7 +41,8 @@ class Obj {
 	/// The GC word is a 64-bit value that the GC system can use however it wants. For tracing
 	/// GCs this would hold state data (eg for a tricolour collector, it'd be a white/grey/black
 	/// value), and for reference-counting GCs this is a reference count.
-	uint64_t gcWord = 0;
+	/// This is initialised in the constructor, from a value set by the GC.
+	uint64_t gcWord;
 
 	/// This class's metaclass. This is represented by double arrows in the diagram in
 	/// ObjClass's file header.
