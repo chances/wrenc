@@ -67,6 +67,8 @@ class QbeBackend : public IBackend {
 	Snippet *HandleUnimplemented(IRNode *node);
 
 	VLocal *AddTemporary(std::string debugName);
+	Snippet *LoadVariable(VarDecl *var);
+	Snippet *StoreVariable(VarDecl *var, VLocal *input);
 
 	void GenerateInitFunction(const std::string &moduleName, Module *mod);
 	void GenerateGetGlobalFunc(const std::string &moduleName, Module *mod);

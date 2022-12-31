@@ -531,22 +531,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtAssign(StmtAssign *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
 
 	VLocal *input = snip->Add(VisitExpr(node->expr));
-
-	auto stackLocalIter = m_stackVariables.find(node->var);
-	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
-	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
-	if (stackLocalIter != m_stackVariables.end()) {
-		VLocal *localDerefTemp = AddTemporary("assign_stack_local_ptr_" + node->var->Name());
-		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
-		    stackLocalIter->second * sizeof(Value));
-		snip->Add("storel %{}, %{}", input->name, localDerefTemp->name);
-	} else if (local) {
-		snip->Add("%{} ={} copy %{}", LookupVariable(local)->name, PTR_TYPE, input->name);
-	} else if (global) {
-		snip->Add("store{} %{}, {}", PTR_TYPE, input->name, MangleGlobalName(global));
-	} else {
-		fmt::print(stderr, "Unknown variable type in assignment: {}\n", typeid(*node->var).name());
-	}
+	snip->Add(StoreVariable(node->var, input));
 
 	return snip;
 }
@@ -643,51 +628,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtReturn(StmtReturn *node) {
 	return snip;
 }
 
-QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) {
-	auto stackLocalIter = m_stackVariables.find(node->var);
-	LocalVariable *local = dynamic_cast<LocalVariable *>(node->var);
-	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(node->var);
-	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(node->var);
-	Snippet *snip = m_alloc.New<Snippet>();
-	snip->result = AddTemporary("var_load_" + node->var->Name());
-	if (stackLocalIter != m_stackVariables.end()) {
-		VLocal *localDerefTemp = AddTemporary("stack_local_ptr_" + node->var->Name());
-		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
-		    stackLocalIter->second * sizeof(Value));
-		snip->Add("%{} =l loadl %{}", snip->result->name, localDerefTemp->name);
-	} else if (local) {
-		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
-	} else if (global) {
-		snip->Add("%{} ={} load{} {}", snip->result->name, PTR_TYPE, PTR_TYPE, MangleGlobalName(global));
-	} else if (upvalue) {
-		if (!m_currentFnUpvaluePack) {
-			fmt::print(stderr, "Found UpvalueVariable without an upvalue pack!\n");
-			abort();
-		}
-
-		auto upvalueIter = m_currentFnUpvaluePack->variableIds.find(upvalue);
-		if (upvalueIter == m_currentFnUpvaluePack->variableIds.end()) {
-			fmt::print(stderr, "Could not find upvalue in current pack for variable {}\n", upvalue->parent->Name());
-			abort();
-		}
-		int offset = upvalueIter->second * sizeof(Value);
-
-		// Get a pointer pointing to the position in the upvalue pack where this variable is
-		VLocal *valuePtr = AddTemporary("upvalue_pack_sub_ptr");
-		snip->Add("%{} ={} add %upvalue_pack, {}", valuePtr->name, PTR_TYPE, offset);
-
-		// The upvalue pack stores pointers, so at this point our variable is a Value** and we have to dereference
-		// it twice. In the future we should store never-modified variables directly, so this would be Value*.
-		// This chases the pointer in-place, that is in the same variable, to avoid the bother of declaring another one.
-		snip->Add("%{} ={} load{} %{}", valuePtr->name, PTR_TYPE, PTR_TYPE, valuePtr->name);
-
-		// Load the value itself
-		snip->Add("%{} =l loadl %{}", snip->result->name, valuePtr->name);
-	} else {
-		fmt::print(stderr, "Unknown variable type in load: {}\n", typeid(*node->var).name());
-	}
-	return snip;
-}
+QbeBackend::Snippet *QbeBackend::VisitExprLoad(ExprLoad *node) { return LoadVariable(node->var); }
 
 QbeBackend::Snippet *QbeBackend::VisitExprRunStatements(ExprRunStatements *node) {
 	Snippet *snip = m_alloc.New<Snippet>();
@@ -1012,6 +953,74 @@ QbeBackend::VLocal *QbeBackend::AddTemporary(std::string debugName) {
 	VLocal *local = m_temporaries.back().get();
 	local->name = MangleUniqueName(debugName, true);
 	return local;
+}
+
+QbeBackend::Snippet *QbeBackend::LoadVariable(VarDecl *var) {
+	auto stackLocalIter = m_stackVariables.find(var);
+	LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(var);
+	UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(var);
+	Snippet *snip = m_alloc.New<Snippet>();
+	snip->result = AddTemporary("var_load_" + var->Name());
+	if (stackLocalIter != m_stackVariables.end()) {
+		VLocal *localDerefTemp = AddTemporary("stack_local_ptr_" + var->Name());
+		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
+		    stackLocalIter->second * sizeof(Value));
+		snip->Add("%{} =l loadl %{}", snip->result->name, localDerefTemp->name);
+	} else if (local) {
+		snip->Add("%{} ={} copy %{}", snip->result->name, PTR_TYPE, LookupVariable(local)->name);
+	} else if (global) {
+		snip->Add("%{} ={} load{} {}", snip->result->name, PTR_TYPE, PTR_TYPE, MangleGlobalName(global));
+	} else if (upvalue) {
+		if (!m_currentFnUpvaluePack) {
+			fmt::print(stderr, "Found UpvalueVariable without an upvalue pack!\n");
+			abort();
+		}
+
+		auto upvalueIter = m_currentFnUpvaluePack->variableIds.find(upvalue);
+		if (upvalueIter == m_currentFnUpvaluePack->variableIds.end()) {
+			fmt::print(stderr, "Could not find upvalue in current pack for variable {}\n", upvalue->parent->Name());
+			abort();
+		}
+		int offset = upvalueIter->second * sizeof(Value);
+
+		// Get a pointer pointing to the position in the upvalue pack where this variable is
+		VLocal *valuePtr = AddTemporary("upvalue_pack_sub_ptr");
+		snip->Add("%{} ={} add %upvalue_pack, {}", valuePtr->name, PTR_TYPE, offset);
+
+		// The upvalue pack stores pointers, so at this point our variable is a Value** and we have to dereference
+		// it twice. In the future we should store never-modified variables directly, so this would be Value*.
+		// This chases the pointer in-place, that is in the same variable, to avoid the bother of declaring another one.
+		snip->Add("%{} ={} load{} %{}", valuePtr->name, PTR_TYPE, PTR_TYPE, valuePtr->name);
+
+		// Load the value itself
+		snip->Add("%{} =l loadl %{}", snip->result->name, valuePtr->name);
+	} else {
+		fmt::print(stderr, "Unknown variable type in load: {}\n", typeid(*var).name());
+	}
+	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::StoreVariable(VarDecl *var, VLocal *input) {
+	Snippet *snip = m_alloc.New<Snippet>();
+
+	auto stackLocalIter = m_stackVariables.find(var);
+	LocalVariable *local = dynamic_cast<LocalVariable *>(var);
+	IRGlobalDecl *global = dynamic_cast<IRGlobalDecl *>(var);
+	if (stackLocalIter != m_stackVariables.end()) {
+		VLocal *localDerefTemp = AddTemporary("assign_stack_local_ptr_" + var->Name());
+		snip->Add("%{} ={} add %stack_locals, {}", localDerefTemp->name, PTR_TYPE,
+		    stackLocalIter->second * sizeof(Value));
+		snip->Add("storel %{}, %{}", input->name, localDerefTemp->name);
+	} else if (local) {
+		snip->Add("%{} ={} copy %{}", LookupVariable(local)->name, PTR_TYPE, input->name);
+	} else if (global) {
+		snip->Add("store{} %{}, {}", PTR_TYPE, input->name, MangleGlobalName(global));
+	} else {
+		fmt::print(stderr, "Unknown variable type in assignment: {}\n", typeid(*var).name());
+	}
+
+	return snip;
 }
 
 std::string QbeBackend::GetStringPtr(const std::string &value) {
