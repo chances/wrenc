@@ -310,7 +310,7 @@ class StmtLoadModule : public IRStmt {
 	void Accept(IRVisitor *visitor) override;
 
 	// The import this load triggers
-	IRImport *import = nullptr;
+	IRImport *importNode = nullptr;
 
 	// The variables to import by name
 	std::vector<VarImport> variables;

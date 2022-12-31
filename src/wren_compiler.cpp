@@ -182,7 +182,7 @@ struct Parser {
 	CompContext *context;
 
 	// The module being parsed.
-	Module *module;
+	Module *targetModule;
 
 	// The source code being parsed.
 	const char *source;
@@ -342,8 +342,8 @@ static void assertionFailure(const char *file, int line, const char *msg) {
 }
 
 static std::string moduleName(Parser *parser) {
-	std::optional<std::string> module = parser->module->Name();
-	return module ? module.value() : "<unknown>";
+	std::optional<std::string> mod = parser->targetModule->Name();
+	return mod ? mod.value() : "<unknown>";
 }
 
 static void printError(Parser *parser, int line, const char *label, const char *format, va_list args) {
@@ -1191,11 +1191,11 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 
 	if (compiler->scopeDepth == -1) {
 		// Top-level module scope.
-		IRGlobalDecl *global = compiler->parser->module->AddVariable(token->contents);
+		IRGlobalDecl *global = compiler->parser->targetModule->AddVariable(token->contents);
 
 		// If the variable was already defined, check if it was implicitly defined
 		if (global == nullptr) {
-			IRGlobalDecl *current = compiler->parser->module->FindVariable(token->contents);
+			IRGlobalDecl *current = compiler->parser->targetModule->FindVariable(token->contents);
 			if (current->undeclaredLineUsed.has_value()) {
 				// If this was a localname we want to error if it was referenced before this definition.
 				// This covers cases like this in the global scope:
@@ -1217,7 +1217,7 @@ static VarDecl *declareVariable(Compiler *compiler, Token *token) {
 			}
 		}
 
-		compiler->parser->module->AddNode(global);
+		compiler->parser->targetModule->AddNode(global);
 
 		// } else if (symbol == -3) {
 		// }
@@ -1755,7 +1755,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
 		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
 		fnCompiler.fn->parent = compiler->fn;
-		compiler->parser->module->AddNode(fnCompiler.fn);
+		compiler->parser->targetModule->AddNode(fnCompiler.fn);
 		compiler->fn->closures.push_back(fnCompiler.fn);
 
 		// Make a dummy signature to track the arity.
@@ -2071,10 +2071,10 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 		return compiler->New<ExprSystemVar>(token->contents);
 
 	// Otherwise, look for a module-level variable with the name.
-	variable = compiler->parser->module->FindVariable(token->contents);
+	variable = compiler->parser->targetModule->FindVariable(token->contents);
 	if (variable == nullptr) {
 		// Implicitly define a module-level variable in the hopes that we get a real definition later.
-		IRGlobalDecl *decl = compiler->parser->module->AddVariable(token->contents);
+		IRGlobalDecl *decl = compiler->parser->targetModule->AddVariable(token->contents);
 		ASSERT(decl, "Could not find or create global variable");
 		decl->undeclaredLineUsed = token->line;
 		variable = decl;
@@ -3107,7 +3107,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		method->fn->enclosingClass = classNode;
 		method->fn->methodInfo = method;
 		endCompiler(&methodCompiler, signature->ToString());
-		compiler->parser->module->AddNode(method->fn);
+		compiler->parser->targetModule->AddNode(method->fn);
 	}
 
 	if (signature->type == SIG_INITIALIZER) {
@@ -3123,7 +3123,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		alloc->isForeign = false; // For foreign classes, the allocate memory node handles the FFI stuff.
 
 		IRFn *fn = compiler->New<IRFn>();
-		compiler->parser->module->AddNode(fn);
+		compiler->parser->targetModule->AddNode(fn);
 		fn->enclosingClass = classNode;
 		fn->methodInfo = alloc;
 		fn->debugName = method->fn->debugName + "::alloc";
@@ -3255,23 +3255,23 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 // * Emit an IMPORT_VARIABLE instruction to load the variable's value from the
 //   other module.
 // * Compile the code to store that value in the variable in this scope.
-static IRNode *import(Compiler *compiler) {
+static IRNode *importStatement(Compiler *compiler) {
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_STRING, "Expect a string after 'import'.");
 	std::string moduleName = compiler->parser->previous.value.CheckString();
 
 	// Add a node to say that we need the module. This is kinda just put anywhere inside the
 	// file, with no concerns for ordering or matching up with if statements or anything like that.
-	IRImport *import = compiler->New<IRImport>();
-	import->moduleName = moduleName;
-	compiler->parser->module->AddNode(import);
+	IRImport *importNode = compiler->New<IRImport>();
+	importNode->moduleName = moduleName;
+	compiler->parser->targetModule->AddNode(importNode);
 
 	// At this point in the execution, require that the module is loaded if it wasn't already
 	// This makes stuff like requiring modules inside if statements work properly. If you have
 	// a debug module that throws an error when imported in release builds and all the imports
 	// of it check if you're in release mode or not, then this is what makes that work properly.
 	StmtLoadModule *load = compiler->New<StmtLoadModule>();
-	load->import = import;
+	load->importNode = importNode;
 
 	// The for clause is optional.
 	if (!match(compiler, TOKEN_FOR))
@@ -3352,7 +3352,7 @@ IRNode *definition(Compiler *compiler) {
 	}
 
 	if (match(compiler, TOKEN_IMPORT)) {
-		return import(compiler);
+		return importStatement(compiler);
 	}
 
 	if (match(compiler, TOKEN_VAR)) {
@@ -3362,14 +3362,14 @@ IRNode *definition(Compiler *compiler) {
 	return statement(compiler);
 }
 
-IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool isExpression, bool compilingCore) {
+IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool isExpression, bool compilingCore) {
 	// Skip the UTF-8 BOM if there is one.
 	if (strncmp(source, "\xEF\xBB\xBF", 3) == 0)
 		source += 3;
 
 	Parser parser;
 	parser.context = context;
-	parser.module = module;
+	parser.targetModule = mod;
 	parser.source = source;
 	parser.compilingInternal = compilingCore;
 
@@ -3399,8 +3399,8 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 
 	compiler.fn->debugName = moduleName(&parser) + "::__root_func";
 	compiler.fn->debugInfo.lineNumber = 1;
-	module->AddNode(compiler.fn);
-	ASSERT(module->GetFunctions().front() == compiler.fn, "Module init function is not the module's first function!");
+	mod->AddNode(compiler.fn);
+	ASSERT(mod->GetFunctions().front() == compiler.fn, "Module init function is not the module's first function!");
 
 	if (isExpression) {
 		IRExpr *expr = expression(&compiler);
@@ -3425,7 +3425,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 			if (stmt)
 				block->Add(stmt);
 			else
-				module->AddNode(node);
+				mod->AddNode(node);
 
 			// In the case of classes, bind a new global variable to them. Eventually this should
 			// be seldom used and we can use static dispatch to make static functions "just as fast as C"
@@ -3438,11 +3438,11 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 					continue;
 				}
 
-				IRGlobalDecl *global = module->AddVariable(classDecl->info->name);
+				IRGlobalDecl *global = mod->AddVariable(classDecl->info->name);
 
 				// If the variable was already defined, check if it was implicitly defined
 				if (global == nullptr) {
-					IRGlobalDecl *current = module->FindVariable(classDecl->info->name);
+					IRGlobalDecl *current = mod->FindVariable(classDecl->info->name);
 					if (current->undeclaredLineUsed.has_value()) {
 						global = current;
 						global->undeclaredLineUsed = std::optional<int>();
@@ -3471,7 +3471,7 @@ IRFn *wrenCompile(CompContext *context, Module *module, const char *source, bool
 	// See if there are any implicitly declared module-level variables that never
 	// got an explicit definition. They will have values that are numbers
 	// indicating the line where the variable was first used.
-	for (IRGlobalDecl *variable : parser.module->GetGlobalVariables()) {
+	for (IRGlobalDecl *variable : parser.targetModule->GetGlobalVariables()) {
 		if (variable->undeclaredLineUsed.has_value()) {
 			// Synthesize a token for the original use site.
 			parser.previous.type = TOKEN_NAME;

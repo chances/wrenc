@@ -1598,7 +1598,7 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 	// At this point, currentModDir will be something like 'a/b/' if our module is named 'a/b/c'. If our module
 	// is named 'a' then it's an empty string.
 
-	std::string modName = node->import->moduleName;
+	std::string modName = node->importNode->moduleName;
 	// If a module name starts with / then it's an absolute path
 	if (modName.starts_with("/")) {
 		modName = modName.substr(1);
@@ -1653,7 +1653,7 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 
 	// Create or get the module - this runs it's initialiser, etc
 	std::vector<llvm::Value *> args = {GetStringConst(modName), globalsFunc.getCallee()};
-	llvm::Value *modPtr = m_builder.CreateCall(m_importModule, args, "module_" + node->import->moduleName);
+	llvm::Value *modPtr = m_builder.CreateCall(m_importModule, args, "module_" + node->importNode->moduleName);
 
 	// And import all the variables from it
 	for (const StmtLoadModule::VarImport &var : node->variables) {
