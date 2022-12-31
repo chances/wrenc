@@ -707,6 +707,15 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 }
 
 void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
+	// Create the get-global-table function early, as we pass a pointer to it for string initialisation.
+	{
+		std::string moduleName = mod->Name() ? mod->Name().value() : "<unnamed_module>";
+		std::string getGlobalName = mod->Name().value() + "_get_globals";
+		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
+		m_getGlobals =
+		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
+	}
+
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
@@ -754,7 +763,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 	// Create all the string constants
 
-	argTypes = {m_pointerType, m_int32Type};
+	argTypes = {m_pointerType, m_pointerType, m_int32Type};
 	llvm::FunctionType *newStringType = llvm::FunctionType::get(m_valueType, argTypes, false);
 	llvm::FunctionCallee newStringFn = m_module.getOrInsertFunction("wren_init_string_literal", newStringType);
 
@@ -763,7 +772,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		llvm::Constant *strPtr = GetStringConst(entry.first);
 
 		// And construct a string object from it
-		std::vector<llvm::Value *> args = {strPtr, CInt::get(m_int32Type, entry.first.size())};
+		std::vector<llvm::Value *> args = {m_getGlobals, strPtr, CInt::get(m_int32Type, entry.first.size())};
 		llvm::Value *value = m_builder.CreateCall(newStringFn, args);
 
 		m_builder.CreateStore(value, entry.second);
@@ -1035,11 +1044,6 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 	// Finally, generate the get-global-table function. Do this even if the module doesn't have a name, as this
 	// is how we tell the standalone executable stub about our main function.
 	{
-		std::string moduleName = mod->Name() ? mod->Name().value() : "<unnamed_module>";
-		std::string getGlobalName = mod->Name().value() + "_get_globals";
-		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
-		m_getGlobals =
-		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
 		m_builder.SetInsertPoint(llvm::BasicBlock::Create(m_context, "entry", m_getGlobals));
 
 		// Create the globals table

@@ -38,7 +38,7 @@
 extern "C" {
 EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
 EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature, bool isStatic);
-EXPORT Value wren_init_string_literal(const char *literal, int length);
+EXPORT Value wren_init_string_literal(void *getGlobalsFunc, const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
 EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue);
 EXPORT Value wren_alloc_obj(Value classVar);
@@ -111,7 +111,7 @@ void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signatu
 	return func->func;
 }
 
-Value wren_init_string_literal(const char *literal, int length) {
+Value wren_init_string_literal(void *getGlobalsFunc, const char *literal, int length) {
 	ObjString *str = ObjString::New(std::string(literal, length));
 	return encode_object(str);
 }

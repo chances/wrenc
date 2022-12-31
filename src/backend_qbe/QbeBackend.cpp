@@ -222,6 +222,10 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 		    moduleName);
 	}
 
+	// Since QBE doesn't know how to find the pointer to a function without a relocation (and that can't go
+	// in .text since it's read-only in ELF), we'll put a dummy global that has it's pointer loaded.
+	Print("section \".data\" data $dummyGetGlobalsPtr = {{ {} ${}_get_globals }}", PTR_TYPE, moduleName);
+
 	std::string result = m_output.str();
 	return CompilationResult{
 	    .successful = true,
@@ -260,12 +264,14 @@ void QbeBackend::GenerateInitFunction(const std::string &moduleName, Module *mod
 	Print("@start");
 
 	Print("# Initialise string literals");
+	Print("%get_globals_ptr ={} loadl $dummyGetGlobalsPtr", PTR_TYPE);
 	int i = 0;
 	for (const auto &[literal, name] : m_stringObjs) {
 		std::string varName = fmt::format("value_{}", i++);
 		std::string storageName = name;
 		storageName.erase(1, 4); // Remove the obj_ prefix
-		Print("%{} =l call $wren_init_string_literal({} {}, w {})", varName, PTR_TYPE, storageName, literal.size());
+		Print("%{} =l call $wren_init_string_literal({} %get_globals_ptr, {} {}, w {})", varName, PTR_TYPE, PTR_TYPE,
+		    storageName, literal.size());
 		Print("storel %{}, {}", varName, name);
 	}
 
