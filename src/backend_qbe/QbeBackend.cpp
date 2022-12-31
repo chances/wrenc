@@ -157,6 +157,11 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	// Add the init function to the globals table
 	std::string mainFuncName = MangleUniqueName(mod->GetMainFunction()->debugName, false);
 	Print("\t{} {}, {} ${},", PTR_TYPE, GetStringPtr("<INTERNAL>::init_func"), PTR_TYPE, mainFuncName);
+	// Add the module name
+	if (mod->Name()) {
+		Print("\t{} {}, {} {},", PTR_TYPE, GetStringPtr("<INTERNAL>::module_name"), PTR_TYPE,
+		    GetStringPtr(mod->Name().value()));
+	}
 	// End out the globals table
 	Print("l 0 }} # End with a null string pointer");
 
