@@ -174,6 +174,8 @@ void GCTracingScanner::EndGCCycle() {
 		m_greyList = get_object_value(gcWord);
 
 		obj->MarkGCValues(&m_markOps);
+
+		obj->gcWord = encode_number(m_currentWhiteNumber);
 	}
 
 	// TODO deallocate all black objects, as we've confirmed they're unreachable.
