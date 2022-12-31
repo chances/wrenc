@@ -47,6 +47,12 @@ class ClassInfo {
 	// Symbol table for the fields of the class.
 	SymbolTable fields;
 
+	// A symbol table storing the class's static variables. These can be stored as global
+	// variables for classes we know are only declared once, or stored in the ObjClass
+	// object for classes declared in (for example) a loop.
+	// TODO implement the latter, and remove this note when that is done
+	SymbolTable staticFields;
+
 	// Symbols for the methods defined by the class. Used to detect duplicate
 	// method definitions.
 	using MethodMap = std::map<Signature *, std::unique_ptr<MethodInfo>>;

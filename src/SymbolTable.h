@@ -30,6 +30,12 @@ class FieldVariable {
 
 	~FieldVariable();
 
+	/// If this is a static variable on a class that is known to only be declared
+	/// once (as a counterexample, classes declared in a loop have their own
+	/// versions of static variables for each declaration) then this is a pointer
+	/// to that variable.
+	std::unique_ptr<IRGlobalDecl> staticGlobal;
+
   private:
 	FieldVariable();
 

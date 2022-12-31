@@ -1401,22 +1401,6 @@ static VarDecl *resolveNonmodule(Compiler *compiler, const std::string &name) {
 	return findUpvalue(compiler, name);
 }
 
-// Look up [name] in the current scope to see what variable it refers to.
-// Returns the variable either in module scope, local scope, or the enclosing
-// function's upvalue list. Returns a variable with index -1 if not found.
-static VarDecl *resolveName(Compiler *compiler, const std::string &name) {
-	VarDecl *variable = resolveNonmodule(compiler, name);
-	if (variable)
-		return variable;
-
-	// Load a module-level variable
-	abort(); // TODO
-
-	// variable.scope = SCOPE_MODULE;
-	// variable.index = wrenSymbolTableFind(&compiler->parser->module->variableNames, name, length);
-	// return variable;
-}
-
 // Finishes [compiler], which is compiling a function, method, or chunk of top
 // level code. If there is a parent compiler, then this returns a expression creating
 // a new closure of this function over the current variables.
@@ -2045,20 +2029,17 @@ static IRExpr *staticField(Compiler *compiler, bool canAssign) {
 	// Look up the name in the scope chain.
 	Token *token = &compiler->parser->previous;
 
-	// If this is the first time we've seen this static field, implicitly
-	// define it as a variable in the scope surrounding the class definition.
-	VarDecl *local = compiler->locals.Lookup(token->contents);
-	if (local == nullptr) {
-		local = declareVariable(classCompiler, NULL);
+	ClassInfo *cls = classCompiler->enclosingClass;
+	FieldVariable *fieldVar = cls->staticFields.Ensure(token->contents);
 
-		// TODO null initialisation
+	// For now, we'll only handle classes that we know are only declared once.
+	// This means we can just use a global variable to store the static field.
+	if (!fieldVar->staticGlobal) {
+		fieldVar->staticGlobal = std::make_unique<IRGlobalDecl>();
+		fieldVar->staticGlobal->name = cls->name + "::" + token->contents;
 	}
 
-	// It definitely exists now, so resolve it properly. This is different from
-	// the above resolveLocal() call because we may have already closed over it
-	// as an upvalue.
-	VarDecl *variable = resolveName(compiler, token->contents);
-	return bareName(compiler, canAssign, variable);
+	return bareName(compiler, canAssign, fieldVar->staticGlobal.get());
 }
 
 // Compiles a variable name or method call with an implicit receiver.
