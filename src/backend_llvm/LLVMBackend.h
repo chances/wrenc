@@ -23,4 +23,7 @@ class LLVMBackend : public IBackend {
 	ArenaAllocator m_alloc;
 };
 
+// Non-name-mangled function for dynamic loading
+extern "C" LLVMBackend *create_llvm_backend(); // NOLINT(readability-identifier-naming)
+
 #endif

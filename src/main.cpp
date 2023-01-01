@@ -9,6 +9,7 @@
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
 
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <fstream>
 #include <getopt.h>
@@ -29,6 +30,9 @@ static std::string compilerInstallDir;
 static int globalDontAssemble = 0;
 static int globalBuildCoreLib = 0;
 static int globalNoDebugInfo = 0;
+
+typedef IBackend *(*createBackendFunc_t)();
+static createBackendFunc_t createLLVMBackend = nullptr;
 
 static option options[] = {
     {"output", required_argument, 0, 'o'},
@@ -351,7 +355,23 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	const char *envUseLLVM = getenv("USE_LLVM");
 	if (envUseLLVM && envUseLLVM == std::string("1")) {
 #ifdef USE_LLVM
-		backend = LLVMBackend::Create();
+		// Dynamically load the LLVM backend - this is so the frontend can be easily debugged
+		// without waiting for GDB to load all of LLVM's symbols.
+		if (!createLLVMBackend) {
+			std::string llvmBackendFilename = compilerInstallDir + "/llvm_backend.so";
+			void *handle = dlopen(llvmBackendFilename.c_str(), RTLD_NOW);
+			if (!handle) {
+				fmt::print(stderr, "Failed to load LLVM backend: {}\n", dlerror());
+				exit(1);
+			}
+			typedef IBackend *(*createFunc_t)();
+			createLLVMBackend = (createFunc_t)dlsym(handle, "create_llvm_backend");
+			if (!createLLVMBackend) {
+				fmt::print(stderr, "Could not find backend creation function in the LLVM backend module\n");
+				exit(1);
+			}
+		}
+		backend = std::unique_ptr<IBackend>(createLLVMBackend());
 #else
 		fmt::print(stderr, "LLVM support is not included in this build, ensure Meson's use_llvm is enabled\n");
 		exit(1);

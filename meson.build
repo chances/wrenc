@@ -96,21 +96,44 @@ wrenc = executable('wrencc',
   'src/passes/IRCleanup.cpp',
   'src/passes/BasicBlockPass.cpp',
   'src/backend_qbe/QbeBackend.cpp',
-  'src/backend_llvm/LLVMBackend.cpp',
 
   dependencies: [
     fmt,
     common,
-    llvm,
-  ],
-  link_with: [
-    llvm_plugin,
+    meson.get_compiler('cpp').find_library('dl')
   ],
   cpp_args: [
     '-fPIC', # Required for Qt on my system
   ],
   include_directories: [
     'src',
+  ],
+  override_options: ['cpp_std=c++20'],
+  export_dynamic: true, # Export the symbols so the LLVM backend can access them
+)
+
+# Build the LLVM driver as it's own shared library that gets loaded into the compiler
+# at runtime. This is mostly for debugging: GDB doesn't have to load all the LLVM
+# symbols when the compiler starts, so it should speed up debugging the frontend components
+# by a lot.
+# Use a shared module, which means we can link to symbols that exist in the frontend without
+# splitting that into it's own library.
+llvm_backend = shared_module('llvm_backend',
+  'src/backend_llvm/LLVMBackend.cpp',
+  name_prefix: '', # Don't prepend a 'lib' prefix on Linux, this isn't really a library
+  link_with: [
+    llvm_plugin,
+  ],
+  include_directories: [
+    'src',
+  ],
+  dependencies: [
+    fmt,
+    common,
+    llvm,
+  ],
+  cpp_args: [
+    '-fPIC',
   ],
   override_options: ['cpp_std=c++20'],
 )

@@ -868,9 +868,6 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		m_builder.CreateStore(spec, fnData->closureSpec);
 	}
 
-	// Load the Obj type once, since we'll likely use it a lot since it's the default supertype
-	llvm::Value *objValue = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
-
 	for (IRClass *cls : mod->GetClasses()) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
@@ -1685,6 +1682,11 @@ LLVMBackend::~LLVMBackend() {}
 
 std::unique_ptr<LLVMBackend> LLVMBackend::Create() {
 	return std::unique_ptr<LLVMBackend>(new wren_llvm_backend::LLVMBackendImpl);
+}
+
+LLVMBackend *create_llvm_backend() {
+	std::unique_ptr<LLVMBackend> backend = LLVMBackend::Create();
+	return backend.release();
 }
 
 #endif // USE_LLVM
