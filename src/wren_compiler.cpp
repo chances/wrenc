@@ -232,15 +232,6 @@ struct Parser {
 	bool compilingInternal = false;
 };
 
-struct CompilerUpvalue {
-	// True if this upvalue is capturing a local variable from the enclosing
-	// function. False if it's capturing an upvalue.
-	bool isLocal;
-
-	// The index of the local or upvalue being captured in the enclosing function.
-	int index;
-};
-
 // Bookkeeping information for the current loop being compiled.
 struct Loop {
 	// The label that the end of loop should jump back to.
@@ -271,10 +262,6 @@ class Compiler {
 	// top level.
 	Compiler *parent;
 
-	// The upvalues that this function has captured from outer scopes. The count
-	// of them is stored in [numUpvalues].
-	CompilerUpvalue upvalues[MAX_UPVALUES];
-
 	// The current level of block scope nesting, where zero is no nesting. A -1
 	// here means top-level code is being compiled and there is no block scope
 	// in effect at all. Any variables declared will be module-level.
@@ -284,6 +271,8 @@ class Compiler {
 	Loop *loop;
 
 	// If this is a compiler for a method, keeps track of the class enclosing it.
+	// Note this is not set on the compiler that compiles the body of a method - it's
+	// set on it's parent, the one parsing the block that contains the class declaration.
 	ClassInfo *enclosingClass;
 
 	// The function being compiled.
@@ -397,7 +386,7 @@ static void error(Compiler *compiler, const char *format, ...) {
 }
 
 // Initializes [compiler].
-static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, bool isMethod) {
+static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent) {
 	compiler->parser = parser;
 	compiler->parent = parent;
 	compiler->loop = NULL;
@@ -406,15 +395,6 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent, b
 	compiler->fn = NULL;
 
 	parser->context->compiler = compiler;
-
-	// Declare the method receiver for methods, so it can be resolved like any other local variable
-
-	if (isMethod) {
-		LocalVariable *var = compiler->New<LocalVariable>();
-		var->name = "this";
-		var->depth = -1;
-		compiler->locals.Add(var);
-	}
 
 	if (parent == NULL) {
 		// Compiling top-level code, so the initial scope is module-level.
@@ -1343,7 +1323,7 @@ static UpvalueVariable *addUpvalue(Compiler *compiler, VarDecl *var) {
 //
 // If it reaches a method boundary, this stops and returns -1 since methods do
 // not close over local variables.
-static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
+static UpvalueVariable *findUpvalue(Compiler *compiler, const std::string &name) {
 	// If we are at the top level, we didn't find it. This is because you don't have
 	// local variables at the top level - they're all module-level variables.
 	if (compiler->parent == NULL)
@@ -1377,7 +1357,7 @@ static VarDecl *findUpvalue(Compiler *compiler, const std::string &name) {
 	// intermediate functions to get from the function where a local is declared
 	// all the way into the possibly deeply nested function that is closing over
 	// it.
-	VarDecl *upvalue = findUpvalue(compiler->parent, name);
+	UpvalueVariable *upvalue = findUpvalue(compiler->parent, name);
 	if (upvalue) {
 		return addUpvalue(compiler, upvalue);
 	}
@@ -1555,7 +1535,20 @@ static IRNode *finishBlock(Compiler *compiler) {
 //
 // If [Compiler->isInitializer] is `true`, this is the body of a constructor
 // initializer. In that case, this adds the code to ensure it returns `this`.
-static IRStmt *finishBody(Compiler *compiler) {
+static IRStmt *finishBody(Compiler *compiler, bool isMethod) {
+	// Declare the method receiver for methods, so it can be bound by upvalues like any other
+	// local variable. It's not used when the user types 'this' though, since that has a
+	// special IR node for it.
+	IRStmt *setupThis = nullptr;
+	LocalVariable *receiverVar = nullptr;
+	if (isMethod) {
+		receiverVar = addLocal(compiler, "this");
+		ASSERT(receiverVar != nullptr, "Couldn't create 'this' variable");
+
+		// Create the statement now, so it has debug information from this area.
+		setupThis = compiler->New<StmtAssign>(receiverVar, compiler->New<ExprLoadReceiver>());
+	}
+
 	IRNode *body = finishBlock(compiler);
 
 	IRExpr *expr = dynamic_cast<IRExpr *>(body);
@@ -1567,6 +1560,12 @@ static IRStmt *finishBody(Compiler *compiler) {
 
 	IRExpr *returnValue = nullptr;
 	StmtBlock *block = compiler->New<StmtBlock>();
+
+	// Only initialise the 'this' variable if it's used as an upvalue. The user can't access it - writing
+	// 'this' results in a ExprLoadReceiver - so we can leave it out to avoid cluttering up the IR.
+	if (isMethod && !receiverVar->upvalues.empty()) {
+		block->Add(setupThis);
+	}
 
 	if (compiler->isInitializer) {
 		// If the initializer body evaluates to a value, discard it.
@@ -1781,7 +1780,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 		called.arity++;
 
 		Compiler fnCompiler;
-		initCompiler(&fnCompiler, compiler->parser, compiler, false);
+		initCompiler(&fnCompiler, compiler->parser, compiler);
 		std::string subDebugName = signature->name + "_" + std::to_string(compiler->parser->previous.line);
 		fnCompiler.fn->debugName = compiler->fn->debugName + "::" + subDebugName;
 		fnCompiler.fn->parent = compiler->fn;
@@ -1797,7 +1796,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 			consume(compiler, TOKEN_PIPE, "Expect '|' after function parameters.");
 		}
 
-		fnCompiler.fn->body = finishBody(&fnCompiler);
+		fnCompiler.fn->body = finishBody(&fnCompiler, false);
 
 		// Name the function based on the method its passed to.
 		std::string name = signature->ToString() + " block argument";
@@ -1857,7 +1856,19 @@ static IRExpr *loadVariable(Compiler *compiler, VarDecl *variable) { return comp
 
 // Loads the receiver of the currently enclosing method. Correctly handles
 // functions defined inside methods.
-static IRExpr *loadThis(Compiler *compiler) { return compiler->New<ExprLoadReceiver>(); }
+static IRExpr *loadThis(Compiler *compiler) {
+	// If we're in a closure nested inside a function, then we need to indicate to the backend
+	// that we need to use the receiver as an upvalue.
+	// Note that we're using parent->enclosingClass since we want to check if we're in a method body - see
+	// the comment for enclosingClass about this counterintuitive behaviour.
+	if (compiler->parent->enclosingClass == nullptr) {
+		VarDecl *upvalue = findUpvalue(compiler, "this");
+		ASSERT(upvalue != nullptr, "Failed to create a 'this' upvalue!");
+		return loadVariable(compiler, upvalue);
+	}
+
+	return compiler->New<ExprLoadReceiver>();
+}
 
 // Pushes the value for a module-level variable implicitly imported from core.
 static IRExpr *loadCoreVariable(Compiler *compiler, std::string name) { return compiler->New<ExprSystemVar>(name); }
@@ -2171,8 +2182,16 @@ static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
 
 static IRExpr *super_(Compiler *compiler, bool canAssign) {
 	ClassInfo *enclosingClass = getEnclosingClass(compiler);
+	IRExpr *thisExpr;
 	if (enclosingClass == NULL) {
 		error(compiler, "Cannot use 'super' outside of a method.");
+
+		// Put a dummy value in, to let compilation continue.
+		thisExpr = compiler->New<ExprConst>(CcValue::NULL_TYPE);
+	} else {
+		// loadThis crashes if we're not in a method or a closure declared with it, so only
+		// call this if that's the case.
+		thisExpr = loadThis(compiler);
 	}
 
 	// TODO: Super operator calls.
@@ -2183,13 +2202,13 @@ static IRExpr *super_(Compiler *compiler, bool canAssign) {
 	if (match(compiler, TOKEN_DOT)) {
 		// Compile the superclass call.
 		consume(compiler, TOKEN_NAME, "Expect method name after 'super.'.");
-		return namedCall(compiler, loadThis(compiler), canAssign, true);
+		return namedCall(compiler, thisExpr, canAssign, true);
 	}
 
 	// No explicit name, so use the name of the enclosing method. Make sure we
 	// check that enclosingClass isn't NULL first. We've already reported the
 	// error, but we don't want to crash here.
-	return methodCall(compiler, true, enclosingClass->signature, loadThis(compiler));
+	return methodCall(compiler, true, enclosingClass->signature, thisExpr);
 }
 
 static IRExpr *this_(Compiler *compiler, bool canAssign) {
@@ -3105,7 +3124,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 	compiler->enclosingClass->signature = &tmpSignature;
 
 	Compiler methodCompiler;
-	initCompiler(&methodCompiler, compiler->parser, compiler, true);
+	initCompiler(&methodCompiler, compiler->parser, compiler);
 
 	// Compile the method signature. This might change the signature, so we have to normalise it afterwards.
 	signatureFn(&methodCompiler, &tmpSignature);
@@ -3132,7 +3151,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		methodCompiler.parser->context->compiler = methodCompiler.parent;
 	} else {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
-		methodCompiler.fn->body = finishBody(&methodCompiler);
+		methodCompiler.fn->body = finishBody(&methodCompiler, true);
 		method->fn = methodCompiler.fn;
 		method->fn->enclosingClass = classNode;
 		method->fn->methodInfo = method;
@@ -3424,7 +3443,7 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 	nextToken(&parser);
 
 	Compiler compiler;
-	initCompiler(&compiler, &parser, NULL, false);
+	initCompiler(&compiler, &parser, NULL);
 	ignoreNewlines(&compiler);
 
 	compiler.fn->debugName = moduleName(&parser) + "::__root_func";

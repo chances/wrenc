@@ -12,10 +12,7 @@ test/language/for/closure_in_body.wren
 test/language/for/close_over_loop_variable.wren
 test/language/while/closure_in_body.wren
 test/language/interpolation/switch_fiber.wren
-test/language/this/nested_class.wren
-test/language/this/nested_closure.wren
 test/language/this/this_in_static_method.wren
-test/language/this/closure.wren
 test/language/super/closure.wren
 test/language/super/super_at_top_level.wren
 test/language/super/super_in_closure_in_inherited_method.wren

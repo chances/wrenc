@@ -1411,7 +1411,10 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node) {
 	llvm::Value *closables = m_nullPointer;
 	llvm::Value *upvalueTable = m_nullPointer;
-	if (!node->func->upvalues.empty()) {
+	if (ctx->closableVariables) {
+		// Note it's perfectly valid for this to be null even if there are upvalues, so long as
+		// all those upvalues are inherited from the function above us, and thus passed through
+		// our upvalue pack (the one passed in as the function's first argument).
 		closables = ctx->closableVariables;
 	}
 	if (ctx->upvaluePackPtr) {
