@@ -5,7 +5,6 @@
 # that used to work but now don't, so we can use it for regression testing.
 
 test/language/class/foreign_class_inherit_fields.wren
-test/language/function/parameters.wren
 test/language/fiber/closure.wren
 test/language/inheritance/inherited_fields_in_closure.wren
 test/language/list/grow_shrink.wren
