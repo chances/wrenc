@@ -309,6 +309,7 @@ class Compiler {
 // Forward declarations
 
 static IRExpr *null(Compiler *compiler, bool canAssign = false);
+static ClassInfo *getEnclosingClass(Compiler *compiler);
 
 // The stack effect of each opcode. The index in the array is the opcode, and
 // the value is the stack effect of that instruction.
@@ -1747,7 +1748,7 @@ static ExprFuncCall *callMethod(Compiler *compiler, std::string signature, IRExp
 
 // Compiles an (optional) argument list for a method call with [methodSignature]
 // and then calls it.
-static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, IRExpr *receiver) {
+static IRExpr *methodCall(Compiler *compiler, IRFn *superCaller, Signature *signature, IRExpr *receiver) {
 	// Make a new signature that contains the updated arity and type based on
 	// the arguments we find.
 	Signature called = {signature->name, SIG_GETTER, 0};
@@ -1757,7 +1758,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 	// Create the call now, so it has the line number of it's start if the call spans multiple lines
 	ExprFuncCall *call = compiler->New<ExprFuncCall>();
 	call->receiver = receiver;
-	call->super = super;
+	call->superCaller = superCaller;
 
 	// Parse the argument list, if any.
 	if (match(compiler, TOKEN_LEFT_PAREN)) {
@@ -1824,7 +1825,7 @@ static IRExpr *methodCall(Compiler *compiler, bool super, Signature *signature, 
 
 // Compiles a call whose name is the previously consumed token. This includes
 // getters, method calls with arguments, and setter calls.
-static IRExpr *namedCall(Compiler *compiler, IRExpr *receiver, bool canAssign, bool super) {
+static IRExpr *namedCall(Compiler *compiler, IRExpr *receiver, bool canAssign, IRFn *superCaller) {
 	// Get the token for the method name.
 	Signature signature = signatureFromToken(compiler, SIG_GETTER);
 
@@ -1841,12 +1842,12 @@ static IRExpr *namedCall(Compiler *compiler, IRExpr *receiver, bool canAssign, b
 		ExprFuncCall *call = compiler->New<ExprFuncCall>();
 		call->receiver = receiver;
 		call->signature = normaliseSignature(compiler, signature);
-		call->super = super;
+		call->superCaller = superCaller;
 		call->args.push_back(value);
 		return call;
 	}
 
-	IRExpr *call = methodCall(compiler, super, &signature, receiver);
+	IRExpr *call = methodCall(compiler, superCaller, &signature, receiver);
 	allowLineBeforeDot(compiler);
 	return call;
 }
@@ -1989,6 +1990,17 @@ static ClassInfo *getEnclosingClass(Compiler *compiler) {
 	return compiler == NULL ? NULL : compiler->enclosingClass;
 }
 
+// Walks the compiler chain to find the nearest method enclosing this one.
+// Returns NULL if not currently inside a method definition.
+static IRFn *getEnclosingMethod(Compiler *compiler) {
+	while (compiler != nullptr) {
+		if (compiler->fn->enclosingClass != nullptr)
+			return compiler->fn;
+		compiler = compiler->parent;
+	}
+	return nullptr;
+}
+
 static IRExpr *field(Compiler *compiler, bool canAssign) {
 	// Initialize it with a fake value so we can keep parsing and minimize the
 	// number of cascaded errors.
@@ -2104,7 +2116,7 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 	// If we're inside a method and the name is lowercase, treat it as a method
 	// on this.
 	if (wrenIsLocalName(token->contents) && getEnclosingClass(compiler) != NULL) {
-		return namedCall(compiler, loadThis(compiler), canAssign, false);
+		return namedCall(compiler, loadThis(compiler), canAssign, nullptr);
 	}
 
 	// Check if a system variable with the same name exists (eg, for Object)
@@ -2181,17 +2193,20 @@ static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
 }
 
 static IRExpr *super_(Compiler *compiler, bool canAssign) {
-	ClassInfo *enclosingClass = getEnclosingClass(compiler);
+	IRFn *enclosingMethod = getEnclosingMethod(compiler);
+	Signature *enclosingSignature;
 	IRExpr *thisExpr;
-	if (enclosingClass == NULL) {
+	if (enclosingMethod == nullptr) {
 		error(compiler, "Cannot use 'super' outside of a method.");
 
 		// Put a dummy value in, to let compilation continue.
 		thisExpr = compiler->New<ExprConst>(CcValue::NULL_TYPE);
+		enclosingSignature = compiler->parser->context->alloc.New<Signature>();
 	} else {
 		// loadThis crashes if we're not in a method or a closure declared with it, so only
 		// call this if that's the case.
 		thisExpr = loadThis(compiler);
+		enclosingSignature = enclosingMethod->methodInfo->signature;
 	}
 
 	// TODO: Super operator calls.
@@ -2202,13 +2217,13 @@ static IRExpr *super_(Compiler *compiler, bool canAssign) {
 	if (match(compiler, TOKEN_DOT)) {
 		// Compile the superclass call.
 		consume(compiler, TOKEN_NAME, "Expect method name after 'super.'.");
-		return namedCall(compiler, thisExpr, canAssign, true);
+		return namedCall(compiler, thisExpr, canAssign, enclosingMethod);
 	}
 
 	// No explicit name, so use the name of the enclosing method. Make sure we
-	// check that enclosingClass isn't NULL first. We've already reported the
+	// check that enclosingMethod isn't NULL first. We've already reported the
 	// error, but we don't want to crash here.
-	return methodCall(compiler, true, enclosingClass->signature, thisExpr);
+	return methodCall(compiler, enclosingMethod, enclosingSignature, thisExpr);
 }
 
 static IRExpr *this_(Compiler *compiler, bool canAssign) {
@@ -2249,7 +2264,7 @@ static IRExpr *subscript(Compiler *compiler, IRExpr *receiver, bool canAssign) {
 static IRExpr *call(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	ignoreNewlines(compiler);
 	consume(compiler, TOKEN_NAME, "Expect method name after '.'.");
-	return namedCall(compiler, lhs, canAssign, false);
+	return namedCall(compiler, lhs, canAssign, nullptr);
 }
 
 static IRExpr *and_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
@@ -3151,10 +3166,13 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		methodCompiler.parser->context->compiler = methodCompiler.parent;
 	} else {
 		consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
-		methodCompiler.fn->body = finishBody(&methodCompiler, true);
 		method->fn = methodCompiler.fn;
 		method->fn->enclosingClass = classNode;
 		method->fn->methodInfo = method;
+
+		// Set up enclosingClass and methodInfo first, so we can use them while parsing the body
+		methodCompiler.fn->body = finishBody(&methodCompiler, true);
+
 		endCompiler(&methodCompiler, signature->ToString());
 		compiler->parser->targetModule->AddNode(method->fn);
 	}

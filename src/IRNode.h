@@ -394,7 +394,11 @@ class ExprFuncCall : public IRExpr {
 	Signature *signature = nullptr; /// The signature of the method to call. MUST be unique-ified by CompContext
 	std::vector<IRExpr *> args;     /// The list of arguments to pass, must match the function's arity at runtime
 	IRExpr *receiver = nullptr; /// Object the method will be called on. Null is valid and indicates a function call.
-	bool super = false;         /// Should call the parent class's method? Only allowed where receiver==this
+
+	/// If this call is a super call (a call to a parent object's implementation of a function), this is the
+	/// method either in which this call was made, or if this call was made in a closure, then the method that the
+	/// closure was defined in. Nested closures all point back to the method the outer-most one was declared in.
+	IRFn *superCaller = nullptr;
 };
 
 /// Create a closure over a function, binding any upvalues. This is used even when there are no upvalues, and

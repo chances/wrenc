@@ -38,12 +38,6 @@ class ClassInfo {
 	// The variable storing the class's supertype, or nullptr for Object.
 	IRExpr *parentClass = nullptr;
 
-	// Attributes are currently not implemented, but this would be needed for them:
-	// // Attributes for the class itself
-	// ObjMap *classAttributes;
-	// // Attributes for methods in this class
-	// ObjMap *methodAttributes;
-
 	// Symbol table for the fields of the class.
 	SymbolTable fields;
 

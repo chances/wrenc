@@ -1371,29 +1371,20 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 
 	// Call the lookup function
 	llvm::CallInst *func;
-	if (!node->super) {
+	if (!node->superCaller) {
 		std::vector<llvm::Value *> lookupArgs = {receiver.value, sigValue};
 		func = m_builder.CreateCall(m_virtualMethodLookup, lookupArgs, "vptr_" + name);
 	} else {
 		// Super lookups are special - we pass in the class this method is declared on, so the lookup function
 		// can find the correct method.
-		IRClass *cls = ctx->currentWrenFunc->enclosingClass;
-		if (!cls) {
-			fmt::print(stderr, "error: Found super call to {} from {}, which is not a method!\n", name,
-			    ctx->currentWrenFunc->debugName);
-			abort();
-		}
+		IRClass *cls = node->superCaller->enclosingClass;
 
-		if (dynamic_cast<ExprLoadReceiver *>(node->receiver) == nullptr) {
-			fmt::print(stderr, "error: Found super call to {} from {}, on non-ExprLoadReceiver receiver!\n", name,
-			    ctx->currentWrenFunc->debugName);
-			abort();
-		}
+		// Note that the receiver might be an upvalue, since you can make super calls from closures.
 
 		llvm::GlobalVariable *classVar = cls->GetBackendData<ClassData>()->object;
 		llvm::Value *thisClass = m_builder.CreateLoad(m_valueType, classVar, "super_cls_" + cls->info->name);
 
-		llvm::Value *isStatic = CInt::get(m_int8Type, ctx->currentWrenFunc->methodInfo->isStatic);
+		llvm::Value *isStatic = CInt::get(m_int8Type, node->superCaller->methodInfo->isStatic);
 
 		std::vector<llvm::Value *> lookupArgs = {receiver.value, thisClass, sigValue, isStatic};
 		func = m_builder.CreateCall(m_superMethodLookup, lookupArgs, "vptr_" + name);
