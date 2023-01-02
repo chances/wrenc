@@ -64,7 +64,7 @@ class QbeBackend : public IBackend {
 	std::string MangleUniqueName(const std::string &name, bool excludeIdentical);
 	std::string MangleRawName(const std::string &str, bool permitAmbiguity);
 
-	Snippet *HandleUnimplemented(IRNode *node);
+	[[noreturn]] Snippet *HandleUnimplemented(IRNode *node);
 
 	VLocal *AddTemporary(std::string debugName);
 	Snippet *LoadVariable(VarDecl *var);
