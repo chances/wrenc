@@ -1,4 +1,4 @@
-project('wrencc', 'cpp', 'c')
+project('wrencc', 'cpp', 'c', 'nasm')
 
 fmt_lib = static_library('fmt',
   'lib/fmt-8.1.1/src/format.cc',
@@ -192,6 +192,7 @@ rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/ObjNull.cpp',
   'rtsrc/ObjNum.cpp',
   'rtsrc/ObjFibre.cpp',
+  'rtsrc/ObjFibreX86.asm',
   'rtsrc/ObjFn.cpp',
   'rtsrc/ObjManaged.cpp',
   'rtsrc/CoreClasses.cpp',
