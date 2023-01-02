@@ -4,10 +4,7 @@
 
 #include "Scope.h"
 
-ScopeStack::ScopeStack() {
-	m_frames.push_back(std::make_unique<ScopeFrame>());
-	m_top = m_frames.back().get();
-}
+ScopeStack::ScopeStack() {}
 ScopeStack::~ScopeStack() {}
 
 LocalVariable *ScopeStack::Lookup(const std::string &name) {

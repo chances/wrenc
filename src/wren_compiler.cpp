@@ -278,6 +278,10 @@ class Compiler {
 	// The function being compiled.
 	IRFn *fn;
 
+	// The root-level StmtBeginUpvalues, which must be placed at the start of
+	// the function's body block.
+	StmtBeginUpvalues *rootBeginUpvalues = nullptr;
+
 	// The constants for the function being compiled.
 	ConstantsPool constants;
 
@@ -404,6 +408,10 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent) {
 		// The initial scope for functions and methods is local scope.
 		compiler->scopeDepth = 0;
 	}
+
+	// Push the root-level stack frame
+	compiler->rootBeginUpvalues = compiler->New<StmtBeginUpvalues>();
+	compiler->locals.PushFrame(compiler->rootBeginUpvalues);
 
 	compiler->fn = compiler->New<IRFn>();
 }
@@ -1569,6 +1577,10 @@ static IRStmt *finishBody(Compiler *compiler, bool isMethod) {
 
 	IRExpr *returnValue = nullptr;
 	StmtBlock *block = compiler->New<StmtBlock>();
+
+	// Add the root-level StmtBeginUpvalues node, which is required if any upvalues are declared in the
+	// body of this block.
+	block->Add(compiler->rootBeginUpvalues);
 
 	// Only initialise the 'this' variable if it's used as an upvalue. The user can't access it - writing
 	// 'this' results in a ExprLoadReceiver - so we can leave it out to avoid cluttering up the IR.
