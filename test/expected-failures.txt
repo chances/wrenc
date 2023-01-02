@@ -10,7 +10,6 @@ test/language/list/grow_shrink.wren
 test/language/for/closure_in_body.wren
 test/language/for/close_over_loop_variable.wren
 test/language/while/closure_in_body.wren
-test/language/this/this_in_static_method.wren
 test/language/field/closure.wren
 test/language/method/many_methods.wren
 test/language/module/implicitly_imports_core/implicitly_imports_core.wren

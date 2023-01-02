@@ -28,6 +28,8 @@ CoreClasses::CoreClasses() {
 
 	// Bind the Obj and ObjClass functions
 	ObjClass::Bind(&m_object, "Obj", false);
+
+	m_rootClass.functions = m_rootClass.parentClass->functions;
 	ObjClass::Bind(&m_rootClass, "ObjClass", false);
 
 	// Bind the metaclass last, since it inherits it's methods from ObjClass.
