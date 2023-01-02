@@ -275,11 +275,8 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_allocUpvalueStorage =
 	    m_module.getOrInsertFunction("wren_alloc_upvalue_storage", allocUpvalueStorageType, gcLeafFunc);
 
-	llvm::FunctionType *getUpvaluePackType = llvm::FunctionType::get(m_pointerType, {m_pointerType}, false);
+	llvm::FunctionType *getUpvaluePackType = llvm::FunctionType::get(m_pointerType, {m_valueType}, false);
 	m_getUpvaluePack = m_module.getOrInsertFunction("wren_get_closure_upvalue_pack", getUpvaluePackType, gcLeafFunc);
-
-	llvm::FunctionType *getNextClosureType = llvm::FunctionType::get(m_pointerType, {m_pointerType}, false);
-	m_getNextClosure = m_module.getOrInsertFunction("wren_get_closure_chain_next", getNextClosureType, gcLeafFunc);
 
 	llvm::FunctionType *allocObjectType = llvm::FunctionType::get(m_valueType, {m_valueType}, false);
 	m_allocObject = m_module.getOrInsertFunction("wren_alloc_obj", allocObjectType);
@@ -821,42 +818,9 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		    CInt::get(m_int32Type, numUpvalues),           // Upvalue count
 		};
 		for (UpvalueVariable *upvalue : upvaluePack->variables) {
-			IRFn *parentFn = fn->parent;
-			FnData *parentData = parentFn->GetBackendData<FnData>();
-
-			LocalVariable *target = dynamic_cast<LocalVariable *>(upvalue->parent);
-			if (!target) {
-				// This upvalue must point to another upvalue, right?
-				UpvalueVariable *nested = dynamic_cast<UpvalueVariable *>(upvalue->parent);
-				if (!nested) {
-					fmt::print(stderr, "Upvalue {} has non-local, non-upvalue parent scope {}.\n", upvalue->Name(),
-					    upvalue->parent->Scope());
-					abort();
-				}
-
-				// This upvalue should belong to our parent function.
-				assert(nested->containingFunction == parentFn);
-
-				// Then the value is already stored on the heap. Find the parent's upvalue's position in the parent
-				// function's upvalue pack. The parent function is the one that calls wren_create_closure, and passes
-				// in it's upvalue pack. That's why we're using the parent function's upvalue pack.
-				int index = parentData->upvaluePackDef->variableIds.at(nested);
-
-				// Set the MSB (when truncated to an i32) to indicate the value comes from
-				// the upvalue pack passed into this function, rather than the one it allocates.
-				index |= 1ull << 31;
-				structContent.push_back(CInt::get(m_int32Type, index));
-				continue;
-			}
-
-			if (!parentData->closedAddressPositions.contains(target)) {
-				fmt::print(stderr, "Function {} doesn't have closeable local {}, used by closure {}.\n",
-				    parentFn->debugName, target->Name(), fn->debugName);
-				abort();
-			}
-			int index = parentData->closedAddressPositions.at(target);
-
-			structContent.push_back(CInt::get(m_int32Type, index));
+			// Just generate zeros, since we fill the upvalue pack in generated code
+			// TODO remove the requirement to write out these variable indexes
+			structContent.push_back(CInt::get(m_int32Type, 0));
 		}
 
 		llvm::Constant *constant = llvm::ConstantStruct::get(closureSpecType, structContent);
@@ -1403,22 +1367,54 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	return {result};
 }
 ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node) {
-	llvm::Value *closables = m_nullPointer;
-	llvm::Value *upvalueTable = m_nullPointer;
-	if (ctx->closableVariables) {
-		// Note it's perfectly valid for this to be null even if there are upvalues, so long as
-		// all those upvalues are inherited from the function above us, and thus passed through
-		// our upvalue pack (the one passed in as the function's first argument).
-		closables = ctx->closableVariables;
-	}
-	if (ctx->upvaluePackPtr) {
-		upvalueTable = ctx->upvaluePackPtr;
-	}
-
+	// Create the closure, passing in null for the two upvalue-related arguments, since we'll populate them here
 	llvm::Value *closureSpec = node->func->GetBackendData<FnData>()->closureSpec;
 	llvm::Value *specObj = m_builder.CreateLoad(m_pointerType, closureSpec, "closure_spec_" + node->func->debugName);
-	std::vector<llvm::Value *> args = {specObj, closables, upvalueTable, m_nullPointer};
+	std::vector<llvm::Value *> args = {specObj, m_nullPointer, m_nullPointer, m_nullPointer};
 	llvm::Value *closure = m_builder.CreateCall(m_createClosure, args, "closure_" + node->func->debugName);
+
+	FnData *fnData = node->func->GetBackendData<FnData>();
+	UpvaluePackDef *upvaluePack = fnData->upvaluePackDef.get();
+
+	// If this function takes any upvalues, then fill them appropriately
+	if (upvaluePack->variables.empty())
+		return {closure};
+
+	llvm::Value *upvaluePackPtr = m_builder.CreateCall(m_getUpvaluePack, {closure}, "uv_pack_" + node->func->debugName);
+
+	IRFn *currentFunc = ctx->currentWrenFunc;
+	FnData *parentData = currentFunc->GetBackendData<FnData>();
+
+	// Load all the upvalues
+	for (int uvSlot = 0; uvSlot < upvaluePack->variables.size(); uvSlot++) {
+		UpvalueVariable *upvalue = upvaluePack->variables.at(uvSlot);
+		assert(currentFunc == node->func->parent);
+
+		// Get the pointer to the location where we have to store the upvalue pack to
+		llvm::Value *targetSlotPtr = m_builder.CreateGEP(m_pointerType, upvaluePackPtr,
+		    {CInt::get(m_int32Type, uvSlot)}, "uv_slot_" + upvalue->Name());
+
+		LocalVariable *target = dynamic_cast<LocalVariable *>(upvalue->parent);
+		if (target != nullptr) {
+			llvm::Value *localPtr = GetLocalPointer(ctx, target);
+			m_builder.CreateStore(localPtr, targetSlotPtr); // NOLINT(readability-suspicious-call-argument)
+			continue;
+		}
+
+		// This upvalue must point to another upvalue, right?
+		UpvalueVariable *nested = dynamic_cast<UpvalueVariable *>(upvalue->parent);
+		if (!nested) {
+			fmt::print(stderr, "Upvalue {} has non-local, non-upvalue parent scope {}.\n", upvalue->Name(),
+			    upvalue->parent->Scope());
+			abort();
+		}
+
+		// This upvalue should belong to this function
+		assert(nested->containingFunction == currentFunc);
+
+		llvm::Value *valuePtr = GetUpvaluePointer(ctx, nested);
+		m_builder.CreateStore(valuePtr, targetSlotPtr); // NOLINT(readability-suspicious-call-argument)
+	}
 
 	return {closure};
 }

@@ -45,8 +45,7 @@ EXPORT Value wren_alloc_obj(Value classVar);
 EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
 EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead);
-EXPORT Value **wren_get_closure_upvalue_pack(ObjFn *closure);
-EXPORT ObjFn *wren_get_closure_chain_next(ObjFn *closure);
+EXPORT Value **wren_get_closure_upvalue_pack(Value closure);
 EXPORT void *wren_alloc_upvalue_storage(int numClosures);
 EXPORT Value wren_get_bool_value(bool value);
 EXPORT Value wren_get_core_class_value(const char *name);
@@ -239,10 +238,11 @@ Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, Ob
 	return closure->ToValue();
 }
 
-Value **wren_get_closure_upvalue_pack(ObjFn *closure) { return closure->upvaluePointers.data(); }
-ObjFn *wren_get_closure_chain_next(ObjFn *closure) {
-	// TODO implement
-	return nullptr;
+Value **wren_get_closure_upvalue_pack(Value closure) {
+	// This should only be used immediately after a closure was created, so it's
+	// probably safe to just do an unchecked cast.
+	ObjFn *fn = (ObjFn *)get_object_value(closure);
+	return fn->upvaluePointers.data();
 }
 
 // Allocate space for a closed upvalue on the heap, move the value there, and update all the closures that

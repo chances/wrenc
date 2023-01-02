@@ -16,18 +16,23 @@ class ObjFnClass : public ObjNativeClass {
 
 ObjFn::~ObjFn() = default;
 ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Obj(Class()), spec(spec) {
+	// WARNING: Mostly outdated comments, the native code now sets the pointers up itself.
 	// Take the address of the relevant values on the parent function's stack, so while the parent function is
 	// still in scope we can modify the values in-place (upvaluePointers gets overwritten when the variables
 	// go out of scope, to point to heap memory where the values are moved to).
-
 	// In the LLVM backend, we support upvalues that are based on other upvalues (which you get when you nest
 	// closures) by also accepting the parent function's upvalue table, then pulling values out of that. The
 	// LLVM implementation doesn't relocate it's upvalues (it always allocates them, they never live on the
 	// stack) which makes this a lot simpler.
 
+	upvaluePointers.reserve(spec->upvalueOffsets.size());
+
+	// If neither of the upvalues are passed in, the generated code will have to set up the pointers itself
+	if (parentStack == nullptr && parentUpvaluePack == nullptr)
+		return;
+
 	Value *valueStack = (Value *)parentStack;
 	Value **upvaluePack = (Value **)parentUpvaluePack;
-	upvaluePointers.reserve(spec->upvalueOffsets.size());
 	for (int stackPos : spec->upvalueOffsets) {
 		bool isDoubleUpvalue = (stackPos & (1 << 31)) != 0;
 		int realValue = stackPos & 0x7fffffff;
