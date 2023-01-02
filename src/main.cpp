@@ -30,6 +30,7 @@ static std::string compilerInstallDir;
 static int globalDontAssemble = 0;
 static int globalBuildCoreLib = 0;
 static int globalNoDebugInfo = 0;
+static int globalDisableGC = 0;
 
 typedef IBackend *(*createBackendFunc_t)();
 static createBackendFunc_t createLLVMBackend = nullptr;
@@ -41,6 +42,7 @@ static option options[] = {
     {"dont-assemble", no_argument, &globalDontAssemble, true},
     {"help", no_argument, 0, 'h'},
     {"no-debug-info", no_argument, &globalNoDebugInfo, true},
+    {"disable-gc", no_argument, &globalDisableGC, true},
 
     // Intentionally undocumented options
     {"internal-build-core-lib", no_argument, &globalBuildCoreLib, true}, // Build the wren_core module
@@ -114,6 +116,7 @@ int main(int argc, char **argv) {
 
 	backendOpts.includeDebugInfo = !globalNoDebugInfo;
 	backendOpts.forceAssemblyOutput = globalDontAssemble;
+	backendOpts.enableGCSupport = !globalDisableGC;
 
 	if (needsHelp) {
 		fmt::print("Usage: {} [-hc] [-o «filename»] inputs...\n", argv[0]);
@@ -126,6 +129,7 @@ int main(int argc, char **argv) {
 
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
+		optHelp.emplace_back("", "--disable-gc", "Don't include any GC-support code in the generated assembly");
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
 
 		// Find the longest argument string, so we can line everything up

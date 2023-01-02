@@ -9,6 +9,7 @@
 struct CompilationOptions {
 	bool includeDebugInfo = false;
 	bool forceAssemblyOutput = false;
+	bool enableGCSupport = false;
 };
 
 struct CompilationResult {

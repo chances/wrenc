@@ -332,6 +332,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	}
 
 	m_dbgEnable = options->includeDebugInfo;
+	m_enableStatepoints = options->enableGCSupport;
 	SetupDebugInfo(mod);
 
 	// Create all the system variables with the correct linkage
