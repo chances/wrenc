@@ -31,6 +31,12 @@ bool ScopeStack::Add(LocalVariable *var) {
 	if (locals.contains(var->Name()))
 		return false;
 	locals[var->Name()] = var;
+
+	// Add it to the create variables block, in case it's later used as an upvalue
+	if (m_top->upvalueContainer) {
+		m_top->upvalueContainer->variables.push_back(var);
+	}
+
 	return true;
 }
 
@@ -49,20 +55,19 @@ void ScopeStack::PopFrame() {
 	m_top = m_frames.back().get();
 }
 
-void ScopeStack::PushFrame() {
+void ScopeStack::PushFrame(StmtBeginUpvalues *upvalues) {
 	m_frames.push_back(std::make_unique<ScopeFrame>());
 	m_frames.back()->parent = m_top;
+	m_frames.back()->upvalueContainer = upvalues;
 	m_top = m_frames.back().get();
 }
 
-std::vector<LocalVariable *> ScopeStack::GetFramesSince(int since) {
-	std::vector<LocalVariable *> variables;
+std::vector<ScopeFrame *> ScopeStack::GetFramesSince(int since) {
+	std::vector<ScopeFrame *> frames;
 	for (int i = since; i < m_frames.size(); i++) {
-		for (const auto &entry : m_frames.at(i)->locals) {
-			variables.push_back(entry.second);
-		}
+		frames.push_back(m_frames.at(i).get());
 	}
-	return variables;
+	return frames;
 }
 
 int ScopeStack::GetTopFrame() { return m_frames.size() - 1; }

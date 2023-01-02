@@ -81,6 +81,7 @@ void StmtLabel::Accept(IRVisitor *visitor) { visitor->VisitStmtLabel(this); }
 void StmtJump::Accept(IRVisitor *visitor) { visitor->VisitStmtJump(this); }
 void StmtReturn::Accept(IRVisitor *visitor) { visitor->VisitStmtReturn(this); }
 void StmtLoadModule::Accept(IRVisitor *visitor) { visitor->VisitStmtLoadModule(this); }
+void StmtBeginUpvalues::Accept(IRVisitor *visitor) { visitor->VisitStmtBeginUpvalues(this); }
 void StmtRelocateUpvalues::Accept(IRVisitor *visitor) { visitor->VisitStmtRelocateUpvalues(this); }
 void StmtDefineClass::Accept(IRVisitor *visitor) { visitor->VisitStmtDefineClass(this); }
 
@@ -143,6 +144,7 @@ void IRVisitor::VisitStmtLoadModule(StmtLoadModule *node) {
 	for (const StmtLoadModule::VarImport &import : node->variables)
 		VisitVar(import.bindTo);
 }
+void IRVisitor::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {}
 void IRVisitor::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {}
 void IRVisitor::VisitStmtDefineClass(StmtDefineClass *node) {
 	// Don't visit the class, that's already part of the module

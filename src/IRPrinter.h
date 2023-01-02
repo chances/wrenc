@@ -41,10 +41,12 @@ class IRPrinter : private IRVisitor {
 	void VisitExprFieldLoad(ExprFieldLoad *node) override;
 	void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) override;
 	void VisitExprClosure(ExprClosure *node) override;
+	void VisitStmtBeginUpvalues(StmtBeginUpvalues *node) override;
 	void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) override;
 	void VisitBlock(StmtBlock *node) override;
 
 	std::string GetLabelId(StmtLabel *label, bool colourise);
+	std::string GetBeginUpvaluesId(StmtBeginUpvalues *upvalue);
 
 	/// Colourise (using ANSI escape codes) a given string, with a colour derived by hashing a pointer.
 	static std::string Colourise(const void *ptr, const std::string &input);
@@ -53,4 +55,5 @@ class IRPrinter : private IRVisitor {
 	std::unique_ptr<std::stringstream> m_stream;
 
 	std::unordered_map<StmtLabel *, int> m_labelIds;
+	std::unordered_map<StmtBeginUpvalues *, int> m_beginUpvaluesIds;
 };

@@ -1245,9 +1245,11 @@ static IRNode *defineVariable(Compiler *compiler, VarDecl *var, IRExpr *value) {
 }
 
 // Starts a new local block scope.
-static void pushScope(Compiler *compiler) {
+[[nodiscard]] static StmtBeginUpvalues *pushScope(Compiler *compiler) {
+	StmtBeginUpvalues *upvalueContainer = compiler->New<StmtBeginUpvalues>();
 	compiler->scopeDepth++;
-	compiler->locals.PushFrame();
+	compiler->locals.PushFrame(upvalueContainer);
+	return upvalueContainer;
 }
 
 // Generates code to discard local variables at [depth] or greater. Does *not*
@@ -1257,22 +1259,28 @@ static void pushScope(Compiler *compiler) {
 // the break instruction.
 // Returns the statement required to release these variables, or null if none is required. This is
 // mostly for upvalues, to kick them off to the heap if they're still being referenced.
-static IRStmt *discardLocals(Compiler *compiler, const std::vector<LocalVariable *> &discarded) {
+static IRStmt *discardLocals(Compiler *compiler, const std::vector<ScopeFrame *> &discarded) {
 	ASSERT(compiler->scopeDepth > -1, "Cannot exit top-level scope.");
 
 	if (discarded.empty())
 		return nullptr;
 
-	// All the variables that are used as upvalues in another function need to be moved from the
-	// stack to the heap.
 	StmtRelocateUpvalues *relocate = compiler->New<StmtRelocateUpvalues>();
-	for (LocalVariable *var : discarded) {
-		if (var->upvalues.empty())
+	for (ScopeFrame *frame : discarded) {
+		// For the root frame
+		if (frame->upvalueContainer == nullptr)
 			continue;
-		relocate->variables.push_back(var);
+
+		const std::vector<LocalVariable *> &vars = frame->upvalueContainer->variables;
+		bool hasUpvalues =
+		    std::any_of(vars.begin(), vars.end(), [](LocalVariable *var) { return !var->upvalues.empty(); });
+
+		if (!hasUpvalues)
+			continue;
+		relocate->upvalueSets.push_back(frame->upvalueContainer);
 	}
 
-	if (relocate->variables.empty())
+	if (relocate->upvalueSets.empty())
 		return nullptr;
 
 	return relocate;
@@ -1284,7 +1292,7 @@ static IRStmt *discardLocals(Compiler *compiler, const std::vector<LocalVariable
 // Returns the statement required to release these variables, or null if none is required. This is
 // mostly for upvalues, to kick them off to the heap if they're still being referenced.
 static IRStmt *popScope(Compiler *compiler) {
-	std::vector<LocalVariable *> discarded = compiler->locals.GetFramesSince(compiler->locals.GetTopFrame());
+	std::vector<ScopeFrame *> discarded = compiler->locals.GetFramesSince(compiler->locals.GetTopFrame());
 	IRStmt *stmt = discardLocals(compiler, discarded);
 	compiler->scopeDepth--;
 	compiler->locals.PopFrame();
@@ -2737,9 +2745,10 @@ static IRStmt *forStatement(Compiler *compiler) {
 	// - The .iteratorValue() method is used to get the value at the current
 	//   iterator position.
 
-	// Create a scope for the hidden local variables used for the iterator.
-	pushScope(compiler);
 	StmtBlock *block = compiler->New<StmtBlock>();
+
+	// Create a scope for the hidden local variables used for the iterator.
+	block->Add(pushScope(compiler));
 
 	consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
 	consume(compiler, TOKEN_NAME, "Expect for loop variable name.");
@@ -2790,7 +2799,7 @@ static IRStmt *forStatement(Compiler *compiler) {
 
 	// Bind the loop variable in its own scope. This ensures we get a fresh
 	// variable each iteration so that closures for it don't all see the same one.
-	pushScope(compiler);
+	block->Add(pushScope(compiler));
 	LocalVariable *valueVar = addLocal(compiler, name);
 	block->Add(compiler->New<StmtAssign>(valueVar, valueCall));
 
@@ -2950,7 +2959,7 @@ IRStmt *statement(Compiler *compiler) {
 	}
 	if (match(compiler, TOKEN_LEFT_BRACE)) {
 		// Block statement.
-		pushScope(compiler);
+		StmtBeginUpvalues *upvalueSetup = pushScope(compiler);
 
 		IRNode *body = finishBlock(compiler);
 
@@ -2965,9 +2974,12 @@ IRStmt *statement(Compiler *compiler) {
 		}
 
 		// Cleanup for any variables on the stack
+		// Note that if cleanup is false there's no upvalues, so it's safe
+		// to ignore the upvaluesSetup node.
 		IRStmt *cleanup = popScope(compiler);
 		if (cleanup) {
 			StmtBlock *block = compiler->New<StmtBlock>();
+			block->Add(upvalueSetup);
 			block->Add(stmt);
 			block->Add(cleanup);
 			stmt = block;
@@ -3262,11 +3274,6 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 		error(compiler, "Class %s cannot extend from system type %s", className.c_str(), systemParent->name.c_str());
 	}
 
-	// Push a local variable scope. Static fields in a class body are hoisted out
-	// into local variables declared in this scope. Methods that use them will
-	// have upvalues referencing them.
-	pushScope(compiler);
-
 	ClassInfo &classInfo = *classNode->info;
 	classInfo.isForeign = isForeign;
 	classInfo.name = className;
@@ -3296,11 +3303,6 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 	}
 
 	compiler->enclosingClass = NULL;
-
-	IRStmt *cleanup = popScope(compiler);
-	if (cleanup) {
-		error(compiler, "Class block local cleanup not yet implemented");
-	}
 
 	classInfo.inStatic = false;
 	classInfo.signature = nullptr;

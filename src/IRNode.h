@@ -322,6 +322,15 @@ class StmtLoadModule : public IRStmt {
 	std::vector<VarImport> variables;
 };
 
+/// Marks the start of a region where upvalues are contained. This can be
+/// used to allocate storage for those upvalues.
+class StmtBeginUpvalues : public IRStmt {
+  public:
+	void Accept(IRVisitor *visitor) override;
+
+	std::vector<LocalVariable *> variables;
+};
+
 /// Moves an upvalue (if it's currently referenced by a closure) from the
 /// stack to the heap, and updates all the closures accordingly.
 /// This is placed at the end of source-level blocks so variables modified
@@ -331,7 +340,7 @@ class StmtRelocateUpvalues : public IRStmt {
   public:
 	void Accept(IRVisitor *visitor) override;
 
-	std::vector<LocalVariable *> variables;
+	std::vector<StmtBeginUpvalues *> upvalueSets;
 };
 
 /// Define a class. This is matched up to a class definition in Wren, and
@@ -501,6 +510,7 @@ class IRVisitor {
 	virtual void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node);
 	virtual void VisitExprSystemVar(ExprSystemVar *node);
 	virtual void VisitExprGetClassVar(ExprGetClassVar *node);
+	virtual void VisitStmtBeginUpvalues(StmtBeginUpvalues *node);
 	virtual void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node);
 	virtual void VisitStmtDefineClass(StmtDefineClass *node);
 

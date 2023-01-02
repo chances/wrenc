@@ -169,6 +169,22 @@ std::string IRPrinter::GetLabelId(StmtLabel *label, bool colourise) {
 	return str;
 }
 
+std::string IRPrinter::GetBeginUpvaluesId(StmtBeginUpvalues *upvalue) {
+	if (upvalue == nullptr)
+		return "null";
+
+	int id = 0;
+	auto iter = m_beginUpvaluesIds.find(upvalue);
+	if (iter != m_beginUpvaluesIds.end()) {
+		id = iter->second;
+	} else {
+		id = m_beginUpvaluesIds.size() + 1;
+		m_beginUpvaluesIds[upvalue] = id;
+	}
+
+	return std::to_string(id);
+}
+
 void IRPrinter::VisitExprSystemVar(ExprSystemVar *node) {
 	m_tagStack.back().header += " " + node->name;
 	IRVisitor::VisitExprSystemVar(node);
@@ -212,9 +228,19 @@ void IRPrinter::VisitExprClosure(ExprClosure *node) {
 	IRVisitor::VisitExprClosure(node);
 }
 
-void IRPrinter::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {
+void IRPrinter::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
+	m_tagStack.back().header += " ID:" + GetBeginUpvaluesId(node);
+
 	for (LocalVariable *var : node->variables)
 		m_tagStack.back().header += " " + var->name;
+
+	IRVisitor::VisitStmtBeginUpvalues(node);
+}
+
+void IRPrinter::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {
+	for (StmtBeginUpvalues *upvalues : node->upvalueSets) {
+		m_tagStack.back().header += " " + GetBeginUpvaluesId(upvalues);
+	}
 	IRVisitor::VisitStmtRelocateUpvalues(node);
 }
 

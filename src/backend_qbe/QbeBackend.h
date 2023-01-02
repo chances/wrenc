@@ -96,6 +96,7 @@ class QbeBackend : public IBackend {
 	Snippet *VisitStmtJump(StmtJump *node);
 	Snippet *VisitStmtReturn(StmtReturn *node);
 	Snippet *VisitStmtLoadModule(StmtLoadModule *node);
+	Snippet *VisitStmtBeginUpvalues(StmtBeginUpvalues *node);
 	Snippet *VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node);
 	Snippet *VisitStmtDefineClass(StmtDefineClass *node);
 

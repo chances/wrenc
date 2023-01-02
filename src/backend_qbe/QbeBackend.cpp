@@ -356,6 +356,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmt(IRStmt *expr) {
 	DISPATCH(VisitStmtJump, StmtJump);
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
+	DISPATCH(VisitStmtBeginUpvalues, StmtBeginUpvalues);
 	DISPATCH(VisitStmtRelocateUpvalues, StmtRelocateUpvalues);
 	DISPATCH(VisitStmtDefineClass, StmtDefineClass);
 
@@ -748,6 +749,11 @@ QbeBackend::Snippet *QbeBackend::VisitExprClosure(ExprClosure *node) {
 	    descObj->name, PTR_TYPE, stackLocals, PTR_TYPE, listHeadName);
 
 	return snip;
+}
+
+QbeBackend::Snippet *QbeBackend::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
+	// TODO upvalue support
+	return m_alloc.New<Snippet>();
 }
 
 QbeBackend::Snippet *QbeBackend::VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) {

@@ -113,6 +113,19 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 		//  be a correctness one.
 		if (m_runStatementsTarget.inserted)
 			i--;
+
+		// Remove empty StmtBeginUpvalues nodes - do this after visiting them,
+		// since that removes all the non-upvalue variables.
+		StmtBeginUpvalues *upvalues = dynamic_cast<StmtBeginUpvalues *>(stmt);
+		if (upvalues) {
+			if (upvalues->variables.empty()) {
+				node->statements.erase(node->statements.begin() + i);
+
+				// Another node has moved into this position, decrement i to iterate on it
+				i--;
+				continue;
+			}
+		}
 	}
 
 	// Remove returns *after* we're done flattening, since otherwise if there's a label in a block we wouldn't find it
@@ -153,6 +166,19 @@ void IRCleanup::VisitFn(IRFn *node) {
 	m_fnParents.push_back(node);
 	IRVisitor::VisitFn(node);
 	m_fnParents.pop_back();
+}
+
+void IRCleanup::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
+	// Remove all the variables without upvalues
+	for (int i = node->variables.size() - 1; i >= 0; i--) {
+		LocalVariable *var = node->variables.at(i);
+		if (!var->upvalues.empty())
+			continue;
+
+		node->variables.erase(node->variables.begin() + i);
+	}
+
+	IRVisitor::VisitStmtBeginUpvalues(node);
 }
 
 IRExpr *IRCleanup::SubstituteExprRunStatements(ExprRunStatements *node) {

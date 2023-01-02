@@ -28,6 +28,7 @@ class IRCleanup : private IRVisitor {
 	void VisitStmtLabel(StmtLabel *node) override;
 	void VisitStmtJump(StmtJump *node) override;
 	void VisitFn(IRFn *node) override;
+	void VisitStmtBeginUpvalues(StmtBeginUpvalues *node) override;
 
 	/// This function cleans up a block. If [recurse] is true it visits all the block's children so it
 	/// behaves like a normal visitor function, however if [recurse] is true it does not - this is useful

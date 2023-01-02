@@ -165,6 +165,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	StmtRes VisitStmtJump(VisitorContext *ctx, StmtJump *node);
 	StmtRes VisitStmtReturn(VisitorContext *ctx, StmtReturn *node);
 	StmtRes VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule *node);
+	StmtRes VisitStmtBeginUpvalues(VisitorContext *ctx, StmtBeginUpvalues *node);
 	StmtRes VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node);
 	StmtRes VisitStmtDefineClass(VisitorContext *ctx, StmtDefineClass *node);
 
@@ -1271,6 +1272,7 @@ StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
 	DISPATCH(VisitStmtJump, StmtJump);
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
+	DISPATCH(VisitStmtBeginUpvalues, StmtBeginUpvalues);
 	DISPATCH(VisitStmtRelocateUpvalues, StmtRelocateUpvalues);
 	DISPATCH(VisitStmtDefineClass, StmtDefineClass);
 
@@ -1627,6 +1629,10 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 		m_builder.CreateStore(varValue, destPtr);
 	}
 
+	return {};
+}
+StmtRes LLVMBackendImpl::VisitStmtBeginUpvalues(VisitorContext *ctx, StmtBeginUpvalues *node) {
+	// TODO allocate upvalue storage here, instead of once per function
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
