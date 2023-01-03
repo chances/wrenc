@@ -278,10 +278,6 @@ class Compiler {
 	// The function being compiled.
 	IRFn *fn;
 
-	// The root-level StmtBeginUpvalues, which must be placed at the start of
-	// the function's body block.
-	StmtBeginUpvalues *rootBeginUpvalues = nullptr;
-
 	// The constants for the function being compiled.
 	ConstantsPool constants;
 
@@ -409,11 +405,11 @@ static void initCompiler(Compiler *compiler, Parser *parser, Compiler *parent) {
 		compiler->scopeDepth = 0;
 	}
 
-	// Push the root-level stack frame
-	compiler->rootBeginUpvalues = compiler->New<StmtBeginUpvalues>();
-	compiler->locals.PushFrame(compiler->rootBeginUpvalues);
-
 	compiler->fn = compiler->New<IRFn>();
+
+	// Push the root-level stack frame
+	compiler->fn->rootBeginUpvalues = compiler->New<StmtBeginUpvalues>();
+	compiler->locals.PushFrame(compiler->fn->rootBeginUpvalues);
 }
 
 // Lexing ----------------------------------------------------------------------
@@ -1580,7 +1576,7 @@ static IRStmt *finishBody(Compiler *compiler, bool isMethod) {
 
 	// Add the root-level StmtBeginUpvalues node, which is required if any upvalues are declared in the
 	// body of this block.
-	block->Add(compiler->rootBeginUpvalues);
+	block->Add(compiler->fn->rootBeginUpvalues);
 
 	// Only initialise the 'this' variable if it's used as an upvalue. The user can't access it - writing
 	// 'this' results in a ExprLoadReceiver - so we can leave it out to avoid cluttering up the IR.
@@ -3482,6 +3478,11 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 	compiler.fn->debugInfo.lineNumber = 1;
 	mod->AddNode(compiler.fn);
 	ASSERT(mod->GetFunctions().front() == compiler.fn, "Module init function is not the module's first function!");
+
+	// Clear out the root upvalues variable, since we're not going to add it to
+	// the IR and it should never have anything added to it, since everything
+	// is a global at that scope.
+	compiler.fn->rootBeginUpvalues = nullptr;
 
 	if (isExpression) {
 		IRExpr *expr = expression(&compiler);

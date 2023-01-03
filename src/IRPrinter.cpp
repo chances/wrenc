@@ -198,6 +198,11 @@ void IRPrinter::VisitExprGetClassVar(ExprGetClassVar *node) {
 void IRPrinter::VisitFn(IRFn *node) {
 	m_tagStack.back().header += " " + node->debugName;
 
+	// Add a tag for the root upvalues
+	if (node->rootBeginUpvalues) {
+		m_tagStack.back().header += " ROOT_UV:" + GetBeginUpvaluesId(node->rootBeginUpvalues);
+	}
+
 	// Add a tag with the arguments
 	std::string args = "args";
 	for (LocalVariable *arg : node->parameters) {

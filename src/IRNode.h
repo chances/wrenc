@@ -26,6 +26,7 @@ class MethodInfo;      // From ClassInfo.h
 class IRVisitor;
 class IRPrinter;
 class StmtBlock;
+class StmtBeginUpvalues;
 
 // //////////////////// //
 // //// INTERFACES //// //
@@ -125,6 +126,10 @@ class IRFn : public IRNode {
 
 	// The thing that gets run when this function is called
 	IRStmt *body = nullptr;
+
+	// The root-level upvalue start block - this may be useful if a function's arguments are
+	// used by upvalues.
+	StmtBeginUpvalues *rootBeginUpvalues = nullptr;
 
 	// If this is a method, this is the class the method is contained in. If this is a closure or
 	// the root function of a module, this is nullptr. This is a good way to check if this function

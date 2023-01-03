@@ -123,6 +123,12 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 
 				// Another node has moved into this position, decrement i to iterate on it
 				i--;
+
+				// If this was the function's top-level upvalues block, clear that out.
+				if (m_fnParents.back()->rootBeginUpvalues == upvalues) {
+					m_fnParents.back()->rootBeginUpvalues = nullptr;
+				}
+
 				continue;
 			}
 		}
