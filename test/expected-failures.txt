@@ -7,9 +7,6 @@
 test/language/class/foreign_class_inherit_fields.wren
 test/language/inheritance/inherited_fields_in_closure.wren
 test/language/list/grow_shrink.wren
-test/language/for/closure_in_body.wren
-test/language/for/close_over_loop_variable.wren
-test/language/while/closure_in_body.wren
 test/language/field/closure.wren
 test/language/method/many_methods.wren
 test/language/module/implicitly_imports_core/implicitly_imports_core.wren

@@ -65,9 +65,6 @@ struct UpvaluePackDef {
 };
 
 struct VisitorContext {
-	/// The array of closable variables
-	llvm::Value *closableVariables = nullptr;
-
 	llvm::Value *receiver = nullptr;
 	llvm::Value *fieldPointer = nullptr;
 
@@ -115,9 +112,25 @@ class VarData : public BackendNodeData {
 	/// This is null for variables used by closures.
 	llvm::Value *address = nullptr;
 
-	/// For each variable that some closure uses, they're stored in a single large array. This contains
-	/// the position of this variable in that array, or -1 if this variable is not used by a closure.
+	/// The position in the storage block that contains this variable, or -1 if
+	/// this variable isn't used by any upvalues.
 	int closedAddressPosition = -1;
+};
+
+/// Stores information about a storage block (the thing that contains local variables
+/// that are used as upvalues).
+struct BeginUpvaluesData : public BackendNodeData {
+	/// An alloca-ed pointer that stores the address of the storage block this
+	/// variable belongs to.
+	llvm::Value *packPtr = nullptr;
+
+	/// The variables stored in the block, in the same order as they are arranged in memory.
+	/// This should have the same contents (but possibly in a different order) as
+	/// StmtBeginUpvalues.variables.
+	std::vector<LocalVariable *> contents;
+
+	/// Set to true if this block was visited early so the arguments could be loaded safely.
+	bool createdEarly = false;
 };
 
 class LLVMBackendImpl : public LLVMBackend {
@@ -647,8 +660,6 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	ctx.currentWrenFunc = func;
 	ctx.currentModule = mod;
 
-	std::vector<LocalVariable *> closables;
-
 	for (LocalVariable *local : func->locals) {
 		VarData *varData = new VarData;
 		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
@@ -656,21 +667,30 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		if (local->upvalues.empty()) {
 			// Normal local variable
 			varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
-		} else {
-			// This variable is accessed by closures, so it gets stored in the array of closable variables.
-			varData->closedAddressPosition = closables.size();
-			closables.push_back(local);
+			continue;
 		}
+
+		// This variable is accessed by closures, so it gets stored in the array of closable variables.
+		// First, get or create the storage pack for the block containing this local.
+		assert(local->beginUpvalues);
+		BeginUpvaluesData *beginUpvalues;
+		if (local->beginUpvalues->backendData) {
+			beginUpvalues = local->beginUpvalues->GetBackendData<BeginUpvaluesData>();
+		} else {
+			beginUpvalues = new BeginUpvaluesData;
+			local->beginUpvalues->backendData = std::unique_ptr<BackendNodeData>(beginUpvalues);
+
+			beginUpvalues->packPtr = m_builder.CreateAlloca(m_pointerType, nullptr, "storage_blk");
+		}
+
+		// Next, reserve an index in the storage pack for this variable.
+		varData->closedAddressPosition = (int)beginUpvalues->contents.size();
+		beginUpvalues->contents.push_back(local);
 	}
 	for (LocalVariable *local : func->temporaries) {
 		VarData *varData = new VarData;
 		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
 		varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
-	}
-
-	if (!closables.empty()) {
-		ctx.closableVariables =
-		    m_builder.CreateCall(m_allocUpvalueStorage, {CInt::get(m_int32Type, closables.size())}, "upvalueStorage");
 	}
 
 	// Load the upvalue pack
@@ -704,6 +724,16 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		ctx.upvaluePackPtr = function->getArg(nextArg++);
 		ctx.upvaluePackPtr->setName("upvalue_pack");
 	}
+
+	// We need to copy the arguments into the local variables we made for them. However, if the local
+	// variable is used by an upvalue, then this would fail as we'd be writing to uninitialised memory
+	// since we haven't created the root-level upvalue yet.
+	// Thus visit that node early - it'll no-op when we run it a second time.
+	if (func->rootBeginUpvalues) {
+		VisitStmtBeginUpvalues(&ctx, func->rootBeginUpvalues);
+		func->rootBeginUpvalues->GetBackendData<BeginUpvaluesData>()->createdEarly = true;
+	}
+
 	for (LocalVariable *arg : func->parameters) {
 		// Load the arguments
 		llvm::Value *destPtr = GetLocalPointer(&ctx, arg);
@@ -1103,11 +1133,18 @@ llvm::Value *LLVMBackendImpl::GetLocalPointer(VisitorContext *ctx, LocalVariable
 
 	// Check if it's a closed-over variable
 	if (varData->closedAddressPosition != -1) {
+		// Find the StmtBeginUpvalues that this variable belongs to, as it
+		// contains the pointer to the upvalue storage array.
+		BeginUpvaluesData *upvalueData = local->beginUpvalues->GetBackendData<BeginUpvaluesData>();
+
+		// Find the block position - this is reading the value from an alloca-d variable
+		llvm::Value *storagePtr = m_builder.CreateLoad(m_pointerType, upvalueData->packPtr, "storage_ptr");
+
 		std::vector<llvm::Value *> indices = {
 		    // Select the item we're interested in.
 		    CInt::get(m_int32Type, varData->closedAddressPosition),
 		};
-		return m_builder.CreateGEP(m_valueType, ctx->closableVariables, indices, "lv_ptr_" + local->Name());
+		return m_builder.CreateGEP(m_valueType, storagePtr, indices, "lv_ptr_" + local->Name());
 	}
 
 	fmt::print(stderr, "Found unallocated local variable: '{}'\n", local->Name());
@@ -1385,7 +1422,6 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 	llvm::Value *upvaluePackPtr = m_builder.CreateCall(m_getUpvaluePack, {closure}, "uv_pack_" + node->func->debugName);
 
 	IRFn *currentFunc = ctx->currentWrenFunc;
-	FnData *parentData = currentFunc->GetBackendData<FnData>();
 
 	// Load all the upvalues
 	for (int uvSlot = 0; uvSlot < upvaluePack->variables.size(); uvSlot++) {
@@ -1631,7 +1667,20 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtBeginUpvalues(VisitorContext *ctx, StmtBeginUpvalues *node) {
-	// TODO allocate upvalue storage here, instead of once per function
+	BeginUpvaluesData *upvaluesData = node->GetBackendData<BeginUpvaluesData>();
+
+	assert(upvaluesData->contents.size() == node->variables.size());
+
+	// We visit the first statement early so it's available when we load the function arguments, so
+	// this might get run twice. In that case, do nothing the second time.
+	if (upvaluesData->createdEarly)
+		return {};
+
+	// Allocate the storage block for the upvalued variables.
+	CInt *count = CInt::get(m_int32Type, upvaluesData->contents.size());
+	llvm::Value *allocatedBlock = m_builder.CreateCall(m_allocUpvalueStorage, {count}, "upvalueStorage");
+	m_builder.CreateStore(allocatedBlock, upvaluesData->packPtr);
+
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
