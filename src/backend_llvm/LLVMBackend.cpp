@@ -65,17 +65,6 @@ struct UpvaluePackDef {
 };
 
 struct VisitorContext {
-	/// For each local variable, stack memory is allocated for it (and later optimised away - we do this
-	/// to avoid having to deal with SSA, and this is also how Clang does it) and the value for that
-	/// stack address is stored here.
-	///
-	/// This does not contain entries for variables used by closures.
-	std::map<LocalVariable *, llvm::Value *> localAddresses;
-
-	/// For each variable that some closure uses, they're stored in a single large array. This contains
-	/// the position of each of them in that array.
-	std::map<LocalVariable *, int> closedAddressPositions;
-
 	/// The array of closable variables
 	llvm::Value *closableVariables = nullptr;
 
@@ -108,9 +97,6 @@ class FnData : public BackendNodeData {
 	llvm::Function *llvmFunc = nullptr;
 	llvm::GlobalVariable *closureSpec = nullptr;
 	std::unique_ptr<UpvaluePackDef> upvaluePackDef;
-
-	/// Same meaning as VisitorContext.closedAddressPositions
-	std::map<LocalVariable *, int> closedAddressPositions;
 };
 
 class ClassData : public BackendNodeData {
@@ -118,6 +104,20 @@ class ClassData : public BackendNodeData {
 	llvm::GlobalVariable *object = nullptr;
 	llvm::GlobalVariable *fieldOffset = nullptr;
 	llvm::GlobalVariable *classDataBlock = nullptr;
+};
+
+class VarData : public BackendNodeData {
+  public:
+	/// For each local variable, stack memory is allocated for it (and later optimised away - we do this
+	/// to avoid having to deal with SSA, and this is also how Clang does it) and the value for that
+	/// stack address is stored here.
+	///
+	/// This is null for variables used by closures.
+	llvm::Value *address = nullptr;
+
+	/// For each variable that some closure uses, they're stored in a single large array. This contains
+	/// the position of this variable in that array, or -1 if this variable is not used by a closure.
+	int closedAddressPosition = -1;
 };
 
 class LLVMBackendImpl : public LLVMBackend {
@@ -650,26 +650,28 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 	std::vector<LocalVariable *> closables;
 
 	for (LocalVariable *local : func->locals) {
+		VarData *varData = new VarData;
+		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
+
 		if (local->upvalues.empty()) {
 			// Normal local variable
-			ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+			varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
 		} else {
 			// This variable is accessed by closures, so it gets stored in the array of closable variables.
-			ctx.closedAddressPositions[local] = closables.size();
+			varData->closedAddressPosition = closables.size();
 			closables.push_back(local);
 		}
 	}
 	for (LocalVariable *local : func->temporaries) {
-		ctx.localAddresses[local] = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+		VarData *varData = new VarData;
+		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
+		varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
 	}
 
 	if (!closables.empty()) {
 		ctx.closableVariables =
 		    m_builder.CreateCall(m_allocUpvalueStorage, {CInt::get(m_int32Type, closables.size())}, "upvalueStorage");
 	}
-
-	// Copy across the position data, as it's used to generate the closure specs
-	fnData->closedAddressPositions = ctx.closedAddressPositions;
 
 	// Load the upvalue pack
 	int nextArg = 0;
@@ -1094,16 +1096,16 @@ llvm::GlobalVariable *LLVMBackendImpl::GetGlobalVariable(IRGlobalDecl *global) {
 }
 
 llvm::Value *LLVMBackendImpl::GetLocalPointer(VisitorContext *ctx, LocalVariable *local) {
-	const auto iter = ctx->localAddresses.find(local);
-	if (iter != ctx->localAddresses.end())
-		return iter->second;
+	VarData *varData = local->GetBackendVarData<VarData>();
+
+	if (varData->address)
+		return varData->address;
 
 	// Check if it's a closed-over variable
-	const auto iter2 = ctx->closedAddressPositions.find(local);
-	if (iter2 != ctx->closedAddressPositions.end()) {
+	if (varData->closedAddressPosition != -1) {
 		std::vector<llvm::Value *> indices = {
 		    // Select the item we're interested in.
-		    CInt::get(m_int32Type, iter2->second),
+		    CInt::get(m_int32Type, varData->closedAddressPosition),
 		};
 		return m_builder.CreateGEP(m_valueType, ctx->closableVariables, indices, "lv_ptr_" + local->Name());
 	}
