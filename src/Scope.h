@@ -25,6 +25,10 @@ class LocalVariable : public VarDecl {
 	// If upvalues are bound to this variable, this contains the list of such variables.
 	std::vector<UpvalueVariable *> upvalues;
 
+	// If upvalues are bound to this variable, this contains the node representing
+	// when this variable came into scope.
+	StmtBeginUpvalues *beginUpvalues = nullptr;
+
 	std::string Name() const override;
 	ScopeType Scope() const override;
 	void Accept(IRVisitor *visitor) override;

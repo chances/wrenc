@@ -32,6 +32,7 @@ bool ScopeStack::Add(LocalVariable *var) {
 	// Add it to the create variables block, in case it's later used as an upvalue
 	if (m_top->upvalueContainer) {
 		m_top->upvalueContainer->variables.push_back(var);
+		var->beginUpvalues = m_top->upvalueContainer;
 	}
 
 	return true;

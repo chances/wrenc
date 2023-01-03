@@ -175,6 +175,7 @@ void IRCleanup::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
 		if (!var->upvalues.empty())
 			continue;
 
+		var->beginUpvalues = nullptr;
 		node->variables.erase(node->variables.begin() + i);
 	}
 
