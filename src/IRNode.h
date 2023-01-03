@@ -31,6 +31,12 @@ class StmtBlock;
 // //// INTERFACES //// //
 // //////////////////// //
 
+// An interface of random stuff for backends to use
+class BackendNodeData {
+  public:
+	virtual ~BackendNodeData();
+};
+
 class VarDecl {
   public:
 	// Describes where a variable is declared.
@@ -50,12 +56,19 @@ class VarDecl {
 	virtual ScopeType Scope() const = 0;
 
 	virtual void Accept(IRVisitor *visitor) = 0;
-};
 
-// An interface of random stuff for backends to use
-class BackendNodeData {
-  public:
-	virtual ~BackendNodeData();
+	// This pointer allows backends to attach whatever internal data they want to variables.
+	// This has a different name to IRNode's one, since IRGlobalDecl extends both.
+	std::unique_ptr<BackendNodeData> backendVarData;
+
+	template <typename T> T *GetBackendVarData() const {
+		T *data = dynamic_cast<T *>(backendVarData.get());
+		if (!data) {
+			fprintf(stderr, "Missing backend dynamic var data\n");
+			abort();
+		}
+		return data;
+	}
 };
 
 class IRDebugInfo {
