@@ -153,15 +153,11 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 
 			// There are two entries - this is for values that are a pointer inside an object, for example to read
 			// an int from an object. We can't read into an object other than 'this', so they should always be the same.
+			// However, the pass that generates these isn't always perfect and can end up splitting a single variable
+			// into base and derived values, which both have the same values.
 			const SM::Location &base = cs.Locations[pos++];
 			const SM::Location &derived = cs.Locations[pos++];
-
-			if (base.Type != derived.Type || base.Offset != derived.Offset || base.Reg != derived.Reg ||
-			    base.Size != derived.Size) {
-
-				fmt::print(stderr, "Found non-matching base and derived stackmap entries\n");
-				abort();
-			}
+			(void)derived;
 
 			// If we've found a constant, that'll be for a floating-point literal that RS4GC found, and can safely
 			// be ignored (after all, we don't have the address of anything dynamically allocated at compile time).
