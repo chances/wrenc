@@ -53,6 +53,11 @@ void RtModule::MarkModuleGCValues(GCMarkOps *ops) {
 
 	// Mark all the global variables
 	for (const auto &[key, ptr] : m_globals) {
+		// Skip the various bits and pieces we store in this table, like
+		// strings and function pointers.
+		if (key.starts_with("<INTERNAL>::"))
+			continue;
+
 		ops->ReportValue(ops, *ptr);
 	}
 }
