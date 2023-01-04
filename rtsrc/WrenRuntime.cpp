@@ -16,8 +16,7 @@
 
 extern "C" {
 // Defined in wren_core
-void wren_core_3a_3a__root_func();
-void *wren_core_get_globals();
+void *wren_core_get_globals(); // NOLINT(readability-identifier-naming)
 }
 
 WrenRuntime::WrenRuntime() : m_objectAllocator(std::make_unique<SlabObjectAllocator>()) {}
@@ -41,7 +40,12 @@ void WrenRuntime::Initialise() {
 	// to create string literals.
 	Instance().m_coreModule = std::make_unique<RtModule>(wren_core_get_globals());
 
-	wren_core_3a_3a__root_func();
+	// Run the core module's initialiser function. Get it's function pointer
+	// from the module string table rather than just linking to it, as the
+	// LLVM and QBE backends use different name mangling conventions.
+	typedef void (*initFunc_t)();
+	initFunc_t initFunc = (initFunc_t)Instance().m_coreModule->GetOrNull("<INTERNAL>::init_func");
+	initFunc();
 
 	ObjNativeClass::FinaliseSetup();
 }
