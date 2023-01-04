@@ -27,10 +27,17 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 
 static std::string compilerInstallDir;
 
+enum SelectedBackend : int {
+	BACKEND_AUTO,
+	BACKEND_QBE,
+	BACKEND_LLVM,
+};
+
 static int globalDontAssemble = 0;
 static int globalBuildCoreLib = 0;
 static int globalNoDebugInfo = 0;
 static int globalDisableGC = 0;
+static SelectedBackend globalSelectedBackend = BACKEND_AUTO;
 
 typedef IBackend *(*createBackendFunc_t)();
 static createBackendFunc_t createLLVMBackend = nullptr;
@@ -43,6 +50,11 @@ static option options[] = {
     {"help", no_argument, 0, 'h'},
     {"no-debug-info", no_argument, &globalNoDebugInfo, true},
     {"disable-gc", no_argument, &globalDisableGC, true},
+
+    // Don't put the LLVM backend behind an ifdef flag, if the user issues it
+    // we'll give them a more descriptive warning about LLVM being disabled.
+    {"backend-qbe", no_argument, (int *)&globalSelectedBackend, BACKEND_QBE},
+    {"backend-llvm", no_argument, (int *)&globalSelectedBackend, BACKEND_LLVM},
 
     // Intentionally undocumented options
     {"internal-build-core-lib", no_argument, &globalBuildCoreLib, true}, // Build the wren_core module
@@ -130,6 +142,12 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
 		optHelp.emplace_back("", "--disable-gc", "Don't include any GC-support code in the generated assembly");
+
+		optHelp.emplace_back("", "--backend-qbe", "Use the QBE backend");
+#ifdef USE_LLVM
+		optHelp.emplace_back("", "--backend-llvm", "Use the LLVM backend");
+#endif
+
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
 
 		// Find the longest argument string, so we can line everything up
@@ -188,6 +206,14 @@ int main(int argc, char **argv) {
 	if (moduleNames.size() > sourceFiles.size()) {
 		fmt::print(stderr, "{}: More module names specified than source files.\n", argv[0]);
 		exit(1);
+	}
+
+	if (globalSelectedBackend == BACKEND_AUTO) {
+		globalSelectedBackend = BACKEND_QBE;
+		const char *envUseLLVM = getenv("USE_LLVM");
+		if (envUseLLVM && envUseLLVM == std::string("1")) {
+			globalSelectedBackend = BACKEND_LLVM;
+		}
 	}
 
 	std::vector<int> assemblyFiles;
@@ -356,8 +382,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 	}
 
 	std::unique_ptr<IBackend> backend;
-	const char *envUseLLVM = getenv("USE_LLVM");
-	if (envUseLLVM && envUseLLVM == std::string("1")) {
+	if (globalSelectedBackend == BACKEND_LLVM) {
 #ifdef USE_LLVM
 		// Dynamically load the LLVM backend - this is so the frontend can be easily debugged
 		// without waiting for GDB to load all of LLVM's symbols.
@@ -380,8 +405,11 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 		fmt::print(stderr, "LLVM support is not included in this build, ensure Meson's use_llvm is enabled\n");
 		exit(1);
 #endif
-	} else {
+	} else if (globalSelectedBackend == BACKEND_QBE) {
 		backend = std::unique_ptr<IBackend>(new QbeBackend());
+	} else {
+		fmt::print(stderr, "Invalid selected backend {}\n", globalSelectedBackend);
+		abort();
 	}
 
 	backend->compileWrenCore = globalBuildCoreLib;
