@@ -386,19 +386,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 
 	// Add pointers to the ObjClass instances for all the classes we've declared
 	for (IRClass *cls : mod->GetClasses()) {
-		// System classes are defined in C++, and should only appear when compiling wren_core
-		if (cls->info->IsSystemClass())
-			continue;
-
-		llvm::GlobalVariable *classObj = new llvm::GlobalVariable(m_module, m_valueType, false,
-		    llvm::GlobalVariable::InternalLinkage, m_nullValue, "class_obj_" + cls->info->name);
-
-		// Add fields to store the offset of the member fields in each class. This is required since we
-		// can currently have classes extending from classes in another file, and they don't know how
-		// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
-		// we have to add it to the object pointer to get the fields area.
-		llvm::GlobalVariable *memberOffset = new llvm::GlobalVariable(m_module, m_int32Type, false,
-		    llvm::GlobalVariable::InternalLinkage, CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
+		ClassData *classData = new ClassData;
+		cls->backendData = std::unique_ptr<BackendNodeData>(classData);
 
 		// Create a constant containing information about all our functions, annotations, etc.
 		// The way we'll do this is pretty horrible: create a global variable now to point to another
@@ -406,14 +395,22 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		// This really isn't very nice, but for both functions and these global tables we generate
 		// the type at the same time as the body, and both reference each other so there's
 		// not really a clean way of removing this layer of indirection.
-		llvm::GlobalVariable *classDataBlock = new llvm::GlobalVariable(m_module, m_pointerType, true,
-		    llvm::GlobalVariable::PrivateLinkage, nullptr, "class_data_ptr_" + cls->info->name);
+		classData->classDataBlock = new llvm::GlobalVariable(m_module, m_pointerType, true,
+		    llvm::GlobalVariable::InternalLinkage, nullptr, "class_data_ptr_" + cls->info->name);
 
-		ClassData *classData = new ClassData;
-		classData->object = classObj;
-		classData->fieldOffset = memberOffset;
-		classData->classDataBlock = classDataBlock;
-		cls->backendData = std::unique_ptr<BackendNodeData>(classData);
+		// System classes are defined in C++, and should only appear when compiling wren_core.
+		if (cls->info->IsSystemClass())
+			continue;
+
+		classData->object = new llvm::GlobalVariable(m_module, m_valueType, false,
+		    llvm::GlobalVariable::InternalLinkage, m_nullValue, "class_obj_" + cls->info->name);
+
+		// Add fields to store the offset of the member fields in each class. This is required since we
+		// can currently have classes extending from classes in another file, and they don't know how
+		// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
+		// we have to add it to the object pointer to get the fields area.
+		classData->fieldOffset = new llvm::GlobalVariable(m_module, m_int32Type, false,
+		    llvm::GlobalVariable::InternalLinkage, CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
 	}
 
 	for (IRFn *func : mod->GetFunctions()) {
@@ -712,12 +709,17 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		// it's not needed
 
 		ClassData *cd = func->enclosingClass->GetBackendData<ClassData>();
-		llvm::Value *fieldStartOffset = m_builder.CreateLoad(m_int32Type, cd->fieldOffset, "this_field_offset");
-		llvm::Value *wideStartOffset =
-		    m_builder.CreateIntCast(fieldStartOffset, m_int64Type, false, "this_field_offset_64");
+		if (cd->fieldOffset) {
+			llvm::Value *fieldStartOffset = m_builder.CreateLoad(m_int32Type, cd->fieldOffset, "this_field_offset");
+			llvm::Value *wideStartOffset =
+			    m_builder.CreateIntCast(fieldStartOffset, m_int64Type, false, "this_field_offset_64");
 
-		llvm::Value *fieldPtrInt = m_builder.CreateAdd(thisPtr, wideStartOffset, "fields_ptr_int");
-		ctx.fieldPointer = m_builder.CreateIntToPtr(fieldPtrInt, m_pointerType, "fields_ptr");
+			llvm::Value *fieldPtrInt = m_builder.CreateAdd(thisPtr, wideStartOffset, "fields_ptr_int");
+			ctx.fieldPointer = m_builder.CreateIntToPtr(fieldPtrInt, m_pointerType, "fields_ptr");
+		} else {
+			// fieldOffset will only be null if this is a system class
+			assert(func->enclosingClass->info->IsSystemClass() && "found null fieldOffset in non-system class");
+		}
 	}
 	if (takesUpvaluePack) {
 		ctx.upvaluePack = fnData->upvaluePackDef.get();
@@ -878,6 +880,11 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			uint64_t cmdFlag = (uint64_t)cmd + ((uint64_t)flags << 32);
 			values.push_back(CInt::get(m_int64Type, cmdFlag));
 		};
+
+		// If this class is supposed to add methods to one of the C++ classes, set that up
+		if (cls->info->IsSystemClass()) {
+			addCmdFlag(Cmd::MARK_SYSTEM_CLASS, 0);
+		}
 
 		// Write the attributes - both for the class, and all the methods
 		auto writeSingleAttribute = [&](const std::string &name, const AttrContent &attr) {
@@ -1707,6 +1714,12 @@ StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineCla
 
 	llvm::Constant *className = GetStringConst(cls->info->name);
 	llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, dataBlock, supertype});
+
+	// System classes are registered, but we don't do anything with the result - we're just telling C++ what
+	// methods exist on them.
+	if (cls->info->IsSystemClass())
+		return {};
+
 	m_builder.CreateStore(classValue, data.object);
 
 	// Look up the field offset - if this class is defined multiple times then we'll be repeating this, but one
