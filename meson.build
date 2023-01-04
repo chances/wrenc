@@ -142,6 +142,7 @@ llvm_backend = shared_module('llvm_backend',
 rtlib_wren_core = custom_target('wren-core',
   output: ['wren_core.o'],
   input: ['lib/wren-main/src/vm/wren_core.wren'],
+  depends: [llvm_backend],
   command: [
     wrenc,
     '-c',
@@ -149,6 +150,7 @@ rtlib_wren_core = custom_target('wren-core',
     '@INPUT@',
     '--module=wren_core',
     '--internal-build-core-lib',
+    '--backend-llvm',
   ]
 )
 
