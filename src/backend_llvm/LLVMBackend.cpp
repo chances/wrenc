@@ -1072,6 +1072,10 @@ void LLVMBackendImpl::SetupDebugInfo(Module *mod) {
 
 	m_debugInfo = std::make_unique<llvm::DIBuilder>(m_module);
 
+	// Specify the version of the debug information we're generating - this is required if we're passing
+	// our IR back into opt, and might be needed in other places too.
+	m_module.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+
 	if (mod->sourceFilePath) {
 		std::vector<std::string> filenameParts = utils::stringSplit(mod->sourceFilePath.value(), "/");
 		std::string filenameNoDir = filenameParts.back();
