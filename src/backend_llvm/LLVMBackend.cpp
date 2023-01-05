@@ -94,6 +94,7 @@ class FnData : public BackendNodeData {
 	llvm::Function *llvmFunc = nullptr;
 	llvm::GlobalVariable *closureSpec = nullptr;
 	std::unique_ptr<UpvaluePackDef> upvaluePackDef;
+	std::vector<StmtBeginUpvalues *> beginUpvalueStatements;
 };
 
 class ClassData : public BackendNodeData {
@@ -362,7 +363,27 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 
 	// Create our function data objects
 	for (IRFn *func : mod->GetFunctions()) {
-		func->backendData = std::unique_ptr<BackendNodeData>(new FnData);
+		FnData *fnData = new FnData;
+		func->backendData = std::unique_ptr<BackendNodeData>(fnData);
+
+		// Create all the BeginUpvalueData objects, so we can later use them
+		// during upvalue handling without worrying about whether they've
+		// been generated yet or not.
+		// Note we don't need to search the temporary variables, since they're
+		// not used by upvalues.
+		std::set<StmtBeginUpvalues *> allBeginUpvalues;
+		for (LocalVariable *var : func->locals) {
+			if (var->beginUpvalues) {
+				allBeginUpvalues.insert(var->beginUpvalues);
+			}
+		}
+		for (StmtBeginUpvalues *beginUpvalues : allBeginUpvalues) {
+			// This variable is accessed by closures, so it gets stored in the array of closable variables.
+			// First, get or create the storage pack for the block containing this local.
+			BeginUpvaluesData *data = new BeginUpvaluesData;
+			beginUpvalues->backendData = std::unique_ptr<BackendNodeData>(data);
+			fnData->beginUpvalueStatements.push_back(beginUpvalues);
+		}
 	}
 
 	for (IRFn *func : mod->GetClosures()) {
@@ -668,19 +689,8 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		}
 
 		// This variable is accessed by closures, so it gets stored in the array of closable variables.
-		// First, get or create the storage pack for the block containing this local.
-		assert(local->beginUpvalues);
-		BeginUpvaluesData *beginUpvalues;
-		if (local->beginUpvalues->backendData) {
-			beginUpvalues = local->beginUpvalues->GetBackendData<BeginUpvaluesData>();
-		} else {
-			beginUpvalues = new BeginUpvaluesData;
-			local->beginUpvalues->backendData = std::unique_ptr<BackendNodeData>(beginUpvalues);
-
-			beginUpvalues->packPtr = m_builder.CreateAlloca(m_pointerType, nullptr, "storage_blk");
-		}
-
-		// Next, reserve an index in the storage pack for this variable.
+		// Reserve an index in the storage pack for this variable.
+		BeginUpvaluesData *beginUpvalues = local->beginUpvalues->GetBackendData<BeginUpvaluesData>();
 		varData->closedAddressPosition = (int)beginUpvalues->contents.size();
 		beginUpvalues->contents.push_back(local);
 	}
@@ -688,6 +698,12 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		VarData *varData = new VarData;
 		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
 		varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+	}
+
+	// Create the memory to store the pointers to the storage blocks
+	for (StmtBeginUpvalues *beginUpvalues : fnData->beginUpvalueStatements) {
+		BeginUpvaluesData *data = beginUpvalues->GetBackendData<BeginUpvaluesData>();
+		data->packPtr = m_builder.CreateAlloca(m_pointerType, nullptr, "storage_blk");
 	}
 
 	// Load the upvalue pack
