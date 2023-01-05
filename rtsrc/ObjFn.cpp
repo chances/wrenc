@@ -25,7 +25,7 @@ ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Ob
 	// LLVM implementation doesn't relocate it's upvalues (it always allocates them, they never live on the
 	// stack) which makes this a lot simpler.
 
-	upvaluePointers.reserve(spec->upvalueOffsets.size());
+	upvaluePointers.resize(spec->upvalueOffsets.size());
 
 	// If neither of the upvalues are passed in, the generated code will have to set up the pointers itself
 	if (parentStack == nullptr && parentUpvaluePack == nullptr)
@@ -33,13 +33,14 @@ ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Ob
 
 	Value *valueStack = (Value *)parentStack;
 	Value **upvaluePack = (Value **)parentUpvaluePack;
+	int pos = 0;
 	for (int stackPos : spec->upvalueOffsets) {
 		bool isDoubleUpvalue = (stackPos & (1 << 31)) != 0;
 		int realValue = stackPos & 0x7fffffff;
 		if (isDoubleUpvalue) {
-			upvaluePointers.push_back(upvaluePack[realValue]);
+			upvaluePointers.at(pos++) = upvaluePack[realValue];
 		} else {
-			upvaluePointers.push_back(&valueStack[realValue]);
+			upvaluePointers.at(pos++) = &valueStack[realValue];
 		}
 	}
 }
