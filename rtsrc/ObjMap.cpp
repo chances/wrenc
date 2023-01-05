@@ -119,6 +119,7 @@ Value ObjMap::ValueIteratorValue_(Value iterator) {
 Value ObjMap::WrapIterator(Value raw) {
 	// We have to make sure that iterator values are always 'true'-like so iteration doesn't end if
 	// we run into a null or false value. To do this we'll just increment all pointers by 1.
+	// Note we receive special GC support for this, in GCTracingScanner::AddToGreyList.
 
 	// Number values are always fine
 	if (is_value_float(raw))

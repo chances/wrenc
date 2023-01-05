@@ -162,6 +162,12 @@ void GCTracingScanner::MarkValueAsRoot(Value value) {
 void GCTracingScanner::AddModuleRoots(RtModule *mod) { mod->MarkModuleGCValues(&m_markOps); }
 
 void GCTracingScanner::AddToGreyList(Obj *obj) {
+	// ObjMap sets the LSB on pointers when iterating, so it can return null
+	// and false without them being considered falsey values and terminating
+	// the loop. Thus we have special support here for that: clear the LSB
+	// of our pointer, so we can see the original value.
+	obj = (Obj *)((uint64_t)obj & (~(uint64_t)1));
+
 	if (!obj)
 		return;
 
