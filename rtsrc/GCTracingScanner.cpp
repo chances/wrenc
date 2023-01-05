@@ -54,14 +54,18 @@ static Obj *greyToPointer(uint64_t gcWord) {
 
 GCTracingScanner::GCTracingScanner() {
 	// Build the functions list
-	for (const auto &entry : WrenRuntime::Instance().m_userModules) {
-		StackMapDescription *stackMap = entry.second->GetStackMap();
+	auto addFunction = [this](StackMapDescription *stackMap) {
 		for (const SMD::FunctionDescriptor &function : stackMap->GetFunctions()) {
 			m_functions.emplace_back(FunctionInfo{
 			    .functionPointer = function.functionPointer,
 			    .stackMap = stackMap,
 			});
 		}
+	};
+	addFunction(WrenRuntime::Instance().m_coreModule->GetStackMap());
+	for (const auto &entry : WrenRuntime::Instance().m_userModules) {
+		StackMapDescription *stackMap = entry.second->GetStackMap();
+		addFunction(stackMap);
 	}
 
 	struct {
