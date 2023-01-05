@@ -2,11 +2,16 @@
 // Created by znix on 28/07/22.
 //
 
+// Only use 'local unwinding' - see https://www.nongnu.org/libunwind/man/libunwind(3).html
+#define UNW_LOCAL_ONLY
+
 #include "ObjFibre.h"
+#include "GCTracingScanner.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
 #include "SlabObjectAllocator.h"
 
+#include <libunwind.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -45,7 +50,11 @@ class ObjFibreClass : public ObjNativeClass {
 };
 
 ObjFibre::~ObjFibre() {}
-ObjFibre::ObjFibre() : Obj(Class()) {}
+ObjFibre::ObjFibre() : Obj(Class()) {
+	// This may be called by the GC while the fibre is suspended. In this
+	// case, we need to delete the stack.
+	DeleteStack();
+}
 
 ObjClass *ObjFibre::Class() {
 	static ObjFibreClass cls;
@@ -67,8 +76,20 @@ ObjFibre *ObjFibre::GetMainThreadFibre() {
 }
 
 void ObjFibre::MarkGCValues(GCMarkOps *ops) {
-	// TODO scan the stack of inactive fibres
-	abort();
+	ops->ReportObject(ops, m_function);
+
+	// If we're not suspended, we don't need to walk the stack:
+	// * Running: stack is scanned by the GC automatically.
+	// * Finished/not started/failed: there's no stack to scan.
+	if (m_state != State::SUSPENDED) {
+		return;
+	}
+
+	// Use the GC to mark all the values in the fibre's stack as roots. It's
+	// fine to do this while the GC is walking the heap, everything just gets
+	// added to the grey list anyway.
+	GCTracingScanner *gc = (GCTracingScanner *)ops->GetGCImpl(ops);
+	gc->MarkThreadRoots(m_suspendedContext);
 }
 
 ObjFibre *ObjFibre::New(ObjFn *func) {
@@ -116,6 +137,9 @@ void ObjFibre::DeleteStack() {
 		fprintf(stderr, "ObjFibre: Cannot delete stack of running fibre.\n");
 		abort();
 	}
+
+	if (m_stack == nullptr)
+		return;
 
 	if (munmap(m_stack, stackSize)) {
 		fprintf(stderr, "ObjFibre: Failed to unmap stack of fibre: %d %s\n", errno, strerror(errno));
@@ -169,6 +193,14 @@ Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
 	previous->m_state = State::SUSPENDED;
 	m_state = State::RUNNING;
 
+	// Save the current context, so our stack can be unwound by the GC. It's
+	// safe to put out a pointer to something on the stack, since it'll be
+	// cleared by ResumeSuspended before switchToExisting returns.
+	// TODO deduplicate with ResumeSuspended.
+	unw_context_t context;
+	unw_getcontext(&context);
+	previous->m_suspendedContext = &context;
+
 	// Find the top of the stack - that's what we pass to the assembly, since we work downwards that's a lot
 	// more useful.
 	void *topOfStack = (void *)((uint64_t)m_stack + stackSize);
@@ -193,7 +225,18 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	m_state = State::RUNNING;
 
 	void *resumeStackAddr = m_resumeAddress;
+
+	// Save the current context, so our stack can be unwound by the GC. It's
+	// safe to put out a pointer to something on the stack, since it'll be
+	// cleared by ResumeSuspended before switchToExisting returns.
+	unw_context_t context;
+	unw_getcontext(&context);
+	previous->m_suspendedContext = &context;
+
+	// Clear out our old suspended pointers, since we're about to start running
+	// they're going to be invalid.
 	m_resumeAddress = nullptr;
+	m_suspendedContext = nullptr;
 
 	ResumeFibreArgs *result = (ResumeFibreArgs *)fibreAsm_switchToExisting(resumeStackAddr, &args);
 	return HandleResumed(result);
@@ -209,6 +252,7 @@ Value ObjFibre::HandleResumed(ObjFibre::ResumeFibreArgs *result) {
 
 	if (result->isTerminating) {
 		fibre->m_state = State::FINISHED;
+		fibre->m_function = nullptr; // Allow the function to be GCed.
 		fibre->DeleteStack();
 		// DO NOT ACCESS RESULT AFTER THIS POINT - IT HAS BEEN FREED!
 	}

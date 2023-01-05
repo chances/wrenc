@@ -12,6 +12,7 @@
 
 class StackMapDescription;
 class RtModule;
+class ObjFibre;
 
 class GCTracingScanner {
   public:
@@ -58,6 +59,12 @@ class GCTracingScanner {
 	/// Add an object to the grey list, if required. If nullptr is passed, it's ignored.
 	void AddToGreyList(Obj *obj);
 
+	/// Walk some thread's stack, and find and mark any values in
+	/// managed (Wren) code as roots.
+	/// The supplied argument is a unw_context_t pointer, represented here as
+	/// void* to avoid importing libunwind.
+	void MarkThreadRoots(/* unw_context_t */ void *unwindContext);
+
 	/// The current number stored in the GC word of all objects marked white (reachable and scanned) in the
 	/// tri-colour GC system. See the comment at the start of the cpp file for more information.
 	uint32_t m_currentWhiteNumber = 0xabcd01;
@@ -79,4 +86,8 @@ class GCTracingScanner {
 	static void OpsReportValues(GCMarkOps *thisObj, const Value *values, int count);
 	static void OpsReportObject(GCMarkOps *thisObj, Obj *object);
 	static void OpsReportObjects(GCMarkOps *thisObj, Obj *const *objects, int count);
+	static void *OpsGetGCImpl(GCMarkOps *thisObj);
+
+	// ObjFibre needs to access MarkThreadRoots.
+	friend class ObjFibre;
 };

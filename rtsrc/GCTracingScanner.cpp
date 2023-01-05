@@ -7,6 +7,7 @@
 
 #include "GCTracingScanner.h"
 #include "Obj.h"
+#include "ObjFibre.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "StackMapDescription.h"
@@ -81,6 +82,7 @@ GCTracingScanner::GCTracingScanner() {
 	m_markOps.ReportValues = OpsReportValues;
 	m_markOps.ReportObject = OpsReportObject;
 	m_markOps.ReportObjects = OpsReportObjects;
+	m_markOps.GetGCImpl = OpsGetGCImpl;
 	m_markOps.scanner = this;
 }
 
@@ -99,12 +101,26 @@ void GCTracingScanner::BeginGCCycle() {
 }
 
 void GCTracingScanner::MarkCurrentThreadRoots() {
-	unw_cursor_t cursor;
+	// Mark the current fibre now, since ObjFibre only marks suspended fibres.
 	unw_context_t uc;
+	unw_getcontext(&uc);
+	MarkThreadRoots(&uc);
+
+	// Mark all the threads on the thread callstack as reachable, as they can
+	// be resumed by yielding.
+	for (ObjFibre *fibre : ObjFibre::fibreCallStack) {
+		// This will call MarkThreadRoots.
+		fibre->MarkGCValues(&m_markOps);
+	}
+}
+
+void GCTracingScanner::MarkThreadRoots(void *unwindContext) {
+	unw_context_t *uc = (unw_context_t *)unwindContext;
+
+	unw_cursor_t cursor;
 	unw_word_t ip, sp;
 
-	unw_getcontext(&uc);
-	unw_init_local(&cursor, &uc);
+	unw_init_local(&cursor, uc);
 	while (unw_step(&cursor) > 0) {
 		unw_get_reg(&cursor, UNW_REG_IP, &ip);
 		unw_get_reg(&cursor, UNW_REG_SP, &sp);
@@ -234,4 +250,9 @@ void GCTracingScanner::OpsReportObjects(GCMarkOps *thisObj, Obj *const *objects,
 	for (int i = 0; i < count; i++) {
 		impl->scanner->AddToGreyList(objects[i]);
 	}
+}
+
+void *GCTracingScanner::OpsGetGCImpl(GCMarkOps *thisObj) {
+	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
+	return impl->scanner;
 }

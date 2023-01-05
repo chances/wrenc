@@ -27,6 +27,10 @@ struct GCMarkOps {
 	// Reporting null pointers is allowed.
 	void (*ReportObject)(GCMarkOps *thisObj, Obj *object);
 	void (*ReportObjects)(GCMarkOps *thisObj, Obj *const *objects, int count);
+
+	/// Get the GC implementation. This is provided for the use of ObjFibre,
+	/// which has to make the GC unwind the stack of suspended fibres.
+	void *(*GetGCImpl)(GCMarkOps *thisObj);
 };
 
 /// An object refers to basically anything accessible by Wren (maybe except for future inline classes).

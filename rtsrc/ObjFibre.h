@@ -9,6 +9,7 @@
 #include <vector>
 
 class ObjFn;
+class GCTracingScanner;
 
 // Whenever we're interacting with assembly we'll use the Microsoft calling convention, to avoid
 // writing bits of the assembly twice.
@@ -97,4 +98,14 @@ class ObjFibre : public Obj {
 
 	/// If the fibre is suspended, this is the stack address to switch back to
 	void *m_resumeAddress = nullptr;
+
+	/// If the fibre is suspended, this is a libunwind context from the last
+	/// function in that fibre's stack. This allows the GC to walk the stack
+	/// of suspended fibres.
+	///
+	/// This is a void pointer instead of a unw_context_t to avoid importing it.
+	/* unw_context_t */ void *m_suspendedContext = nullptr;
+
+	// The GC needs to access the thread stack.
+	friend GCTracingScanner;
 };
