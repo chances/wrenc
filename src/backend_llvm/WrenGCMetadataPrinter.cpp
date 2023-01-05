@@ -36,6 +36,8 @@ const char *WrenGCMetadataPrinter::GetStackMapSymbol() { return "stackmaps"; }
 
 WrenGCMetadataPrinter::~WrenGCMetadataPrinter() = default;
 
+static llvm::Align eightByteAlignment(8);
+
 static void writeObjectHeader(llvm::AsmPrinter &printer, const SMD::MapObjectRepr &obj) {
 	llvm::MCStreamer &os = *printer.OutStreamer;
 	os.emitInt16((int)obj.id);
@@ -78,6 +80,17 @@ static void writeFunction(FullFuncInfo func, llvm::AsmPrinter &printer) {
 	os.emitSymbolValue(func.first, 8); // Function pointer
 	os.emitInt32(func.second->RecordCount);
 	os.emitInt32(func.second->StackSize);
+
+	// Write the function's name
+	llvm::StringRef name = func.first->getName();
+	SMD::MapObjectRepr nameRepr = {
+	    .id = ObjectID::OBJECT_NAME,
+	    .sectionSize = (uint16_t)alignTo64(name.size()),
+	    .forObject = (uint16_t)name.size(),
+	};
+	writeObjectHeader(printer, nameRepr);
+	os.emitBytes(name);
+	os.emitValueToAlignment(eightByteAlignment);
 }
 
 bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinter &printer) {
@@ -87,8 +100,6 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 	// TODO use the data section on platforms that don't support relro (Windows/OSX)
 	llvm::MCSection *stackMapSection = outContext.getObjectFileInfo()->getDataRelROSection();
 	os.switchSection(stackMapSection);
-
-	llvm::Align eightByteAlignment(8);
 
 	// Start aligned to the eight-byte boundary, so we can safely read 64-bit values on all architectures
 	os.emitValueToAlignment(eightByteAlignment);

@@ -37,7 +37,7 @@ StackMapDescription::StackMapDescription(const void *serialised) {
 
 	// The most recently found function. Statepoints give their instruction pointer relative to the
 	// start of the function, so we need this to recover them.
-	const FunctionDescriptor *currentFunction = nullptr;
+	FunctionDescriptor *currentFunction = nullptr;
 
 	while (true) {
 		const MapObjectRepr *object = (const MapObjectRepr *)serialised;
@@ -73,6 +73,11 @@ StackMapDescription::StackMapDescription(const void *serialised) {
 			    .offsetIndex = heapStart,
 			    .numLocals = numOffsets,
 			});
+			break;
+		}
+		case ObjectID::OBJECT_NAME: {
+			const char *name = (const char *)afterObj;
+			currentFunction->name = std::string(name, object->forObject);
 			break;
 		}
 		default:
@@ -118,6 +123,7 @@ std::optional<StackMapDescription::StatepointDescriptor> StackMapDescription::Lo
 	    .instruction = matchInsn,
 	    .offsets = m_offsetHeap.data() + match->offsetIndex,
 	    .numOffsets = match->numLocals,
+	    .function = &m_functions.at(match->functionId),
 	};
 }
 

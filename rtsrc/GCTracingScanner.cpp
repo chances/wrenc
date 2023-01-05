@@ -133,7 +133,7 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 		const SMD::StatepointDescriptor &statepoint = maybeStatepoint.value();
 
 		if (PRINT_STACK_WALK_DBG)
-			printf("\tstatepoint with %d values\n", statepoint.numOffsets);
+			printf("\tstatepoint '%s' with %d values\n", statepoint.function->name.c_str(), statepoint.numOffsets);
 
 		// We've found a valid statepoint. Now find all the values on it's stack. These are all a positive
 		// multiple of eight added to the stack pointer. The offset of the values from the stack pointer have

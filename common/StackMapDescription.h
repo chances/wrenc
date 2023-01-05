@@ -6,15 +6,19 @@
 
 #include <optional>
 #include <stdint.h>
+#include <string>
 #include <vector>
 
 class StackMapDescription {
   public:
+	struct FunctionDescriptor;
+
 	enum class ObjectID : uint16_t {
 		INVALID = 0,
 		END_OF_STACK_MAP,
 		FUNCTION,
 		STATEPOINT,
+		OBJECT_NAME, /// Used to name the last function
 	};
 
 	/// Serialisation structure - this is the header for each object
@@ -37,10 +41,15 @@ class StackMapDescription {
 
 		/// The number of offsets - this is the number of local variables we can access
 		int numOffsets = 0;
+
+		/// The function that this statepoint belongs to
+		FunctionDescriptor *function;
 	};
 
 	struct FunctionDescriptor {
 		void *functionPointer = nullptr;
+
+		std::string name;
 
 		int id = -1;
 	};
