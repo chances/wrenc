@@ -377,7 +377,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::optio
 		irOutput.open(wrencIrFile);
 		irOutput << dbg->str() << std::endl;
 	} catch (const std::fstream::failure &ex) {
-		fmt::print(stderr, "Failed to write QBE IR: {}\n", ex.what());
+		fmt::print(stderr, "Failed to write wren IR: {}\n", ex.what());
 		exit(1);
 	}
 
