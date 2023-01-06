@@ -29,6 +29,14 @@ void StmtBlock::Add(IRStmt *stmt) {
 ExprConst::ExprConst() {}
 ExprConst::ExprConst(CcValue value) : value(value) {}
 
+bool IRExpr::IsPure() const { return false; }
+bool ExprConst::IsPure() const { return true; }
+bool ExprLoad::IsPure() const { return true; } // Loading an already-defined variable is never an error.
+bool ExprFieldLoad::IsPure() const { return true; }
+bool ExprLoadReceiver::IsPure() const { return true; }
+bool ExprSystemVar::IsPure() const { return true; }
+bool ExprGetClassVar::IsPure() const { return true; }
+
 ExprSystemVar::ExprSystemVar(std::string name) : name(name) {
 	if (!SYSTEM_VAR_NAMES.contains(name)) {
 		fmt::print(stderr, "Illegal system variable name '{}'\n", name);

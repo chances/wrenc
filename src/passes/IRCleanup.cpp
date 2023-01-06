@@ -111,8 +111,14 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 		// at the current loop index to avoid inspecting it again.
 		// TODO this means visiting nodes twice, which is potentially a performance concern but shouldn't
 		//  be a correctness one.
-		if (m_runStatementsTarget.inserted)
+		if (m_runStatementsTarget.inserted) {
 			i--;
+
+			// We've decremented i, so we have to stop here - otherwise if the current node also gets
+			// deleted below then we'll remove the item at index i, which is wrong.
+			// We'll revisit this node anyway (it's now in the future), so those actions will still get run.
+			continue;
+		}
 
 		// Remove empty StmtBeginUpvalues nodes - do this after visiting them,
 		// since that removes all the non-upvalue variables.
@@ -129,6 +135,16 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 					m_fnParents.back()->rootBeginUpvalues = nullptr;
 				}
 
+				continue;
+			}
+		}
+
+		// If we're evaluating and ignoring an expression that has no side effects, mostly
+		// for ease of manually reading the IR.
+		if (StmtEvalAndIgnore *eval = dynamic_cast<StmtEvalAndIgnore *>(stmt)) {
+			if (eval->expr->IsPure()) {
+				node->statements.erase(node->statements.begin() + i);
+				i--;
 				continue;
 			}
 		}

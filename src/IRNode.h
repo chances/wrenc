@@ -380,7 +380,11 @@ class StmtDefineClass : public IRStmt {
 // //// EXPRESSIONS /// //
 // //////////////////// //
 
-class IRExpr : public IRNode {};
+class IRExpr : public IRNode {
+  public:
+	/// True if evaluating this expression has no side effects, including errors.
+	virtual bool IsPure() const;
+};
 
 class ExprConst : public IRExpr {
   public:
@@ -388,6 +392,7 @@ class ExprConst : public IRExpr {
 	ExprConst(CcValue value);
 
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
 
 	CcValue value;
 };
@@ -398,6 +403,7 @@ class ExprLoad : public IRExpr {
 	ExprLoad(VarDecl *var) : var(var) {}
 
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
 
 	VarDecl *var;
 };
@@ -409,6 +415,7 @@ class ExprFieldLoad : public IRExpr {
 	ExprFieldLoad(FieldVariable *var) : var(var) {}
 
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
 
 	FieldVariable *var = nullptr;
 };
@@ -441,6 +448,7 @@ class ExprClosure : public IRExpr {
 class ExprLoadReceiver : public IRExpr {
   public:
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
 };
 
 /// Run a collection of statements to initialise a temporary variable, which is then
@@ -469,6 +477,7 @@ class ExprSystemVar : public IRExpr {
   public:
 	ExprSystemVar(std::string name);
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
 
 	std::string name;
 
@@ -480,6 +489,8 @@ class ExprSystemVar : public IRExpr {
 class ExprGetClassVar : public IRExpr {
   public:
 	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
+
 	IRClass *cls = nullptr;
 };
 
