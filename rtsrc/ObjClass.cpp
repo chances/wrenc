@@ -5,7 +5,6 @@
 #include "ObjClass.h"
 #include "CoreClasses.h"
 #include "Errors.h"
-#include "binding_utils.h" // Useful for the manually-written ObjClass getters
 
 #include <inttypes.h>
 #include <unordered_map>

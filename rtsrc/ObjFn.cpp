@@ -4,6 +4,7 @@
 
 #include "ObjFn.h"
 #include "Errors.h"
+#include "GenEntry.h"
 #include "ObjClass.h"
 
 #include <optional>
@@ -13,7 +14,6 @@ class ObjFnClass : public ObjNativeClass {
 	ObjFnClass() : ObjNativeClass("Fn", "ObjFn") {}
 };
 
-ObjFn::~ObjFn() = default;
 ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Obj(Class()), spec(spec) {
 	// WARNING: Mostly outdated comments, the native code now sets the pointers up itself.
 	// Take the address of the relevant values on the parent function's stack, so while the parent function is
@@ -41,6 +41,14 @@ ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Ob
 		} else {
 			upvaluePointers.at(pos++) = &valueStack[realValue];
 		}
+	}
+}
+
+ObjFn::~ObjFn() {
+	int baseIndex = spec->upvalueOffsets.size();
+	for (int i = 0; i < spec->storageBlockCount; i++) {
+		UpvalueStorage *storageBlock = (UpvalueStorage *)upvaluePointers.at(i + baseIndex);
+		storageBlock->Unref();
 	}
 }
 

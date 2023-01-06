@@ -24,7 +24,6 @@
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
-#include "common.h"
 #include "common/ClassDescription.h"
 
 #include <inttypes.h>
@@ -46,7 +45,8 @@ EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
 EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead);
 EXPORT Value **wren_get_closure_upvalue_pack(Value closure);
-EXPORT void *wren_alloc_upvalue_storage(int numClosures);
+EXPORT UpvalueStorage *wren_alloc_upvalue_storage(int numClosures);
+EXPORT void wren_unref_upvalue_storage(UpvalueStorage *storage);
 EXPORT Value wren_get_bool_value(bool value);
 EXPORT Value wren_get_core_class_value(const char *name);
 EXPORT RtModule *wren_import_module(const char *name, void *getGlobalsFunc);
@@ -247,9 +247,31 @@ Value **wren_get_closure_upvalue_pack(Value closure) {
 
 // Allocate space for a closed upvalue on the heap, move the value there, and update all the closures that
 // point to that value over to the new storage location.
-void *wren_alloc_upvalue_storage(int numClosures) {
-	// TODO reference-counting stuff
-	return WrenRuntime::Instance().AllocateMem(sizeof(Value) * numClosures, 8);
+UpvalueStorage *wren_alloc_upvalue_storage(int numClosures) {
+	// UpvalueStorage has a fixed-size start, followed by a variable-sized array.
+	// Calculate the total size required if we're fitting the requested number
+	// of variables.
+	int size = sizeof(UpvalueStorage) + sizeof(Value) * numClosures;
+	UpvalueStorage *storage = (UpvalueStorage *)WrenRuntime::Instance().AllocateMem(size, 8);
+	storage->referenceCount = 1;
+	storage->storageSize = numClosures;
+	return storage;
+}
+
+void wren_unref_upvalue_storage(UpvalueStorage *storage) {
+	// Unref is it's own function since ObjFn also calls it.
+	storage->Unref();
+}
+
+void UpvalueStorage::Unref() {
+	referenceCount--;
+	assert(referenceCount >= 0);
+
+	if (referenceCount == 0) {
+		// TODO free - until then, clobber the storage to help surface bugs
+		for (int i = 0; i < storageSize; i++)
+			storage[i] = encode_object((Obj *)0xdeadbeef);
+	}
 }
 
 Value wren_get_bool_value(bool value) { return encode_object(ObjBool::Get(value)); }

@@ -62,6 +62,10 @@ struct UpvaluePackDef {
 
 	// The positions of the variables in the upvalue pack, the inverse of variables
 	std::unordered_map<UpvalueVariable *, int> variableIds;
+
+	// The position of the pointer to the upvalue storage, for each upvalue storage
+	// location used by this closure.
+	std::unordered_map<StmtBeginUpvalues *, int> storageLocations;
 };
 
 struct VisitorContext {
@@ -130,6 +134,9 @@ struct BeginUpvaluesData : public BackendNodeData {
 	/// StmtBeginUpvalues.variables.
 	std::vector<LocalVariable *> contents;
 
+	/// The function that contains this block - useful when working with upvalues.
+	IRFn *function = nullptr;
+
 	/// Set to true if this block was visited early so the arguments could be loaded safely.
 	bool createdEarly = false;
 };
@@ -141,6 +148,10 @@ class LLVMBackendImpl : public LLVMBackend {
 	CompilationResult Generate(Module *mod, const CompilationOptions *options) override;
 
   private:
+	/// The number of 64-bit values at the start of any upvalue storage block
+	/// that are reserved for things like the reference counter.
+	static constexpr int UPVALUE_STORAGE_OFFSET = 1;
+
 	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
 	void SetupDebugInfo(Module *mod);
@@ -199,6 +210,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_superMethodLookup;
 	llvm::FunctionCallee m_createClosure;
 	llvm::FunctionCallee m_allocUpvalueStorage;
+	llvm::FunctionCallee m_unrefUpvalueStorage;
 	llvm::FunctionCallee m_getUpvaluePack;
 	llvm::FunctionCallee m_getNextClosure;
 	llvm::FunctionCallee m_allocObject;
@@ -288,6 +300,10 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	llvm::FunctionType *allocUpvalueStorageType = llvm::FunctionType::get(m_pointerType, {m_int32Type}, false);
 	m_allocUpvalueStorage =
 	    m_module.getOrInsertFunction("wren_alloc_upvalue_storage", allocUpvalueStorageType, gcLeafFunc);
+
+	llvm::FunctionType *unrefUpvalueStorageType = llvm::FunctionType::get(m_voidType, {m_pointerType}, false);
+	m_unrefUpvalueStorage =
+	    m_module.getOrInsertFunction("wren_unref_upvalue_storage", unrefUpvalueStorageType, gcLeafFunc);
 
 	llvm::FunctionType *getUpvaluePackType = llvm::FunctionType::get(m_pointerType, {m_valueType}, false);
 	m_getUpvaluePack = m_module.getOrInsertFunction("wren_get_closure_upvalue_pack", getUpvaluePackType, gcLeafFunc);
@@ -383,6 +399,8 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 			BeginUpvaluesData *data = new BeginUpvaluesData;
 			beginUpvalues->backendData = std::unique_ptr<BackendNodeData>(data);
 			fnData->beginUpvalueStatements.push_back(beginUpvalues);
+
+			data->function = func;
 		}
 	}
 
@@ -399,6 +417,19 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 			// Assign an increasing series of IDs for each variable in an arbitrary order
 			pack->variables.push_back(entry.second);
 			pack->variableIds[entry.second] = pack->variables.size() - 1; // -1 to get the index of the last entry
+		}
+
+		// Generate the storage pointers - these are used for reference-counting
+		// all the storage objects that store the upvalue Values.
+		for (const auto &entry : func->upvalues) {
+			// Find the local variable this upvalue ultimately points to, walking through an arbitrary
+			// number of nested upvalues first.
+			LocalVariable *target = entry.second->GetFinalTarget();
+
+			if (!pack->storageLocations.contains(target->beginUpvalues)) {
+				int nextPosition = pack->storageLocations.size() + pack->variables.size();
+				pack->storageLocations[target->beginUpvalues] = nextPosition;
+			}
 		}
 
 		// Note we always have to register an upvalue pack definition, even if it's empty - it's required for closures.
@@ -855,7 +886,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		UpvaluePackDef *upvaluePack = fnData->upvaluePackDef.get();
 		int numUpvalues = upvaluePack->variables.size();
-		int numStorageLocations = 0;
+		int numStorageLocations = upvaluePack->storageLocations.size();
 
 		std::vector<llvm::Type *> specTypes = {
 		    m_pointerType, m_pointerType, m_int32Type, m_int32Type, m_int32Type, m_int32Type};
@@ -1173,7 +1204,7 @@ llvm::Value *LLVMBackendImpl::GetLocalPointer(VisitorContext *ctx, LocalVariable
 
 		std::vector<llvm::Value *> indices = {
 		    // Select the item we're interested in.
-		    CInt::get(m_int32Type, varData->closedAddressPosition),
+		    CInt::get(m_int32Type, varData->closedAddressPosition + UPVALUE_STORAGE_OFFSET),
 		};
 		return m_builder.CreateGEP(m_valueType, storagePtr, indices, "lv_ptr_" + local->Name());
 	}
@@ -1485,6 +1516,57 @@ ExprRes LLVMBackendImpl::VisitExprClosure(VisitorContext *ctx, ExprClosure *node
 		m_builder.CreateStore(valuePtr, targetSlotPtr); // NOLINT(readability-suspicious-call-argument)
 	}
 
+	// Load the pointers to all the upvalue storage locations, - this is used for reference counting.
+	for (const auto &[storage, location] : upvaluePack->storageLocations) {
+		BeginUpvaluesData *beginUpvalues = storage->GetBackendData<BeginUpvaluesData>();
+
+		llvm::Value *storageAddress;
+
+		if (beginUpvalues->function == ctx->currentWrenFunc) {
+			// This upvalue references something from the current
+			// function - fetch the storage pointer directly.
+			storageAddress = m_builder.CreateLoad(m_pointerType, beginUpvalues->packPtr, "storage_ptr");
+		} else {
+			// This storage block was declared in another function. This implies
+			// it's an upvalue to an upvalue, so we'll have the current value
+			// and storage pointers (though we only need the latter here) in our
+			// upvalue pack.
+			// This is similar to (and derived from) the GetUpvaluePointer function.
+
+			UpvaluePackDef *thisFnUpvaluePack = ctx->currentWrenFunc->GetBackendData<FnData>()->upvaluePackDef.get();
+			auto iter = thisFnUpvaluePack->storageLocations.find(storage);
+
+			if (iter == thisFnUpvaluePack->storageLocations.end()) {
+				fmt::print(stderr, "Upvalue in {} used StmtBeginUpvalues block not available from parent\n",
+				    node->func->debugName);
+				abort();
+			}
+			int position = iter->second;
+
+			// Get a pointer pointing to the position in the upvalue pack where the pointer
+			// to this storage block is. Recall the upvalue pack is an array of pointers.
+			llvm::Value *storagePtrPtr = m_builder.CreateGEP(m_pointerType, ctx->upvaluePackPtr,
+			    {CInt::get(m_int32Type, position)}, "uv_storage_" + beginUpvalues->function->debugName);
+
+			// The upvalue pack stores pointers, so at this point our variable
+			// is a StorageBlock** and we have to dereference it twice.
+			storageAddress = m_builder.CreateLoad(m_pointerType, storagePtrPtr,
+			    "uv_storage_ptr_" + beginUpvalues->function->debugName);
+		}
+
+		// Increment the storage block's reference count - it's stored in the first 32 bits.
+		llvm::Value *originalRefCount = m_builder.CreateLoad(m_int32Type, storageAddress, "old_storage_refs");
+		llvm::Value *newRefCount = m_builder.CreateAdd(originalRefCount, CInt::get(m_int32Type, 1), "new_refcount");
+		m_builder.CreateStore(newRefCount, storageAddress);
+
+		// Get the pointer to the location where we have to store the storage pointer to.
+		llvm::ConstantInt *locationInt = CInt::get(m_int32Type, location);
+		llvm::Value *targetSlotPtr = m_builder.CreateGEP(m_pointerType, upvaluePackPtr, {locationInt},
+		    "storage_slot_" + std::to_string(location));
+
+		m_builder.CreateStore(storageAddress, targetSlotPtr);
+	}
+
 	return {closure};
 }
 ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadReceiver *node) {
@@ -1716,7 +1798,14 @@ StmtRes LLVMBackendImpl::VisitStmtBeginUpvalues(VisitorContext *ctx, StmtBeginUp
 }
 StmtRes LLVMBackendImpl::VisitStmtRelocateUpvalues(VisitorContext *ctx, StmtRelocateUpvalues *node) {
 	// All upvalues in the LLVM implementation are stored on the heap, since things get too complicated with
-	// nested closures otherwise. Thus (until we implement a GC) we don't have to do anything here.
+	// nested closures otherwise. All we have to do is decrement the reference count of the memory storing those values.
+
+	for (StmtBeginUpvalues *beginning : node->upvalueSets) {
+		BeginUpvaluesData *beginData = beginning->GetBackendData<BeginUpvaluesData>();
+
+		llvm::Value *storagePtr = m_builder.CreateLoad(m_pointerType, beginData->packPtr, "unref_storage_ptr");
+		m_builder.CreateCall(m_unrefUpvalueStorage, {storagePtr});
+	}
 
 	return {};
 }

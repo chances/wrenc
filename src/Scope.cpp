@@ -79,3 +79,15 @@ void LocalVariable::Accept(IRVisitor *visitor) { visitor->VisitLocalVariable(thi
 void UpvalueVariable::Accept(IRVisitor *visitor) { visitor->VisitUpvalueVariable(this); }
 std::string UpvalueVariable::Name() const { return parent->Name() + "_UPVALUE"; }
 VarDecl::ScopeType UpvalueVariable::Scope() const { return SCOPE_UPVALUE; }
+
+LocalVariable *UpvalueVariable::GetFinalTarget() const {
+	VarDecl *var = parent;
+	while (true) {
+		if (var->Scope() == SCOPE_LOCAL) {
+			return dynamic_cast<LocalVariable *>(var);
+		}
+
+		UpvalueVariable *upvalue = dynamic_cast<UpvalueVariable *>(var);
+		var = upvalue->parent;
+	}
+}

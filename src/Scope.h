@@ -43,6 +43,10 @@ class UpvalueVariable : public VarDecl {
 	ScopeType Scope() const override;
 	void Accept(IRVisitor *visitor) override;
 
+	/// Upvalues can have either another upvalue or a local as their parent. This walks the parent
+	/// chain until we find the local variable at the end of it.
+	LocalVariable *GetFinalTarget() const;
+
 	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
 	VarDecl *parent = nullptr;
 
