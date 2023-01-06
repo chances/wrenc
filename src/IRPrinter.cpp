@@ -50,14 +50,13 @@ void IRPrinter::EndTag() {
 		else
 			result << "\n" << tag.indent;
 
-		// Add a level of indentation
-		for (int i = part.length() - 1; i >= 0; i--) {
-			if (part.at(i) != '\n')
-				continue;
-			part.insert(i + 1, tag.indent);
+		// Add a level of indentation while writing the tag to the result stream
+		for (char c : part) {
+			result << c;
+			if (c == '\n') {
+				result << tag.indent;
+			}
 		}
-
-		result << part;
 	}
 
 	if (tag.components.empty() || tag.isInline)
