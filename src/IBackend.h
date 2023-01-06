@@ -6,10 +6,16 @@
 
 #include "Module.h"
 
+enum class WrenOptimisationLevel {
+	NONE,
+	FAST,
+};
+
 struct CompilationOptions {
 	bool includeDebugInfo = false;
 	bool forceAssemblyOutput = false;
 	bool enableGCSupport = false;
+	WrenOptimisationLevel optimisationLevel = WrenOptimisationLevel::NONE;
 };
 
 struct CompilationResult {

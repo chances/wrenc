@@ -493,8 +493,17 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 
 	// Run the middle-end passes - optimisation and any lowering we need
 	// TODO make these (except for RS4GC) optional
-	llvm::OptimizationLevel level = llvm::OptimizationLevel::O0;
-	if (1) {
+	llvm::OptimizationLevel level;
+	switch (options->optimisationLevel) {
+	case WrenOptimisationLevel::NONE:
+		level = llvm::OptimizationLevel::O0;
+		break;
+	case WrenOptimisationLevel::FAST:
+		level = llvm::OptimizationLevel::O3;
+		break;
+	}
+
+	{
 		// See https://llvm.org/docs/NewPassManager.html
 		llvm::PassBuilder pb;
 

@@ -46,6 +46,7 @@ static option options[] = {
     {"output", required_argument, 0, 'o'},
     {"compile-only", no_argument, 0, 'c'},
     {"module", required_argument, 0, 'm'},
+    {"optimise", required_argument, 0, 'O'},
     {"dont-assemble", no_argument, &globalDontAssemble, true},
     {"help", no_argument, 0, 'h'},
     {"no-debug-info", no_argument, &globalNoDebugInfo, true},
@@ -90,7 +91,7 @@ int main(int argc, char **argv) {
 	CompilationOptions backendOpts;
 
 	while (true) {
-		int opt = getopt_long(argc, argv, "o:m:ch", options, nullptr);
+		int opt = getopt_long(argc, argv, "o:m:O:ch", options, nullptr);
 
 		// -1 means we ran out of options
 		if (opt == -1)
@@ -112,6 +113,17 @@ int main(int argc, char **argv) {
 		case 'g':
 			backendOpts.includeDebugInfo = true;
 			break;
+		case 'O': {
+			std::string arg = optarg;
+			if (arg == "none") {
+				backendOpts.optimisationLevel = WrenOptimisationLevel::NONE;
+			} else if (arg == "fast") {
+				backendOpts.optimisationLevel = WrenOptimisationLevel::FAST;
+			} else {
+				fmt::print(stderr, "Invalid optimisation level '{}', see --help\n", argv[0]);
+			}
+			break;
+		}
 		case '?':
 			// Error message already printed by getopt
 			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
@@ -138,6 +150,7 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("-c", "--compile-only", "Only compile the input files, do not link them");
 		optHelp.emplace_back("-o file", "--output=file", "Write the output to the file [file]");
 		optHelp.emplace_back("-m name", "--module=name", "Sets the module name. Repeat for multiple files.");
+		optHelp.emplace_back("-O level", "--optimise=level", "Sets the optimisation mode, one of 'none' or 'fast'");
 
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
