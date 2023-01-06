@@ -125,6 +125,7 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 		Print("\t{} ${},", PTR_TYPE, funcName);
 		Print("\t{} {},", PTR_TYPE, GetStringPtr(fn->debugName));
 		Print("\tw {0}, w {1}, # arity={0} num_upvalues={1}", fn->parameters.size(), fn->upvalues.size());
+		Print("\tw 0, w 0, # storage blocks=0 (unimplemented), padding");
 
 		// Keep track of how many words are written so we can keep the section qword-aligned
 		int words = 0;

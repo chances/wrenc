@@ -855,8 +855,10 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		UpvaluePackDef *upvaluePack = fnData->upvaluePackDef.get();
 		int numUpvalues = upvaluePack->variables.size();
+		int numStorageLocations = 0;
 
-		std::vector<llvm::Type *> specTypes = {m_pointerType, m_pointerType, m_int32Type, m_int32Type};
+		std::vector<llvm::Type *> specTypes = {
+		    m_pointerType, m_pointerType, m_int32Type, m_int32Type, m_int32Type, m_int32Type};
 		specTypes.insert(specTypes.end(), numUpvalues, m_int32Type); // Add the upvalue indices
 		llvm::StructType *closureSpecType = llvm::StructType::get(m_context, specTypes);
 
@@ -866,6 +868,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		    GetStringConst(fn->debugName),                 // name C string
 		    CInt::get(m_int32Type, fn->parameters.size()), // Arity
 		    CInt::get(m_int32Type, numUpvalues),           // Upvalue count
+		    CInt::get(m_int32Type, numStorageLocations),   // Storage pack pointers count
+		    CInt::get(m_int32Type, 0),                     // Unused padding
 		};
 		for (UpvalueVariable *upvalue : upvaluePack->variables) {
 			// Just generate zeros, since we fill the upvalue pack in generated code

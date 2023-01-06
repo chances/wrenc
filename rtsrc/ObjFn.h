@@ -91,6 +91,7 @@ class ClosureSpec {
 
 	std::string name;
 	int arity = -1;
+	int storageBlockCount = 0;
 	void *funcPtr = nullptr;
 
 	// Where the upvalues are, as an index into the values array passed into the ObjFn constructor

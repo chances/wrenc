@@ -7,7 +7,6 @@
 #include "ObjClass.h"
 
 #include <optional>
-#include <span>
 
 class ObjFnClass : public ObjNativeClass {
   public:
@@ -25,7 +24,7 @@ ObjFn::ObjFn(ClosureSpec *spec, void *parentStack, void *parentUpvaluePack) : Ob
 	// LLVM implementation doesn't relocate it's upvalues (it always allocates them, they never live on the
 	// stack) which makes this a lot simpler.
 
-	upvaluePointers.resize(spec->upvalueOffsets.size());
+	upvaluePointers.resize(spec->upvalueOffsets.size() + spec->storageBlockCount);
 
 	// If neither of the upvalues are passed in, the generated code will have to set up the pointers itself
 	if (parentStack == nullptr && parentUpvaluePack == nullptr)
@@ -69,8 +68,9 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 }
 
 void ObjFn::MarkGCValues(GCMarkOps *ops) {
-	for (Value *valuePtr : upvaluePointers) {
-		ops->ReportValue(ops, *valuePtr);
+	// Be careful not to scan the storage block pointers
+	for (int i = 0; i < (int)spec->upvalueOffsets.size(); i++) {
+		ops->ReportValue(ops, *upvaluePointers.at(i));
 	}
 
 	// Don't include upvalueFixupList - it's a utility for the compiler and is never cleared.
@@ -80,6 +80,7 @@ struct SerialisedClosureSpec {
 	void *func;
 	const char *name;
 	int arity, upvalueCount;
+	int storageBlockCount, padding;
 };
 
 ClosureSpec::ClosureSpec(void *specSrc) {
@@ -88,6 +89,7 @@ ClosureSpec::ClosureSpec(void *specSrc) {
 	funcPtr = header->func;
 	name = header->name;
 	arity = header->arity;
+	storageBlockCount = header->storageBlockCount;
 
 	for (int i = 0; i < header->upvalueCount; i++) {
 		upvalueOffsets.push_back(*(int *)specSrc);
