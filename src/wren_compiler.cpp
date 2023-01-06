@@ -1601,10 +1601,13 @@ static IRStmt *finishBody(Compiler *compiler, bool isMethod) {
 		returnValue = expr;
 	}
 
-	// Free anything left on the stack
+	// Free everything on the stack, making sure we evaluate the expression first so there aren't any
+	// last-minute uses of the variables after discarding them.
+	LocalVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
+	compiler->AddNew<StmtAssign>(block, tempReturn, returnValue);
 	block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
 
-	block->Add(compiler->New<StmtReturn>(returnValue));
+	block->Add(compiler->New<StmtReturn>(compiler->New<ExprLoad>(tempReturn)));
 	return block;
 }
 
