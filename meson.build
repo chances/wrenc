@@ -37,6 +37,7 @@ common_lib = static_library('common-lib',
   'common/StackMapDescription.cpp',
   'common/HashUtil.cpp',
   include_directories: ['common'],
+  override_options: ['cpp_std=c++20'],
 )
 common = declare_dependency(
   link_with: [common_lib],
@@ -75,6 +76,7 @@ llvm_plugin = shared_library('wren_llvm_plugin',
     # since LLVM is usually compiled without RTTI this causes a link error.
     '-fno-rtti',
   ],
+  override_options: ['cpp_std=c++20'],
 )
 
 wrenc = executable('wrencc',
