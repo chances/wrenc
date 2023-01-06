@@ -156,6 +156,10 @@ rtlib_wren_core = custom_target('wren-core',
 
 # For the runtime library, generate a file that contains functions for Wren to call that then call
 # the native C++ methods.
+binding_options = []
+if get_option('pre_entry_gc')
+  binding_options += '--pre-entry-gc'
+endif
 prog_python = import('python').find_installation('python3')
 rtlib_bindings = custom_target(
   'rtlib-bindings',
@@ -176,7 +180,7 @@ rtlib_bindings = custom_target(
     'rtsrc/ObjFibre.h',
     'rtsrc/ObjFn.h',
   ],
-  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@'],
+  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@', binding_options],
 )
 
 rtlib_lib = shared_library('wren-rtlib',

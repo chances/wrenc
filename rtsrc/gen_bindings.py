@@ -43,6 +43,12 @@ NULL_CLASS = "ObjNull"
 
 
 @dataclass
+class GenOptions:
+    files: List[str]
+    pre_entry_gc: bool
+
+
+@dataclass
 class Arg:
     type: str
     name: str
@@ -184,10 +190,10 @@ def parse_file(fi: TextIO) -> List[Class]:
     return classes
 
 
-def generate(output: TextIO, files: List[str]):
+def generate(output: TextIO, options: GenOptions):
     # Parse the headers
     classes: List[Class] = []
-    for filename in files:
+    for filename in options.files:
         with open(filename, "r") as fi:
             classes += parse_file(fi)
 
@@ -195,9 +201,10 @@ def generate(output: TextIO, files: List[str]):
     output.write("#define BINDINGS_GEN\n")
     output.write("#include \"binding_utils.h\"\n")
     output.write("#include \"Errors.h\"\n")
+    output.write("#include \"WrenRuntime.h\"\n")
 
     output.write("\n// Includes for referenced files:\n")
-    for filename in files:
+    for filename in options.files:
         # If a C++ file is specified, use its header
         if filename.endswith(".cpp"):
             filename = filename[:-3] + "h"
@@ -221,6 +228,10 @@ def generate(output: TextIO, files: List[str]):
 
             debug_sig = cls.name + "." + method.signature()
             output.write(f"static Value {method.method_name()}({receiver_def}{args_str}) {'{'}\n")
+
+            # Run the GC, if that debugging option is enabled
+            if options.pre_entry_gc:
+                output.write("\tWrenRuntime::Instance().RunGC();\n")
 
             # Convert the receiver (if not static or the null or number class)
             if cls.name == NULL_CLASS:
@@ -380,14 +391,18 @@ def main():
     parser = OptionParser()
     parser.add_option("--output", dest="filename", help="The filename to write to, or stdout if omitted",
                       metavar="FILE")
+    parser.add_option("--pre-entry-gc", dest="pre_entry_gc", action="store_true",
+                      help="Run the GC before every function call, for testing")
 
     (options, args) = parser.parse_args()
 
+    gen_opts = GenOptions(args, options.pre_entry_gc)
+
     if options.filename:
         with open(options.filename, "w") as fi:
-            generate(fi, args)
+            generate(fi, gen_opts)
     else:
-        generate(sys.stdout, args)
+        generate(sys.stdout, gen_opts)
 
 
 if __name__ == "__main__":

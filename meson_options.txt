@@ -1,1 +1,2 @@
 option('use_llvm', type : 'feature', description : 'Enable LLVM support')
+option('pre_entry_gc', type: 'boolean', value: false, description: 'Run the GC before rtlib calls, for GC testing')
