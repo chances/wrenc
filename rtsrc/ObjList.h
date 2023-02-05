@@ -25,6 +25,7 @@ class ObjList : public Obj {
 
 	WREN_METHOD() Value Add(Value toAdd);
 	WREN_METHOD() Value Insert(int index, Value toAdd);
+	WREN_METHOD() Value RemoveAt(int index);
 
 	WREN_METHOD() std::string Join();
 	WREN_METHOD() std::string Join(std::string joiner);

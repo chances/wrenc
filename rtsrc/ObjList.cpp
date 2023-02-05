@@ -53,6 +53,18 @@ Value ObjList::Insert(int index, Value toAdd) {
 	return toAdd;
 }
 
+Value ObjList::RemoveAt(int index) {
+	// Negative index handling: -1 means last item (which is size-1), -2=size-2 etc
+	if (index < 0) {
+		index = items.size() + index;
+	}
+
+	ValidateIndex(index, "Index");
+
+	items.erase(items.begin() + index);
+	return 0;
+}
+
 std::string ObjList::Join() { return Join(""); }
 std::string ObjList::Join(std::string joiner) {
 	std::stringstream result;
