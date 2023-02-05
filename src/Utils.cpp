@@ -6,6 +6,7 @@
 
 #include <unistd.h>
 #include <vector>
+#include <random>
 
 static std::vector<std::string> tempFiles;
 
@@ -31,6 +32,15 @@ std::string utils::buildTempFilename(std::string nameTemplate) {
 
 	std::string filename = "/tmp/" + nameTemplate;
 
+	// Use a proper seeded RNG
+	static std::default_random_engine generator;
+	static bool seeded = false;
+	if (!seeded) {
+		std::random_device trueRandom;
+		generator.seed(trueRandom());
+		seeded = true;
+	}
+
 	// FIXME come up with some better way of dealing with temporary files
 	std::string chars;
 	for (int i = 0; i < 10; i++) {
@@ -43,7 +53,7 @@ std::string utils::buildTempFilename(std::string nameTemplate) {
 	for (size_t i = 0; i < filename.size(); i++) {
 		if (filename.at(i) != '!')
 			continue;
-		filename.at(i) = chars.at(rand() % chars.size());
+		filename.at(i) = chars.at(generator() % chars.size());
 	}
 
 	tempFiles.push_back(filename);

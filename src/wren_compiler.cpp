@@ -1,5 +1,6 @@
 // Derived from the wren source code, src/vm/wren_compiler.h
 
+#include <algorithm>
 #include <codecvt>
 #include <cstdlib>
 #include <errno.h>

@@ -5,15 +5,17 @@
 from __future__ import print_function
 
 import os.path
+import random
 import subprocess
 from argparse import ArgumentParser
 from collections import defaultdict
 import re
 from subprocess import Popen, PIPE
 import sys
-from threading import Timer
+import threading
 from pathlib import Path
 import platform
+import tempfile
 from typing import Optional, Set, Dict, List
 
 # Runs the tests.
@@ -24,11 +26,19 @@ parser.add_argument('suite', nargs='?')
 parser.add_argument('--show-passes', '-p', action='store_true', help='list the tests that pass')
 parser.add_argument('--static-output', '-s', action='store_true', help="don't overwrite the status lines")
 parser.add_argument('--show-cmdline', '-c', action='store_true', help="show the command line used to build the test")
+parser.add_argument('--num-threads', '-j', type=int, default=-1,
+                    help="The number of tests to compile in parallel, -1 for auto")
 
 args = parser.parse_args(sys.argv[1:])
 
 config = args.suffix.lstrip('_d')
 is_debug = args.suffix.startswith('_d')
+
+max_threads = args.num_threads
+if max_threads == -1:
+    # Default to the number of available CPU cores.
+    # See the os.cpu_count docs.
+    max_threads = len(os.sched_getaffinity(0))
 
 WRENCC_DIR = Path(__file__).parent.parent
 WREN_DIR: Path = WRENCC_DIR / "lib" / "wren-main"
@@ -45,6 +55,18 @@ if not WREN_APP_WITH_EXT.is_file():
 
 # print("Wren Test Directory - " + WREN_DIR)
 # print("Wren Test App - " + WREN_APP)
+
+# While we're using multiple threads, only one
+# of them will be allowed to do anything other
+# than running the compiler or executable at a time.
+# This mutex is locked when running a test, and
+# released before and re-acquired after running
+# the compiler or executable.
+WORKING_LOCK = threading.Lock()
+
+# The threads semaphore is used to enforce the limit
+# of the maximum number of parallel tests.
+THREADS_SEM = threading.BoundedSemaphore(max_threads)
 
 EXPECT_PATTERN = re.compile(r'// expect: ?(.*)')
 EXPECT_ERROR_PATTERN = re.compile(r'// expect error(?! line)')
@@ -76,6 +98,8 @@ failed = 0
 num_skipped = 0
 skipped = defaultdict(int)
 expectations = 0
+
+threads_in_progress: List[threading.Thread] = []
 
 
 class Test:
@@ -191,9 +215,19 @@ class Test:
         return True
 
     def run(self, compiler_path: Path, type: str):
-        testprog_path = self.compile(compiler_path)
+        # Auto-delete the file when we're done with it
+        tmp_name = "wrencc-test-%08x.exe" % int(random.random() * 0xffffffff)
+        dest_file = Path(tempfile.gettempdir()) / tmp_name
+        try:
+            self._run_impl(compiler_path, type, dest_file)
+        finally:
+            if dest_file.exists():
+                os.remove(dest_file)
 
-        if testprog_path is None:
+    def _run_impl(self, compiler_path: Path, type: str, testprog_path: Path):
+        success = self.compile(compiler_path, testprog_path)
+
+        if not success:
             # TODO handle errors like before
             return
 
@@ -210,23 +244,22 @@ class Test:
             timed_out[0] = True
             p.kill()
 
-        timer = Timer(5, kill_process, [proc])
+        timer = threading.Timer(5, kill_process, [proc])
 
         try:
+            WORKING_LOCK.release()
             timer.start()
             out, err = proc.communicate(self.input_bytes)
-
-            if timed_out[0]:
-                self.failed("Timed out.")
-            else:
-                self.validate(type == "example", proc.returncode, out, err)
         finally:
             timer.cancel()
+            WORKING_LOCK.acquire()
 
-    def compile(self, cc: Path) -> Optional[Path]:
-        # TODO auto-delete this
-        dest_file = Path("/tmp/wrencc-test")
+        if timed_out[0]:
+            self.failed("Timed out.")
+        else:
+            self.validate(type == "example", proc.returncode, out, err)
 
+    def compile(self, cc: Path, dest_file: Path) -> bool:
         # Build the arguments
         self.compiler_args = [
             cc,
@@ -250,7 +283,13 @@ class Test:
             encoding="utf-8",
             args=self.compiler_args,
         )
-        out, err = proc.communicate(None)
+
+        # Allow other stuff to happen in Python while the compiler is running
+        try:
+            WORKING_LOCK.release()
+            out, err = proc.communicate(None)
+        finally:
+            WORKING_LOCK.acquire()
 
         # This should only happen if the compiler crashes - in which case we shouldn't
         # be worrying about individual lines.
@@ -259,7 +298,7 @@ class Test:
             print()
             print("Compiler stdout: " + out.strip())
             print("Compiler stderr: " + err.strip())
-            return None
+            return False
 
         # It's probably bad form, but we want to be really sure the compiler never writes to stdout
         if out:
@@ -275,8 +314,8 @@ class Test:
             self.failed("Compiler succeeded when it was expected to fail")
 
         if proc.returncode != 0:
-            return None
-        return dest_file
+            return False
+        return True
 
     def validate(self, is_example, exit_code, out, err):
         if self.compile_errors and self.runtime_error_message:
@@ -488,7 +527,23 @@ def walk(path: Path, callback, ignored=None):
         if nfile.is_dir():
             walk(nfile, callback)
         else:
-            callback(nfile)
+            run_parallel(callback, nfile, file.name)
+
+
+def run_parallel(task, arg, name: str):
+    def run():
+        try:
+            assert WORKING_LOCK.acquire()
+            task(arg)
+        finally:
+            threads_in_progress.remove(thread)
+            WORKING_LOCK.release()
+            THREADS_SEM.release()
+
+    assert THREADS_SEM.acquire()
+    thread = threading.Thread(name="worker-" + name, target=run)
+    threads_in_progress.append(thread)
+    thread.start()
 
 
 def print_line(line=None, keep=False):
