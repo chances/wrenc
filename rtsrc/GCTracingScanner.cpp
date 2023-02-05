@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <libunwind.h>
+#include <algorithm>
 #include <stdint.h>
 
 using SMD = StackMapDescription;
