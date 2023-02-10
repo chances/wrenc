@@ -818,8 +818,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 	// Create the get-global-table function early, as we pass a pointer to it for string initialisation.
 	{
-		std::string moduleName = mod->Name() ? mod->Name().value() : "<unnamed_module>";
-		std::string getGlobalName = mod->Name().value() + "_get_globals";
+		std::string getGlobalName = mod->Name() + "_get_globals";
 		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
 		m_getGlobals =
 		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
@@ -1097,10 +1096,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		// Add some special values that have a meaning to the runtime
 		components.push_back(GetStringConst("<INTERNAL>::init_func"));
 		components.push_back(mod->GetMainFunction()->GetBackendData<FnData>()->llvmFunc);
-		if (mod->Name()) {
-			components.push_back(GetStringConst("<INTERNAL>::module_name"));
-			components.push_back(GetStringConst(mod->Name().value()));
-		}
+		components.push_back(GetStringConst("<INTERNAL>::module_name"));
+		components.push_back(GetStringConst(mod->Name()));
 		if (m_enableStatepoints) {
 			// WrenGCMetadataPrinter writes out a symbol of this name at the start of its stack map region
 			// Specify external linkage, but that gets ignored since we set it as dso_local anyway
@@ -1751,7 +1748,7 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 
 	// Find the full name of this module. Stuff like './' will refer to a virtual directory structure in
 	// which all the modules sit.
-	std::string currentModName = ctx->currentModule->Name().value_or("<anon_module>");
+	std::string currentModName = ctx->currentModule->Name();
 	std::string currentModDir;
 	size_t lastStrokePos = currentModName.find_last_of('/');
 	if (lastStrokePos != std::string::npos) {

@@ -15,11 +15,10 @@ class ClassInfo;
 
 class Module {
   public:
-	Module();
-	Module(std::optional<std::string> name);
+	Module(std::string name);
 	~Module();
 
-	const std::optional<std::string> &Name() const { return m_name; }
+	const std::string &Name() const { return m_name; }
 
 	IRGlobalDecl *AddVariable(const std::string &name);
 
@@ -44,7 +43,7 @@ class Module {
 	std::optional<std::string> sourceFilePath;
 
   private:
-	std::optional<std::string> m_name;
+	std::string m_name;
 	std::unordered_map<std::string, std::unique_ptr<IRGlobalDecl>> m_globals;
 	std::vector<IRClass *> m_classes;
 	std::vector<IRFn *> m_functions;

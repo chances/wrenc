@@ -20,7 +20,7 @@ static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
-static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
+static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
     const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
@@ -233,9 +233,11 @@ int main(int argc, char **argv) {
 	bool hitError = false;
 	for (size_t sourceFileId = 0; sourceFileId < sourceFiles.size(); sourceFileId++) {
 		const std::string &sourceFile = sourceFiles.at(sourceFileId);
-		std::optional<std::string> thisModuleName;
+		std::string thisModuleName;
 		if (sourceFileId < moduleNames.size()) {
 			thisModuleName = moduleNames.at(sourceFileId);
+		} else {
+			thisModuleName = "unnamed_module_" + std::to_string(sourceFileId);
 		}
 		std::ifstream input;
 		try {
@@ -340,7 +342,7 @@ int main(int argc, char **argv) {
 	}
 }
 
-static CompilationResult runCompiler(const std::istream &input, const std::optional<std::string> &moduleName,
+static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
     const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts) {
 
 	std::string source;

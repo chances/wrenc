@@ -35,7 +35,7 @@ QbeBackend::QbeBackend() = default;
 QbeBackend::~QbeBackend() = default;
 
 CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *options) {
-	std::string moduleName = MangleUniqueName(mod->Name().value_or("unknown"), false);
+	std::string moduleName = MangleUniqueName(mod->Name(), false);
 
 	// Make the upvalue pack for each function that needs them
 	for (IRFn *func : mod->GetClosures()) {
@@ -159,10 +159,7 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	std::string mainFuncName = MangleUniqueName(mod->GetMainFunction()->debugName, false);
 	Print("\t{} {}, {} ${},", PTR_TYPE, GetStringPtr("<INTERNAL>::init_func"), PTR_TYPE, mainFuncName);
 	// Add the module name
-	if (mod->Name()) {
-		Print("\t{} {}, {} {},", PTR_TYPE, GetStringPtr("<INTERNAL>::module_name"), PTR_TYPE,
-		    GetStringPtr(mod->Name().value()));
-	}
+	Print("\t{} {}, {} {},", PTR_TYPE, GetStringPtr("<INTERNAL>::module_name"), PTR_TYPE, GetStringPtr(mod->Name()));
 	// End out the globals table
 	Print("l 0 }} # End with a null string pointer");
 
