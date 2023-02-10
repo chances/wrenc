@@ -33,6 +33,14 @@ std::string ObjClass::LookupSignatureFromId(SignatureId id, bool allowUnknown) {
 }
 
 FunctionTable::Entry *ObjClass::LookupMethod(SignatureId signature) {
+	// Use the STL entries map if it's set
+	if (functions.stlEntryMap) {
+		auto iter = functions.stlEntryMap->find(signature);
+		if (iter == functions.stlEntryMap->end())
+			return nullptr;
+		return &iter->second;
+	}
+
 	int startIndex = signature % FunctionTable::NUM_ENTRIES;
 	int index = startIndex;
 	while (true) {
@@ -74,12 +82,18 @@ void ObjClass::AddFunction(const std::string &signature, void *funcPtr, bool sho
 
 	entry->func = funcPtr;
 	entry->signature = id;
-	definedFunctions.push_back(entry);
+	definedFunctions.push_back(*entry);
 }
 
 FunctionTable::Entry *ObjClass::FindFunctionTableEntry(SignatureId signature) {
+	// If we're using the STL map, that's simple.
+	if (functions.stlEntryMap) {
+		return &functions.stlEntryMap.value()[signature];
+	}
+
 	// Put the function in the first free slot
 	uint64_t idx = signature % FunctionTable::NUM_ENTRIES;
+	int attempts = 1;
 	while (true) {
 		// If there is no matching entry, pick the first empty slot.
 		if (!functions.entries[idx].func)
@@ -89,14 +103,44 @@ FunctionTable::Entry *ObjClass::FindFunctionTableEntry(SignatureId signature) {
 		if (functions.entries[idx].signature == signature)
 			break;
 
-		// TODO wrap around to the start
+		// Move to the next slot, wrapping around to the start if
+		// we go off the end of the table.
 		idx++;
 		if (idx >= FunctionTable::NUM_ENTRIES) {
-			errors::wrenAbort("Function table overflow for class %s", name.c_str());
+			idx = 0;
+		}
+
+		// If we go through too many slots without finding an
+		// empty one, assume this hashtable is nearing it's
+		// usable capacity while maintaining O(1)-ish lookup
+		// times, and relocate everything to an STL map.
+		if (attempts++ > 5) {
+			RelocateSignaturesToSTL();
+
+			// Calling again uses the STL logic, since the map has
+			// now been initialised.
+			return FindFunctionTableEntry(signature);
 		}
 	}
 
 	return &functions.entries[idx];
+}
+
+void ObjClass::RelocateSignaturesToSTL() {
+	// Make sure we're not called twice
+	if (functions.stlEntryMap) {
+		errors::wrenAbort("Calling RelocateSignaturesToSTL with an already-allocated sigmap for '%s'.", name.c_str());
+	}
+
+	// Initialise the entries map
+	functions.stlEntryMap = FunctionTable::StlSigMap();
+
+	for (const FunctionTable::Entry &entry : functions.entries) {
+		if (entry.func == nullptr)
+			continue;
+
+		functions.stlEntryMap.value()[entry.signature] = entry;
+	}
 }
 
 bool ObjClass::CanScriptSubclass() { return false; }
@@ -158,15 +202,15 @@ void ObjNativeClass::FinaliseSetup() {
 			continue;
 
 		for (ObjClass *parent = cls->parentClass; parent; parent = parent->parentClass) {
-			for (FunctionTable::Entry *superEntry : parent->definedFunctions) {
+			for (const FunctionTable::Entry &superEntry : parent->definedFunctions) {
 				// If this function hasn't already been defined, then copy in it's definition
 				// We do this starting from the parent and going in the direction of grandparents, so this will
 				// locate the best match. If A extends B and both need a method copied like this it doesn't
 				// matter what order they're finalised in, as A will either copy from B or use the same search
 				// logic to find the method from (eg) C instead.
-				FunctionTable::Entry *clsEntry = cls->FindFunctionTableEntry(superEntry->signature);
+				FunctionTable::Entry *clsEntry = cls->FindFunctionTableEntry(superEntry.signature);
 				if (clsEntry->func == nullptr) {
-					*clsEntry = *superEntry;
+					*clsEntry = superEntry;
 				}
 			}
 		}

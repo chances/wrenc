@@ -37,7 +37,9 @@
 #include "HashUtil.h"
 #include "Obj.h"
 
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class WrenRuntime;
@@ -51,6 +53,8 @@ class FunctionTable {
 		SignatureId signature = {};
 	};
 
+	using StlSigMap = std::unordered_map<uint64_t /*SignatureId*/, Entry>;
+
 	/// 256 entries sounds like a reasonable number, though we might need to add a way to tweak it later.
 	/// Collisions should be reasonably unlikely, though as the number of entries goes above maybe 200 the lookup
 	/// times will start to get extremely long.
@@ -60,6 +64,12 @@ class FunctionTable {
 	/// 3. Check if entry->signatureId == signatureId, if so we've found the entry
 	/// 4. Advance to the next entry in the array (wrapping around) and go to step 2.
 	Entry entries[256] = {};
+
+	/// If the entries map reached saturation (it's a fixed-size array, and some classes may have
+	/// so many methods they fill it up), then use a dynamically-allocated STL map.
+	/// This isn't as performant, but works efficiently for an unlimited number of methods.
+	/// If this is non-empty, it MUST be used in preference to [entries].
+	std::optional<StlSigMap> stlEntryMap;
 
 	static constexpr unsigned int NUM_ENTRIES = sizeof(entries) / sizeof(entries[0]);
 };
@@ -80,7 +90,7 @@ class ObjClass : public Obj {
 	FunctionTable functions;
 
 	/// An iterable array of functions that are actually defined on the class
-	std::vector<FunctionTable::Entry *> definedFunctions;
+	std::vector<FunctionTable::Entry> definedFunctions;
 
 	/// The name of the class. For metaclasses, this is the same as the class's name, but
 	/// the [isMetaClass] flag is set to indicate this.
@@ -140,6 +150,9 @@ class ObjClass : public Obj {
 	/// Get a pointer to an entry in the function table. If this entry doesn't exist, the pointer to the
 	/// next unoccupied slot is returned.
 	FunctionTable::Entry *FindFunctionTableEntry(SignatureId signature);
+
+	/// If we run out of space in the main signatures table, move it all to an STL unordered_map.
+	void RelocateSignaturesToSTL();
 
 	/// Bind all the auto-generated method adapters to this class. Call it with
 	/// the name of your class. Calling it multiple times with multiple names is
