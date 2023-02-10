@@ -350,7 +350,7 @@ def generate(output: TextIO, options: GenOptions):
         output.write(f"\t\tregister_{cls.name}(cls, isMeta);\n")
         output.write(f"\t\treturn;\n")
         output.write("\t}\n")
-    output.write("\terrors::wrenAbort(\"Unknown bindings class '%s'\\n\", type.c_str());\n")
+    output.write("\terrors::wrenAbort(\"Unknown bindings class '%s'\", type.c_str());\n")
     output.write("}\n")
 
     # Write the ObjFn dispatch code, depending on how many arguments we need

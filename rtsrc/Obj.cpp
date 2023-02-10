@@ -27,7 +27,7 @@ std::string Obj::ConvertToString() {
 	const static SignatureId SIG = ObjClass::FindSignatureId("toString");
 	FunctionTable::Entry *entry = type->LookupMethod(SIG);
 	if (!entry) {
-		errors::wrenAbort("Object '%s' is missing mandatory toString method!\n", type->name.c_str());
+		errors::wrenAbort("Object '%s' is missing mandatory toString method!", type->name.c_str());
 	}
 
 	typedef Value (*toStringFunc_t)(Value);
@@ -36,13 +36,13 @@ std::string Obj::ConvertToString() {
 	Value stringValue = toStringFunc(encode_object(this));
 
 	if (!is_object(stringValue)) {
-		errors::wrenAbort("Object '%s' toString returned non-object value\n", type->name.c_str());
+		errors::wrenAbort("Object '%s' toString returned non-object value", type->name.c_str());
 	}
 
 	Obj *obj = (Obj *)get_object_value(stringValue);
 	ObjString *str = dynamic_cast<ObjString *>(obj);
 	if (!str) {
-		errors::wrenAbort("Object '%s' toString returned non-string object type '%s'\n", type->name.c_str(),
+		errors::wrenAbort("Object '%s' toString returned non-string object type '%s'", type->name.c_str(),
 		    obj->type->name.c_str());
 	}
 

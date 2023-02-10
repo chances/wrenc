@@ -83,13 +83,13 @@ void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 
 void *wren_super_method_lookup(Value receiver, Value thisClass, uint64_t signature, bool isStatic) {
 	if (!is_object(receiver)) {
-		errors::wrenAbort("Cannot lookup super method on numbers - maybe this is memory corruption?\n");
+		errors::wrenAbort("Cannot lookup super method on numbers - maybe this is memory corruption?");
 	}
 
 	Obj *obj = get_object_value(thisClass);
 	ObjClass *cls = dynamic_cast<ObjManagedClass *>(obj);
 	if (!cls) {
-		errors::wrenAbort("Attempted to lookup super method on something other than a managed class.\n");
+		errors::wrenAbort("Attempted to lookup super method on something other than a managed class.");
 	}
 
 	// Normally, calls to static methods get dispatched properly as the receiver is the ObjClass. However, since
@@ -143,7 +143,7 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 
 	ObjClass *parentClass = dynamic_cast<ObjClass *>(parentClassObj);
 	if (!parentClass) {
-		errors::wrenAbort("Cannot inherit from non-class object '%s' for '%s'\n", parentClassObj->type->name.c_str(),
+		errors::wrenAbort("Cannot inherit from non-class object '%s' for '%s'", parentClassObj->type->name.c_str(),
 		    name);
 	}
 
@@ -151,18 +151,18 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 	if (spec->isSystemClass) {
 		// Adding and using fields is off the table, as the class layout is defined in C++
 		if (!spec->fields.empty()) {
-			errors::wrenAbort("Supposed system class '%s' cannot add fields!\n", name);
+			errors::wrenAbort("Supposed system class '%s' cannot add fields!", name);
 		}
 
 		ObjClass *cls = (ObjClass *)get_object_value(wren_get_core_class_value(name));
 
 		if (cls == nullptr) {
-			errors::wrenAbort("Supposed system class '%s' has null C++ version!\n", name);
+			errors::wrenAbort("Supposed system class '%s' has null C++ version!", name);
 		}
 
 		// Set up the parent field, this is later used in WrenRuntime::Initialise to set up all the inherited functions
 		if (cls->parentClass != nullptr) {
-			errors::wrenAbort("System class '%s' already has a parent set!\n", name);
+			errors::wrenAbort("System class '%s' already has a parent set!", name);
 		}
 		cls->parentClass = parentClass;
 
@@ -187,12 +187,12 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 
 Value wren_alloc_obj(Value classVar) {
 	if (!is_object(classVar)) {
-		errors::wrenAbort("Cannot call wren_alloc_object with number argument\n");
+		errors::wrenAbort("Cannot call wren_alloc_object with number argument");
 	}
 
 	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
 	if (!cls) {
-		errors::wrenAbort("Cannot call wren_alloc_object with null or non-ObjManagedClass type\n");
+		errors::wrenAbort("Cannot call wren_alloc_object with null or non-ObjManagedClass type");
 	}
 
 	// We have to allocate managed objects specially, to account for their variable-sized field area
@@ -203,12 +203,12 @@ Value wren_alloc_obj(Value classVar) {
 
 int wren_class_get_field_offset(Value classVar) {
 	if (!is_object(classVar)) {
-		errors::wrenAbort("Cannot call wren_class_get_field_offset with number argument\n");
+		errors::wrenAbort("Cannot call wren_class_get_field_offset with number argument");
 	}
 
 	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
 	if (!cls) {
-		errors::wrenAbort("Cannot call wren_class_get_field_offset with null or non-ObjManagedClass type\n");
+		errors::wrenAbort("Cannot call wren_class_get_field_offset with null or non-ObjManagedClass type");
 	}
 
 	return cls->fieldOffset;
@@ -221,7 +221,7 @@ ClosureSpec *wren_register_closure(void *specData) {
 
 Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead) {
 	if (spec == nullptr) {
-		errors::wrenAbort("Cannot pass null spec to wren_create_closure\n");
+		errors::wrenAbort("Cannot pass null spec to wren_create_closure");
 	}
 
 	// Stack may be null if we have no upvalues
@@ -297,7 +297,7 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("Map", ObjMap::Class()->ToValue());
 	GET_CLASS("Sequence", ObjSequence::Class()->ToValue());
 
-	errors::wrenAbort("Module requested unknown system class '%s', aborting\n", name);
+	errors::wrenAbort("Module requested unknown system class '%s', aborting", name);
 
 #undef GET_CLASS
 }

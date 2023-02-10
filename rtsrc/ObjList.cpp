@@ -28,7 +28,7 @@ void ObjList::MarkGCValues(GCMarkOps *ops) { ops->ReportValues(ops, items.data()
 void ObjList::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)items.size()) {
 		// TODO throw Wren error with this exact message
-		errors::wrenAbort("%s out of bounds.\n", argName);
+		errors::wrenAbort("%s out of bounds.", argName);
 	}
 }
 

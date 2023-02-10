@@ -61,7 +61,7 @@ ObjFn *ObjFn::New(ObjFn *fn) { return fn; }
 
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	if ((int)values.size() != spec->arity) {
-		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)\n", spec->name.c_str(),
+		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)", spec->name.c_str(),
 		    (int)values.size(), spec->arity);
 	}
 

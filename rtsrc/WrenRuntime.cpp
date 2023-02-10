@@ -30,7 +30,7 @@ WrenRuntime &WrenRuntime::Instance() {
 void *WrenRuntime::AllocateMem(int size, int alignment) {
 	void *mem = malloc(size);
 	if ((uint64_t)mem % alignment) {
-		errors::wrenAbort("Bad alignment requirement for allocation: %d for %d and got %p\n", alignment, size, mem);
+		errors::wrenAbort("Bad alignment requirement for allocation: %d for %d and got %p", alignment, size, mem);
 	}
 	return mem;
 }
@@ -100,7 +100,7 @@ RtModule *WrenRuntime::GetPreInitialisedModule(void *getGlobalsFunction) {
 	if (iter != m_userModules.end())
 		return iter->second.get();
 
-	errors::wrenAbort("Could not find supposedly pre-initialised module %p\n", getGlobalsFunction);
+	errors::wrenAbort("Could not find supposedly pre-initialised module %p", getGlobalsFunction);
 	return nullptr;
 }
 

@@ -83,7 +83,7 @@ std::string ObjString::IteratorValue(int iterator) {
 void ObjString::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)m_value.size()) {
 		// TODO throw Wren error with this exact message
-		errors::wrenAbort("%s out of bounds.\n", argName);
+		errors::wrenAbort("%s out of bounds.", argName);
 	}
 }
 

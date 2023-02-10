@@ -118,7 +118,7 @@ SlabObjectAllocator::SizeCategory *SlabObjectAllocator::GetOrCreateBestCategory(
 	// Check we're allocating something large enough, to avoid trying to deal with stuff
 	// getting rounded down to zero later.
 	if (size < (int)sizeof(Obj)) {
-		errors::wrenAbort("Invalid allocation request size: %d\n", size);
+		errors::wrenAbort("Invalid allocation request size: %d", size);
 	}
 
 	// Find the smallest size category that fits the object
@@ -191,7 +191,7 @@ void *SlabObjectAllocator::AllocateRaw(ObjClass *cls, int requestedSize) {
 	// Check the shim is properly aligned
 	int64_t offset = (int64_t)freeShim - (int64_t)slab->GetSectionBaseAddress();
 	if (offset < 0 || (offset % category->size) != 0) {
-		errors::wrenAbort("Memory allocator: slab free shim misaligned with offset %" PRIx64 "\n", offset);
+		errors::wrenAbort("Memory allocator: slab free shim misaligned with offset %" PRIx64, offset);
 	}
 
 	int newLength = freeShim->length - category->size;
@@ -200,7 +200,7 @@ void *SlabObjectAllocator::AllocateRaw(ObjClass *cls, int requestedSize) {
 		slab->SwapOrDeleteShim(freeShim, nullptr);
 	} else {
 		if (newLength < 0 || (newLength % category->size) != 0) {
-			errors::wrenAbort("Memory allocator: slab free shim length misaligned: %d\n", newLength);
+			errors::wrenAbort("Memory allocator: slab free shim length misaligned: %d", newLength);
 		}
 
 		// Move the free slab along a bit.
@@ -255,7 +255,7 @@ SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::
 			return CreateSlab(size);
 		}
 
-		errors::wrenAbort("Failed to allocate new slab (object size %d, slab size %d)\n", size->size, globalSlabSize);
+		errors::wrenAbort("Failed to allocate new slab (object size %d, slab size %d)", size->size, globalSlabSize);
 	}
 	assert(mem == m_nextSlabAddr);
 
