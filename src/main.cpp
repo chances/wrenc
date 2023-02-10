@@ -491,7 +491,6 @@ static int runQbe(std::string qbeIr) {
 
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename) {
 	RunProgramme prog;
-	prog.args.push_back("/usr/bin/env");
 	prog.args.push_back("as");
 	prog.args.push_back("-o");
 	prog.args.push_back(outputFilename);
@@ -499,12 +498,12 @@ static void runAssembler(const std::vector<int> &assemblyFDs, const std::string 
 		prog.args.push_back(filenameForFd(fd));
 		prog.preservedFDs.push_back(fd);
 	}
+	prog.withEnv = true;
 	prog.Run();
 }
 
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles) {
 	RunProgramme prog;
-	prog.args.push_back("/usr/bin/env");
 	prog.args.push_back("ld"); // Using gold or lld would be good, but -lc seems to look for i386 libs on Gentoo/gold?
 	prog.args.push_back("-o");
 	prog.args.push_back(executableFile);
@@ -523,5 +522,6 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 	// Use the glibc dynamic linker, this will need to be changed for other C libraries
 	prog.args.push_back("-dynamic-linker=/lib64/ld-linux-x86-64.so.2");
 
+	prog.withEnv = true;
 	prog.Run();
 }

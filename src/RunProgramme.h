@@ -22,5 +22,8 @@ class RunProgramme {
 	/// The data that should be sent to the process over stdin.
 	std::string input;
 
+	/// If true, the programme is run via the /usr/bin/env wrapper, to perform a PATH lookup.
+	bool withEnv = false;
+
 	void Run();
 };

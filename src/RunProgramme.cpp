@@ -18,6 +18,7 @@ struct ExecData {
 	const std::vector<int> *preservedFDs = nullptr;
 	int stdinPipe = -1;
 	int stdoutPipe = -1;
+	bool useEnv;
 };
 
 RunProgramme::RunProgramme() {}
@@ -34,6 +35,7 @@ void RunProgramme::Run() {
 	    .args = &args,
 	    .preservedFDs = &preservedFDs,
 	    .stdinPipe = stdinPipePair[0], // The pipe's read end
+	    .useEnv = withEnv,
 	};
 
 	// Pass the end of the stack buffer, since it grows downwards
@@ -109,6 +111,9 @@ static int execSubProgramme(void *voidArgs) {
 
 	// Prepare a null-terminated arguments array of null-terminated strings
 	std::vector<char *> rawArgs;
+	if (data->useEnv) {
+		rawArgs.push_back(strdup("/usr/bin/env"));
+	}
 	for (const std::string &str : *data->args) {
 		rawArgs.push_back(strdup(str.c_str())); // Strdup since the string needs to be mutable.
 	}
