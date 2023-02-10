@@ -91,6 +91,9 @@ OVERRIDE_SHOULD_FAIL_COMPILATION: Dict[str, str] = dict()
 # that are failing due to regressions and those that need to be delt with for the first time.
 EXPECTED_FAILURES: Set[str] = set()
 
+# This changes the expected error messages for failures
+EDIT_ERROR_MESSAGES: Dict[str, str] = dict()
+
 passed = 0
 expected_failed_passed = []
 expected_failed = 0
@@ -131,6 +134,7 @@ class Test:
         # Check if this test is supposed to succeed or fail differently in wrencc
         override_success = self.name in OVERRIDE_SHOULD_SUCCEED
         override_compile_time_fail = OVERRIDE_SHOULD_FAIL_COMPILATION.get(self.name, None)
+        edit_error_messages = EDIT_ERROR_MESSAGES.get(self.name, None)
 
         # Note #1: we have unicode tests that require utf-8 decoding.
         # Note #2: python `open` on 3.x modifies contents regarding newlines.
@@ -208,6 +212,18 @@ class Test:
             self.compile_errors = set(error_lines)
             self.compile_error_expected = True
             local_expectations = len(self.compile_errors)
+
+        if edit_error_messages:
+            for msg_block in edit_error_messages.split(",,,"):  # Three commas to allow their use in error messages
+                parts = msg_block.split("=", 1)
+                line = parts[0]
+                msg = parts[1]
+
+                if line == "runtime":
+                    self.runtime_error_message = msg
+                else:
+                    # Add compile errors here if required
+                    raise Exception(f"Invalid edit-error-message line '{line}'")
 
         expectations += local_expectations
 
@@ -703,6 +719,7 @@ def main():
     OVERRIDE_SHOULD_SUCCEED.update(load_list(WRENCC_DIR / 'test' / 'should-succeed.txt'))
     OVERRIDE_SHOULD_FAIL_COMPILATION.update(load_list(WRENCC_DIR / 'test' / 'should-fail-compilation.txt'))
     EXPECTED_FAILURES.update(load_list(WRENCC_DIR / 'test' / 'expected-failures.txt'))
+    EDIT_ERROR_MESSAGES.update(load_list(WRENCC_DIR / 'test' / 'edit-error-message.txt'))
 
     walk(WREN_DIR / 'test', run_test, ignored=['api', 'benchmark'])
     walk(WREN_DIR / 'test' / 'api', run_api_test)

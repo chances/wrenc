@@ -7,6 +7,5 @@
 test/language/class/foreign_class_inherit_fields.wren
 test/language/method/many_methods.wren
 test/language/module/implicitly_imports_core/implicitly_imports_core.wren
-test/language/module/unknown_variable/unknown_variable.wren
 test/language/module/compile_error/compile_error.wren
 test/language/foreign/unknown_method.wren

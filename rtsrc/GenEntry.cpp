@@ -309,7 +309,7 @@ RtModule *wren_import_module(const char *name, void *getGlobalsFunc) {
 Value wren_get_module_global(RtModule *mod, const char *name) {
 	Value *ptr = mod->GetOrNull(name);
 	if (!ptr) {
-		errors::wrenAbort("No such module variable: %s.%s", mod->moduleName.c_str(), name);
+		errors::wrenAbort("Could not find a variable named '%s' in module '%s'.", name, mod->moduleName.c_str());
 	}
 
 	return *ptr;

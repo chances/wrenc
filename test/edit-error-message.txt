@@ -1,0 +1,8 @@
+# For various files, changes the expected error message on a given line.
+# This should only be used for stuff like modules where the difference
+# is caused by the test environment, changing the compiler or runtime to
+# produce the correct error is better.
+
+# Change the module path to 'module', since it's not using names relative
+# to the testing directory.
+test/language/module/unknown_variable/unknown_variable.wren:runtime=Could not find a variable named 'DoesNotExist' in module 'module'.
