@@ -10,5 +10,4 @@ test/language/module/implicitly_imports_core/implicitly_imports_core.wren
 test/language/module/unknown_variable/unknown_variable.wren
 test/language/module/compile_error/compile_error.wren
 test/language/module/unknown_module.wren
-test/language/variable/too_many_locals_nested.wren
 test/language/foreign/unknown_method.wren

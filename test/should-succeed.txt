@@ -4,3 +4,4 @@
 # can, it's not a problem for these tests to succeed.
 
 test/language/variable/too_many_locals.wren
+test/language/variable/too_many_locals_nested.wren
