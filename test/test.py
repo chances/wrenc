@@ -114,6 +114,7 @@ class Test:
         self.runtime_error_message = None
         self.compile_error_expected = False
         self.runtime_error_status_expected = False
+        self.linking_error_expected = False
         self.input_bytes = None
         self.failures = []
         self.compiler_args = None
@@ -199,7 +200,10 @@ class Test:
             self.runtime_error_status_expected = False
             self.runtime_error_message = None
             local_expectations = 0
-        if override_compile_time_fail:
+        if override_compile_time_fail == "linking":
+            self.linking_error_expected = True
+            self.compile_error_expected = True
+        elif override_compile_time_fail:
             error_lines = [int(s.strip()) for s in override_compile_time_fail.split(',')]
             self.compile_errors = set(error_lines)
             self.compile_error_expected = True
@@ -388,8 +392,17 @@ class Test:
     def validate_compile_errors(self, error_lines):
         # Validate that every compile error was expected.
         found_errors = set()
+        found_link_error = False
         for line in error_lines:
             if line in IGNORED_ERR_LINES:
+                continue
+
+            if "Programme ld failed with status code" in line:
+                found_link_error = True
+
+            if self.linking_error_expected:
+                # If a linker error is expected, ignore everything since
+                # the linker output will be dumped here.
                 continue
 
             match = ERROR_PATTERN.search(line)
@@ -407,6 +420,13 @@ class Test:
         # Validate that every expected error occurred.
         for line in self.compile_errors - found_errors:
             self.failed('Missing expected error on line {0}.', line)
+
+        if self.linking_error_expected and not found_link_error:
+            self.failed('Missing expected link error message')
+
+        # We don't need to check found_linker_error is false if it's
+        # not supposed to be there, as that error would be caught
+        # using the normal system.
 
     def validate_exit_code(self, exit_code, error_lines):
         error_status = exit_code != 0

@@ -12,3 +12,7 @@ test/language/inheritance/inherit_from_null_class.wren: 1
 test/language/inheritance/inherit_from_num.wren: 1
 test/language/inheritance/inherit_from_range.wren: 1
 test/language/inheritance/inherit_from_string.wren: 1
+
+# Fails with a linking error, which makes sense as that global isn't specified
+# as an argument to the compiler.
+test/language/module/unknown_module.wren: linking
