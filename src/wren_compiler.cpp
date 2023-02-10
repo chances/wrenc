@@ -2043,6 +2043,21 @@ static IRExpr *field(Compiler *compiler, bool canAssign) {
 		}
 	}
 
+	// Note that we're using parent->enclosingClass since we want to check if we're in a method body - see
+	// the comment for enclosingClass about this counterintuitive behaviour.
+	VarDecl *thisVar;
+	if (compiler->parent == nullptr) {
+		// An error should have already been generated, avoid crashing here
+		ASSERT(enclosingClass == nullptr, "Enclosing class should be null for root-level field access");
+	} else if (compiler->parent->enclosingClass != nullptr) {
+		// Methods don't need to specify the 'this' variable
+		thisVar = nullptr;
+	} else {
+		// Closures, however, do.
+		thisVar = findUpvalue(compiler, "this");
+		ASSERT(thisVar != nullptr, "Failed to create a 'this' upvalue for field access!");
+	}
+
 	// If there's an "=" after a field name, it's an assignment.
 	if (canAssign && match(compiler, TOKEN_EQ)) {
 		// Compile the right-hand side.
@@ -2056,14 +2071,14 @@ static IRExpr *field(Compiler *compiler, bool canAssign) {
 		run->temporary = temporary;
 
 		block->Add(compiler->New<StmtAssign>(temporary, value));
-		block->Add(compiler->New<StmtFieldAssign>(field, loadVariable(compiler, temporary)));
+		block->Add(compiler->New<StmtFieldAssign>(thisVar, field, loadVariable(compiler, temporary)));
 
 		return run;
 	}
 
 	allowLineBeforeDot(compiler);
 
-	return compiler->New<ExprFieldLoad>(field);
+	return compiler->New<ExprFieldLoad>(thisVar, field);
 }
 
 // Compiles a read or assignment to [variable].

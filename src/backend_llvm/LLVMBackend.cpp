@@ -26,6 +26,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -163,6 +164,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
 	llvm::Value *GetVariablePointer(VisitorContext *ctx, VarDecl *var);
 	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
+	llvm::Value *GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar);
 
 	/// Process a string literal, to make it suitable for using as a name in the IR
 	static std::string FilterStringLiteral(const std::string &literal);
@@ -220,6 +222,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_importModule;
 	llvm::FunctionCallee m_getModuleVariable;
 	llvm::FunctionCallee m_dummyPtrBitcast;
+
+	// Intrinsics
+	llvm::FunctionCallee m_ptrMask;
 
 	llvm::PointerType *m_pointerType = nullptr;
 	llvm::Type *m_signatureType = nullptr;
@@ -346,6 +351,9 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 	llvm::FunctionType *dummyPtrCastType = llvm::FunctionType::get(m_valueType, {m_int64Type}, false);
 	m_dummyPtrBitcast = m_module.getOrInsertFunction("!!dummy_ptr_bitcast", dummyPtrCastType, castAttrList);
+
+	// Intrinsics lookup
+	m_ptrMask = llvm::Intrinsic::getDeclaration(&m_module, llvm::Intrinsic::ptrmask, {m_valueType, m_int64Type});
 }
 
 CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOptions *options) {
@@ -1277,6 +1285,38 @@ llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel 
 	return block;
 }
 
+llvm::Value *LLVMBackendImpl::GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar) {
+	// The pointer to the start of our class's field array.
+	// This is either set at the start of the method, or loaded
+	// here in the case of closures.
+	if (!thisVar) {
+		return ctx->fieldPointer;
+	}
+
+	// Get the 'this' value and convert it to a pointer.
+	// There's no error checking here for performance, we'll probably
+	// get a fault if something is wrong (though we can't count on
+	// it from a security perspective).
+	llvm::Value *thisValuePtr = GetVariablePointer(ctx, thisVar);
+	llvm::Value *thisValue = m_builder.CreateLoad(m_valueType, thisValuePtr, "this_value");
+	llvm::Value *thisPtr =
+	    m_builder.CreateCall(m_ptrMask, {thisValue, CInt::get(m_int64Type, CONTENT_MASK)}, "this_ptr");
+
+	// Find the class containing this closure
+	IRClass *cls = nullptr;
+	for (IRFn *fn = ctx->currentWrenFunc; fn; fn = fn->parent) {
+		cls = fn->enclosingClass;
+		if (cls)
+			break;
+	}
+	assert(cls && "Found closure without an enclosing class");
+
+	// Use CreateGEP with i8 to add a number of bytes, that being the field offset.
+	ClassData *cd = cls->GetBackendData<ClassData>();
+	llvm::Value *offsetNumber = m_builder.CreateLoad(m_int32Type, cd->fieldOffset, "this_field_offset");
+	return m_builder.CreateGEP(m_int8Type, thisPtr, {offsetNumber});
+}
+
 std::string LLVMBackendImpl::FilterStringLiteral(const std::string &literal) {
 	// Limit the maximum string length
 	int length = std::min((int)literal.size(), 30);
@@ -1425,7 +1465,8 @@ ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
-	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, ctx->fieldPointer,
+	llvm::Value *objFieldsPointer = GetObjectFieldPointer(ctx, node->thisVar);
+	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, objFieldsPointer,
 	    {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
 
 	llvm::Value *result = m_builder.CreateLoad(m_valueType, fieldPointer, "field_" + node->var->Name());
@@ -1629,7 +1670,8 @@ StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) 
 StmtRes LLVMBackendImpl::VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssign *node) {
 	ExprRes res = VisitExpr(ctx, node->value);
 
-	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, ctx->fieldPointer,
+	llvm::Value *objFieldsPointer = GetObjectFieldPointer(ctx, node->thisVar);
+	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, objFieldsPointer,
 	    {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
 
 	m_builder.CreateStore(res.value, fieldPointer);

@@ -251,9 +251,12 @@ class StmtAssign : public IRStmt {
 class StmtFieldAssign : public IRStmt {
   public:
 	StmtFieldAssign() {}
-	StmtFieldAssign(FieldVariable *var, IRExpr *value) : var(var), value(value) {}
+	StmtFieldAssign(VarDecl *thisVar, FieldVariable *var, IRExpr *value) : thisVar(thisVar), var(var), value(value) {}
 
 	void Accept(IRVisitor *visitor) override;
+
+	/// See ExprFieldLoad's comment on this
+	VarDecl *thisVar = nullptr;
 
 	FieldVariable *var = nullptr;
 	IRExpr *value = nullptr;
@@ -412,10 +415,17 @@ class ExprLoad : public IRExpr {
 class ExprFieldLoad : public IRExpr {
   public:
 	ExprFieldLoad() {}
-	ExprFieldLoad(FieldVariable *var) : var(var) {}
+	ExprFieldLoad(VarDecl *thisVar, FieldVariable *var) : thisVar(thisVar), var(var) {}
 
 	void Accept(IRVisitor *visitor) override;
 	bool IsPure() const override;
+
+	/// If this field load is in a closure, this is a pointer to the
+	/// object that contains this field. If in a method, this is
+	/// null since there's no ambiguity.
+	/// This is to allow us to pass 'this' into closures through
+	/// the normal upvalue handling code.
+	VarDecl *thisVar = nullptr;
 
 	FieldVariable *var = nullptr;
 };

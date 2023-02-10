@@ -1,6 +1,7 @@
 # These files are supposed to fail at runtime in Wren, but in wrencc they fail at compile-time
 # It's a mapping of the filename, to the lines where errors are expected
 
+# These inherit from core classes
 test/language/inheritance/inherit_from_bool.wren: 1
 test/language/inheritance/inherit_from_class.wren: 1
 test/language/inheritance/inherit_from_fiber.wren: 1
