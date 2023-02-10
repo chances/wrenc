@@ -725,6 +725,14 @@ def main():
     walk(WREN_DIR / 'test' / 'api', run_api_test)
     walk(WREN_DIR / 'example', run_example)
 
+    # Wait for any remaining threads to finish
+    while True:
+        with WORKING_LOCK:
+            if len(threads_in_progress) == 0:
+                break
+            waiting_on = threads_in_progress[0]
+        waiting_on.join()
+
     print_line()
     if failed == 0 and expected_failed == 0:
         print('All ' + green(passed) + ' tests passed (' + str(expectations) + ' expectations)')
