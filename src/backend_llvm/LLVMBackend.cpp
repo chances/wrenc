@@ -458,8 +458,9 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		classData->classDataBlock = new llvm::GlobalVariable(m_module, m_pointerType, true,
 		    llvm::GlobalVariable::InternalLinkage, nullptr, "class_data_ptr_" + cls->info->name);
 
-		// System classes are defined in C++, and should only appear when compiling wren_core.
-		if (cls->info->IsSystemClass())
+		// Some system classes are defined in C++, and should only appear when compiling wren_core.
+		// For these, the class object is created by the runtime.
+		if (cls->info->IsCppSystemClass())
 			continue;
 
 		classData->object = new llvm::GlobalVariable(m_module, m_valueType, false,
@@ -782,7 +783,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 			ctx.fieldPointer = m_builder.CreateIntToPtr(fieldPtrInt, m_pointerType, "fields_ptr");
 		} else {
 			// fieldOffset will only be null if this is a system class
-			assert(func->enclosingClass->info->IsSystemClass() && "found null fieldOffset in non-system class");
+			assert(func->enclosingClass->info->IsCppSystemClass() && "found null fieldOffset in non-system class");
 		}
 	}
 	if (takesUpvaluePack) {
@@ -949,7 +950,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		};
 
 		// If this class is supposed to add methods to one of the C++ classes, set that up
-		if (cls->info->IsSystemClass()) {
+		if (cls->info->IsCppSystemClass()) {
 			addCmdFlag(Cmd::MARK_SYSTEM_CLASS, 0);
 		}
 
@@ -1876,9 +1877,9 @@ StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineCla
 	llvm::Constant *className = GetStringConst(cls->info->name);
 	llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, dataBlock, supertype});
 
-	// System classes are registered, but we don't do anything with the result - we're just telling C++ what
+	// C++ system classes are registered, but we don't do anything with the result - we're just telling C++ what
 	// methods exist on them.
-	if (cls->info->IsSystemClass())
+	if (cls->info->IsCppSystemClass())
 		return {};
 
 	m_builder.CreateStore(classValue, data.object);

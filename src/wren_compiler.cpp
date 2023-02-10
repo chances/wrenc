@@ -2154,8 +2154,14 @@ static IRExpr *name(Compiler *compiler, bool canAssign) {
 		return namedCall(compiler, loadThis(compiler), canAssign, nullptr);
 	}
 
-	// Check if a system variable with the same name exists (eg, for Object)
-	if (ExprSystemVar::SYSTEM_VAR_NAMES.contains(token->contents))
+	// Check if a system variable with the same name exists (eg, for Object).
+	// In the core module, only do this for classes defined in C++ - the classes
+	// defined in Wren need to use normal global variables so they can reference
+	// each other.
+	const auto *sysVarNames = &ExprSystemVar::SYSTEM_VAR_NAMES;
+	if (compiler->parser->compilingInternal)
+		sysVarNames = &ExprSystemVar::CPP_SYSTEM_VAR_NAMES;
+	if (sysVarNames->contains(token->contents))
 		return compiler->New<ExprSystemVar>(token->contents);
 
 	// Otherwise, look for a module-level variable with the name.
@@ -3535,11 +3541,11 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 			// We also add a class definition node, which triggers the class to actually be created.
 			IRClass *classDecl = dynamic_cast<IRClass *>(node);
 			if (classDecl) {
-				// If this is a system class, don't try and define a global variable over it.
+				// If this is a C++ system class, don't try and define a global variable over it.
 				// Instead, suffix the global variable so it's still picked up for GC purposes etc, but
 				// won't cause any name collision problems.
 				std::string globalName = classDecl->info->name;
-				if (classDecl->info->IsSystemClass()) {
+				if (classDecl->info->IsCppSystemClass()) {
 					globalName += "_gbl";
 				}
 

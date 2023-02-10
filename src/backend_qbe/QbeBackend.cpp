@@ -85,7 +85,7 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 		Print("section \".data\" data $class_desc_{} = {{", cls->info->name);
 
 		// If this class is supposed to add methods to one of the C++ classes, set that up
-		if (cls->info->IsSystemClass()) {
+		if (cls->info->IsCppSystemClass()) {
 			Print("w {} {},", (int)Cmd::MARK_SYSTEM_CLASS, 0);
 		}
 
@@ -178,7 +178,7 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	// Add pointers to the ObjClass instances for all the classes we've declared
 	for (IRClass *cls : mod->GetClasses()) {
 		// System classes are defined in C++, and should only appear when compiling wren_core
-		if (cls->info->IsSystemClass())
+		if (cls->info->IsCppSystemClass())
 			continue;
 
 		Print("section \".data\" data $class_var_{} = {{ l {} }}", cls->info->name, NULL_VAL);
@@ -189,7 +189,7 @@ CompilationResult QbeBackend::Generate(Module *mod, const CompilationOptions *op
 	// many fields said classes have. Thus this field will get loaded at startup as a byte offset and
 	// we have to add it to the object pointer to get the fields area.
 	for (IRClass *cls : mod->GetClasses()) {
-		if (cls->info->IsSystemClass())
+		if (cls->info->IsCppSystemClass())
 			continue;
 
 		// Make it word-sized, that'll be big enough and hopefully help with getting more into the cache
@@ -467,7 +467,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 	// be able to remove this load?) so it's good to only have to load their offset once
 	// For more information about these offsets, see the comment on the code generating this symbol for more information
 	// Also there's a special exception for core classes, which don't have fields defined in wren
-	if (node->enclosingClass && !node->enclosingClass->info->IsSystemClass()) {
+	if (node->enclosingClass && !node->enclosingClass->info->IsCppSystemClass()) {
 		Print("%this_ptr =l and %this, {}", CONTENT_MASK); // This is equivalent to get_object_value
 		Print("%this_field_start_offset =w loadw ${}{}", SYM_FIELD_OFFSET, node->enclosingClass->info->name);
 		Print("%this_field_start =l extuw %this_field_start_offset");   // Unsigned extend word->long
@@ -787,7 +787,7 @@ QbeBackend::Snippet *QbeBackend::VisitStmtDefineClass(StmtDefineClass *node) {
 
 	// System classes are registered, but we don't do anything with the result - we're just telling C++ what
 	// methods exist on them.
-	if (info->IsSystemClass())
+	if (info->IsCppSystemClass())
 		return snip;
 
 	snip->Add("storel %{}, $class_var_{}", varName->name, info->name);

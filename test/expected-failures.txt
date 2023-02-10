@@ -5,5 +5,4 @@
 # that used to work but now don't, so we can use it for regression testing.
 
 test/language/class/foreign_class_inherit_fields.wren
-test/language/module/implicitly_imports_core/implicitly_imports_core.wren
 test/language/foreign/unknown_method.wren

@@ -11,3 +11,4 @@ MethodInfo::~MethodInfo() = default;
 ClassInfo::~ClassInfo() = default;
 
 bool ClassInfo::IsSystemClass() const { return ExprSystemVar::SYSTEM_VAR_NAMES.contains(name); }
+bool ClassInfo::IsCppSystemClass() const { return ExprSystemVar::CPP_SYSTEM_VAR_NAMES.contains(name); }

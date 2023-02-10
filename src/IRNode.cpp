@@ -48,7 +48,7 @@ bool StmtReturn::IsUnconditionalBranch() { return true; }
 
 bool StmtJump::IsUnconditionalBranch() { return condition == nullptr; }
 
-static std::unordered_map<std::string, int> buildSysVarNames() {
+static std::unordered_map<std::string, int> buildSysVarNames(bool cppOnly) {
 	std::vector<const char *> names = {
 	    "Bool",
 	    "Class",
@@ -64,13 +64,38 @@ static std::unordered_map<std::string, int> buildSysVarNames() {
 	    "String",
 	    "System",
 	};
+
+	// "soft" system variables that are basically normal classes, but
+	// in the core module. Unlike the above, they don't have a part
+	// of them written in C++.
+	std::vector<const char *> softNames = {
+	    "MapSequence",
+	    "SkipSequence",
+	    "TakeSequence",
+	    "WhereSequence",
+	    "StringByteSequence",
+	    "StringCodePointSequence",
+	    "MapEntry",
+	    "MapKeySequence",
+	    "MapValueSequence",
+	    "ClassAttributes",
+	};
+
+	if (!cppOnly) {
+		// Assign IDs for all the names
+		names.insert(names.end(), softNames.begin(), softNames.end());
+	}
+
+	// Note the IDs will match between the CPP-only and full maps, since
+	// the CPP names come first.
 	std::unordered_map<std::string, int> result;
 	for (const char *value : names) {
 		result[value] = result.size();
 	}
 	return result;
 }
-const std::unordered_map<std::string, int> ExprSystemVar::SYSTEM_VAR_NAMES = buildSysVarNames();
+const std::unordered_map<std::string, int> ExprSystemVar::SYSTEM_VAR_NAMES = buildSysVarNames(false);
+const std::unordered_map<std::string, int> ExprSystemVar::CPP_SYSTEM_VAR_NAMES = buildSysVarNames(true);
 
 IRVisitor::~IRVisitor() {}
 

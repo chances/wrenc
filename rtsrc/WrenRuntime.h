@@ -40,6 +40,8 @@ class WrenRuntime {
 
 	DLL_EXPORT void RunGC();
 
+	RtModule *GetCoreModule();
+
   private:
 	WrenRuntime();
 	~WrenRuntime();

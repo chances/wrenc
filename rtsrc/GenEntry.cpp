@@ -297,9 +297,15 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("Map", ObjMap::Class()->ToValue());
 	GET_CLASS("Sequence", ObjSequence::Class()->ToValue());
 
-	errors::wrenAbort("Module requested unknown system class '%s', aborting", name);
-
 #undef GET_CLASS
+
+	// Support classes defined entirely in Wren.
+	Value *wrenGlobal = WrenRuntime::Instance().GetCoreModule()->GetOrNull(name);
+	if (wrenGlobal) {
+		return *wrenGlobal;
+	}
+
+	errors::wrenAbort("Module requested unknown system class '%s', aborting", name);
 }
 
 RtModule *wren_import_module(const char *name, void *getGlobalsFunc) {

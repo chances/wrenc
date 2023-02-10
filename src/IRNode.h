@@ -493,6 +493,7 @@ class ExprSystemVar : public IRExpr {
 
 	// The variable names and their IDs
 	static const std::unordered_map<std::string, int> SYSTEM_VAR_NAMES;
+	static const std::unordered_map<std::string, int> CPP_SYSTEM_VAR_NAMES;
 };
 
 /// Get an ObjClass object declared in the current module by name

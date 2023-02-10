@@ -124,3 +124,5 @@ void WrenRuntime::RunGC() {
 	// Walk the heap and clear out the allocator
 	m_gcScanner->EndGCCycle();
 }
+
+RtModule *WrenRuntime::GetCoreModule() { return m_coreModule.get(); }
