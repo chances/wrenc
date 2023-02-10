@@ -16,3 +16,7 @@ test/language/inheritance/inherit_from_string.wren: 1
 # Fails with a linking error, which makes sense as that global isn't specified
 # as an argument to the compiler.
 test/language/module/unknown_module.wren: linking
+
+# All modules are compiled at compile time, instead of Wren's compiling
+# at first import.
+test/language/module/compile_error/compile_error.wren: 2 # This line is actually for module.wren
