@@ -4,5 +4,4 @@
 # If you make one of these tests pass, remove it from this list. The point of this list is to identify functions
 # that used to work but now don't, so we can use it for regression testing.
 
-test/language/class/foreign_class_inherit_fields.wren
 test/language/foreign/unknown_method.wren

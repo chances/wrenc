@@ -954,6 +954,10 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 			addCmdFlag(Cmd::MARK_SYSTEM_CLASS, 0);
 		}
 
+		if (cls->info->isForeign) {
+			addCmdFlag(Cmd::MARK_FOREIGN_CLASS, 0);
+		}
+
 		// Write the attributes - both for the class, and all the methods
 		auto writeSingleAttribute = [&](const std::string &name, const AttrContent &attr) {
 			llvm::Constant *nameConst = GetStringConst(name);

@@ -67,6 +67,10 @@ void ClassDescription::Parse(uint8_t *data) {
 			isSystemClass = true;
 			break;
 		}
+		case Command::MARK_FOREIGN_CLASS: {
+			isForeignClass = true;
+			break;
+		}
 		case Command::ADD_ATTRIBUTE_GROUP: {
 			AddAttributeGroupInsn *insn = (AddAttributeGroupInsn *)data;
 			AttributeGroup group = {.method = insn->methodId, .name = insn->groupName};

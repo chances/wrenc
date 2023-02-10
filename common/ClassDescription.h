@@ -19,6 +19,7 @@ class ClassDescription {
 		ADD_FIELD,
 		MARK_SYSTEM_CLASS,
 		ADD_ATTRIBUTE_GROUP,
+		MARK_FOREIGN_CLASS,
 	};
 
 	enum class AttrType : uint32_t {
@@ -49,6 +50,7 @@ class ClassDescription {
 	void Parse(uint8_t *data);
 
 	bool isSystemClass = false;
+	bool isForeignClass = false;
 	std::vector<MethodDecl> methods;
 	std::vector<FieldDecl> fields;
 	std::vector<AttributeGroup> attributes;

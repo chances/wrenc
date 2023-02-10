@@ -60,6 +60,22 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 		totalFieldCount = fieldCount;
 	}
 
+	if (managedParent) {
+		// Wren classes can't extend foreign classes.
+		if (managedParent->spec->isForeignClass) {
+			errors::wrenAbort("Class '%s' cannot inherit from foreign class '%s'.", name.c_str(),
+			    managedParent->name.c_str());
+		}
+	}
+
+	if (this->spec->isForeignClass) {
+		// Foreign classes can't inherit from classes with fields, since
+		// the memory is all used by native code.
+		if (managedParent && managedParent->totalFieldCount != 0) {
+			errors::wrenAbort("Foreign class '%s' may not inherit from a class with fields.", name.c_str());
+		}
+	}
+
 	// Inherit our parent's methods
 	functions = parentClass->functions;
 
