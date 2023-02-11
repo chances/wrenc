@@ -347,6 +347,7 @@ class Test:
             err = err.decode("utf-8").replace('\r\n', '\n')
         except:
             self.failed('Error decoding output.')
+            return
 
         error_lines = err.split('\n')
 
