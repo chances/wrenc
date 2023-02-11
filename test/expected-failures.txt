@@ -166,13 +166,6 @@ test/core/string/from_byte_too_large.wren
 test/core/string/from_byte_too_small.wren
 test/core/string/from_code_point_too_large.wren
 test/core/string/from_code_point_too_small.wren
-test/core/string/index_of_invalid_arg.wren
-test/core/string/index_of_start_not_int.wren
-test/core/string/index_of_start_not_num.wren
-test/core/string/index_of_start_too_large.wren
-test/core/string/index_of_start_too_small.wren
-test/core/string/index_of_start.wren
-test/core/string/index_of.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren

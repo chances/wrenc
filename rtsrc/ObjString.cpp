@@ -114,6 +114,24 @@ int ObjString::ByteAt_(int index) {
 	return (uint8_t)m_value[index];
 }
 
+int ObjString::IndexOf(std::string target) const { return IndexOf(target, 0); }
+int ObjString::IndexOf(std::string target, int startIndex) const {
+	// Negative indices count backwards
+	if (startIndex < 0) {
+		startIndex += m_value.size();
+	}
+
+	ValidateIndex(startIndex, "Start");
+
+	if (target.empty())
+		return startIndex;
+
+	size_t position = m_value.find(target, startIndex);
+	if (position == std::string::npos)
+		return -1;
+	return position;
+}
+
 Value ObjString::IterateImpl(Value previous, bool unicode) const {
 	// Empty strings are obviously empty
 	if (m_value.empty())

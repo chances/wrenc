@@ -48,7 +48,7 @@ template <typename T> T *checkArg(const char *method, const char *errorName, int
 	if (!obj) {
 		if (nullable)
 			return nullptr;
-		errors::wrenAbort("Native function %s: argument %d is null!", method, arg);
+		throwArgTypeError<T>(errorName);
 	}
 
 	T *casted = dynamic_cast<T *>(obj);

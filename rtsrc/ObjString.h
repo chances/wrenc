@@ -34,6 +34,9 @@ class ObjString : public Obj {
 	WREN_METHOD() int CodePointAt_(int index);
 	WREN_METHOD() int ByteAt_(int index);
 
+	WREN_METHOD() int IndexOf(std::string argument) const;
+	WREN_METHOD() int IndexOf(std::string argument, int start) const;
+
 	WREN_METHOD() Value Iterate(Value previous);
 	WREN_METHOD() Value IterateByte_(Value previous);
 	WREN_METHOD() std::string IteratorValue(int iterator);
