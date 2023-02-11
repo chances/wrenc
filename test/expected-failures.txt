@@ -212,16 +212,10 @@ test/core/string/contains.wren
 test/core/string/count.wren
 test/core/string/ends_with_invalid_arg.wren
 test/core/string/ends_with.wren
-test/core/string/from_byte_not_int.wren
-test/core/string/from_byte_not_num.wren
 test/core/string/from_byte_too_large.wren
 test/core/string/from_byte_too_small.wren
-test/core/string/from_byte.wren
-test/core/string/from_code_point_not_int.wren
-test/core/string/from_code_point_not_num.wren
 test/core/string/from_code_point_too_large.wren
 test/core/string/from_code_point_too_small.wren
-test/core/string/from_code_point.wren
 test/core/string/index_of_invalid_arg.wren
 test/core/string/index_of_start_not_int.wren
 test/core/string/index_of_start_not_num.wren

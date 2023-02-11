@@ -31,6 +31,18 @@ ObjString *ObjString::New(std::string &&value) {
 	return obj;
 }
 
+ObjString *ObjString::FromCodePoint(int codepoint) {
+	ObjString *str = New("");
+	str->AppendCodepoint(codepoint);
+	return str;
+}
+
+ObjString *ObjString::FromByte(int byte) {
+	ObjString *str = New("");
+	str->m_value.push_back(byte);
+	return str;
+}
+
 Value ObjString::ToString() { return encode_object(this); }
 
 int ObjString::ByteCount_() { return m_value.size(); }
@@ -138,4 +150,28 @@ bool ObjString::EqualTo(Obj *other) {
 	if (str == nullptr)
 		return false;
 	return str->m_value == m_value;
+}
+
+void ObjString::AppendCodepoint(int codepoint) {
+	if (codepoint < 0)
+		errors::wrenAbort("Cannot append negative codepoint to string: %d", codepoint);
+
+	// Simple UTF-8 encoding
+	if (codepoint < 0x80) {
+		m_value.push_back((char)codepoint);
+	} else if (codepoint < 0x800) {
+		m_value.push_back(0b11000000 | (codepoint >> 6));
+		m_value.push_back(0b10000000 | (codepoint & 0x3f));
+	} else if (codepoint < 0x10000) {
+		m_value.push_back(0b11100000 | (codepoint >> 12));
+		m_value.push_back(0b10000000 | ((codepoint >> 6) & 0x3f));
+		m_value.push_back(0b10000000 | (codepoint & 0x3f));
+	} else if (codepoint < 0x110000) {
+		m_value.push_back(0b11110000 | (codepoint >> 18));
+		m_value.push_back(0b10000000 | ((codepoint >> 12) & 0x3f));
+		m_value.push_back(0b10000000 | ((codepoint >> 6) & 0x3f));
+		m_value.push_back(0b10000000 | (codepoint & 0x3f));
+	} else {
+		errors::wrenAbort("Codepoint too large: %d", codepoint);
+	}
 }

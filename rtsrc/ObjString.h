@@ -21,6 +21,11 @@ class ObjString : public Obj {
 	void MarkGCValues(GCMarkOps *ops) override;
 	bool EqualTo(Obj *other) override;
 
+	void AppendCodepoint(int codepoint);
+
+	WREN_METHOD() static ObjString *FromCodePoint(ARG("Code point") int codepoint);
+	WREN_METHOD() static ObjString *FromByte(int byte);
+
 	WREN_METHOD(getter) Value ToString();
 	// Maybe we should implement Count for performance? Otherwise wren_core does it.
 	WREN_METHOD(getter) int ByteCount_();
