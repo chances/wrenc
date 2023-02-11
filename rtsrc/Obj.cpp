@@ -58,7 +58,12 @@ std::string Obj::ToString(Value value) {
 }
 
 // By default, compare by identity
-bool Obj::OperatorEqualTo(Value other) { return other == encode_object(this); }
+bool Obj::EqualTo(Obj *other) { return other == this; }
+bool Obj::OperatorEqualTo(Value other) {
+	if (is_value_float(other) || other == NULL_VAL)
+		return false;
+	return EqualTo(get_object_value(other));
+}
 bool Obj::OperatorNotEqual(Value other) { return !OperatorEqualTo(other); }
 
 bool Obj::OperatorBoolNegate() {

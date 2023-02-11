@@ -76,7 +76,6 @@ test/core/list/iterator_value_iterator_not_num.wren
 test/core/list/iterator_value_iterator_too_large.wren
 test/core/list/iterator_value_iterator_too_small.wren
 test/core/list/join_separator_not_string.wren
-test/core/list/join.wren
 test/core/list/multiply_negative.wren
 test/core/list/multiply_not_int.wren
 test/core/list/multiply_not_num.wren
@@ -116,7 +115,6 @@ test/core/map/key_iterate_iterator_not_int.wren
 test/core/map/key_iterate_iterator_not_num.wren
 test/core/map/key_iterate.wren
 test/core/map/key_types.wren
-test/core/map/to_string.wren
 test/core/map/value_iterate_iterator_not_int.wren
 test/core/map/value_iterate_iterator_not_num.wren
 test/core/map/value_iterate.wren
@@ -174,13 +172,11 @@ test/core/number/sin.wren
 test/core/number/smallest.wren
 test/core/number/sqrt.wren
 test/core/number/tan.wren
-test/core/number/to_string.wren
 test/core/number/truncate.wren
 test/core/number/type.wren
 test/core/object/is.wren
 test/core/object/nonclass_on_right.wren
 test/core/object/same.wren
-test/core/object/to_string.wren
 test/core/range/equality.wren
 test/core/range/exclusive_range_wrong_rhs_type.wren
 test/core/range/inclusive_range_wrong_rhs_type.wren
@@ -222,7 +218,6 @@ test/core/string_code_point_sequence/subscript_not_num.wren
 test/core/string_code_point_sequence/subscript_too_large.wren
 test/core/string_code_point_sequence/subscript_too_small.wren
 test/core/string_code_point_sequence/subscript.wren
-test/core/string/concatenation.wren
 test/core/string/concatenation_wrong_arg_type.wren
 test/core/string/contains_argument_not_string.wren
 test/core/string/contains.wren
@@ -252,7 +247,6 @@ test/core/string/iterator_value_iterator_not_num.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren
-test/core/string/join.wren
 test/core/string/multiply_negative.wren
 test/core/string/multiply_not_int.wren
 test/core/string/multiply_not_num.wren

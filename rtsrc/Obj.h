@@ -62,6 +62,9 @@ class Obj {
 	/// type ObjClass instance - that's handled by the GC.
 	virtual void MarkGCValues(GCMarkOps *ops) = 0;
 
+	/// Tests whether this object equals another. Used by the default == and != implementations.
+	virtual bool EqualTo(Obj *other);
+
 	// By default, compare identity
 	WREN_METHOD() bool OperatorEqualTo(Value other);
 	WREN_METHOD() bool OperatorNotEqual(Value other);

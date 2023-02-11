@@ -90,3 +90,10 @@ void ObjString::ValidateIndex(int index, const char *argName) const {
 void ObjString::MarkGCValues(GCMarkOps *ops) {
 	// Nothing to do.
 }
+
+bool ObjString::EqualTo(Obj *other) {
+	ObjString *str = dynamic_cast<ObjString *>(other);
+	if (str == nullptr)
+		return false;
+	return str->m_value == m_value;
+}
