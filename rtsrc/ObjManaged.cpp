@@ -105,7 +105,8 @@ void ObjManagedClass::InitialiseAttributes() {
 		} else {
 			ClassDescription::MethodDecl &method = spec->methods.at(group.method);
 			std::string name = method.name;
-			// TODO foreign prefix
+			if (method.isForeign)
+				name = "foreign " + name;
 			if (method.isStatic)
 				name = "static " + name;
 

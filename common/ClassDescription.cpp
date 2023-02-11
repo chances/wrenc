@@ -51,6 +51,7 @@ void ClassDescription::Parse(uint8_t *data) {
 			    .name = method->name,
 			    .func = method->func,
 			    .isStatic = (cmd->flags & FLAG_STATIC) != 0,
+			    .isForeign = (cmd->flags & FLAG_FOREIGN) != 0,
 			});
 			break;
 		}

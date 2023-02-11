@@ -23,6 +23,7 @@
 #include "ObjSystem.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
+#include "WrenAPI.h"
 #include "WrenRuntime.h"
 #include "common/ClassDescription.h"
 
@@ -51,6 +52,7 @@ EXPORT Value wren_get_bool_value(bool value);
 EXPORT Value wren_get_core_class_value(const char *name);
 EXPORT RtModule *wren_import_module(const char *name, void *getGlobalsFunc);
 EXPORT Value wren_get_module_global(RtModule *mod, const char *name);
+EXPORT Value wren_call_foreign_method(void **cacheVar, Value *args, int argsLen, Value classObj, void *funcPtr);
 }
 // NOLINTEND(readability-identifier-naming)
 
@@ -171,6 +173,8 @@ Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock
 			// Pass false so we don't overwrite functions defined in the C++ class, as they should
 			// be preferred for performance.
 			target->AddFunction(method.name, method.func, false);
+
+			// Note wren_core doesn't have any native methods, so we don't have to handle them.
 		}
 		return NULL_VAL;
 	}
@@ -183,6 +187,13 @@ Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock
 	}
 
 	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
+		if (method.isForeign) {
+			void *userFunc = api_interface::lookupForeignMethod(cls->declaringModule, cls->name, method);
+			cls->foreignMethods[method.func] = userFunc;
+		}
+
+		// For foreign functions, method.func points to the stub method which
+		// calls back into the runtime.
 		ObjClass *target = method.isStatic ? cls->type : cls;
 		target->AddFunction(method.name, method.func);
 	}
@@ -324,4 +335,27 @@ Value wren_get_module_global(RtModule *mod, const char *name) {
 	}
 
 	return *ptr;
+}
+
+// Note the two arguments we use far less often - classObj and funcPtr - go last to
+// try and improve calling performance.
+Value wren_call_foreign_method(void **cacheVar, Value *args, int argsLen, Value classObj, void *funcPtr) {
+	// Lookup the foreign function on the first method call.
+	if (!*cacheVar) {
+		ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classObj));
+		if (!cls) {
+			// Should never happen, since our core objects don't use the regular foreign function system
+			errors::wrenAbort("wren_call_foreign_method called from non-managed class!");
+		}
+
+		auto iter = cls->foreignMethods.find(funcPtr);
+		if (iter == cls->foreignMethods.end()) {
+			errors::wrenAbort("Couldn't find foreign method address for stub %p in class %s", funcPtr,
+			    cls->name.c_str());
+		}
+
+		*cacheVar = iter->second;
+	}
+
+	return api_interface::dispatchForeignCall(*cacheVar, args, argsLen);
 }

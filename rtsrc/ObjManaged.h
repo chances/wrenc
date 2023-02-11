@@ -54,6 +54,10 @@ class ObjManagedClass : public ObjClass {
 	/// The module in which this class was declared.
 	RtModule *declaringModule;
 
+	/// The mapping between the pointers of the foreign stub methods (the compiler
+	/// generates them, they call into the runtime) and the user's bound functions.
+	std::unordered_map<void *, void *> foreignMethods;
+
 	/// The byte offset between the start of this class and where this class's instance fields are.
 	int fieldOffset;
 

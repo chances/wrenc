@@ -29,12 +29,14 @@ class ClassDescription {
 	};
 
 	static constexpr uint32_t FLAG_NONE = 0;
-	static constexpr uint32_t FLAG_STATIC = 1 << 0; // Indicates a function is static
+	static constexpr uint32_t FLAG_STATIC = 1 << 0; // Indicates a method is static
+	static constexpr uint32_t FLAG_FOREIGN = 1 << 1; // Indicates a method is foreign
 
 	struct MethodDecl {
 		std::string name;
 		void *func;
 		bool isStatic;
+		bool isForeign;
 	};
 
 	struct FieldDecl {

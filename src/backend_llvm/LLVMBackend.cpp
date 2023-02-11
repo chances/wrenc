@@ -107,6 +107,9 @@ class ClassData : public BackendNodeData {
 	llvm::GlobalVariable *object = nullptr;
 	llvm::GlobalVariable *fieldOffset = nullptr;
 	llvm::GlobalVariable *classDataBlock = nullptr;
+
+	std::unordered_map<Signature *, llvm::Function *> foreignStubs;
+	std::unordered_map<Signature *, llvm::Function *> foreignStaticStubs;
 };
 
 class VarData : public BackendNodeData {
@@ -155,6 +158,7 @@ class LLVMBackendImpl : public LLVMBackend {
 
 	llvm::Function *GenerateFunc(IRFn *func, Module *mod);
 	void GenerateInitialiser(Module *mod);
+	void GenerateForeignStubs(Module *mod);
 	void SetupDebugInfo(Module *mod);
 
 	llvm::Constant *GetStringConst(const std::string &str);
@@ -221,6 +225,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_registerSignatureTable;
 	llvm::FunctionCallee m_importModule;
 	llvm::FunctionCallee m_getModuleVariable;
+	llvm::FunctionCallee m_callForeignMethod;
 	llvm::FunctionCallee m_dummyPtrBitcast;
 
 	// Intrinsics
@@ -333,6 +338,10 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	llvm::FunctionType *getModuleVariableType =
 	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType}, false);
 	m_getModuleVariable = m_module.getOrInsertFunction("wren_get_module_global", getModuleVariableType);
+
+	llvm::FunctionType *callForeignMethodType = llvm::FunctionType::get(m_valueType,
+	    {m_pointerType, m_pointerType, m_int32Type, m_valueType, m_pointerType}, false);
+	m_callForeignMethod = m_module.getOrInsertFunction("wren_call_foreign_method", callForeignMethodType);
 
 	// RS4GC really doesn't like inttoptr bitcasts, and they make it think one value is derived from another.
 	// See https://llvm.org/docs/Statepoints.html#mixing-references-and-raw-pointers
@@ -486,6 +495,9 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		FnData *data = func->GetBackendData<FnData>();
 		data->llvmFunc = GenerateFunc(func, mod);
 	}
+
+	// Create 'stub' methods for each foreign function, which passes control off to the runtime.
+	GenerateForeignStubs(mod);
 
 	// Generate the initialiser last, when we know all the string constants etc
 	GenerateInitialiser(mod);
@@ -940,6 +952,8 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		using CD = ClassDescription;
 		using Cmd = ClassDescription::Command;
 
+		ClassData *classData = cls->GetBackendData<ClassData>();
+
 		// Build the data as a list of i64s
 		std::vector<llvm::Constant *> values;
 
@@ -1032,13 +1046,25 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 				int flags = 0;
 				if (isStatic)
 					flags |= CD::FLAG_STATIC;
+				if (method->isForeign)
+					flags |= CD::FLAG_FOREIGN;
 				addCmdFlag(Cmd::ADD_METHOD, flags);
 
 				llvm::Constant *strConst = GetStringConst(sig->ToString());
 				values.push_back(llvm::ConstantExpr::getPtrToInt(strConst, m_int64Type));
 
-				FnData *fnData = method->fn->GetBackendData<FnData>();
-				values.push_back(llvm::ConstantExpr::getPtrToInt(fnData->llvmFunc, m_int64Type));
+				// Native methods use a 'stub' function which calls out to the runtime.
+				llvm::Constant *funcPtr;
+				if (method->fn) {
+					FnData *fnData = method->fn->GetBackendData<FnData>();
+					funcPtr = fnData->llvmFunc;
+				} else {
+					const auto &stubs = method->isStatic ? classData->foreignStaticStubs : classData->foreignStubs;
+					auto iter = stubs.find(method->signature);
+					assert(iter != stubs.end() && "Foreign stub not generated for foreign method");
+					funcPtr = iter->second;
+				}
+				values.push_back(llvm::ConstantExpr::getPtrToInt(funcPtr, m_int64Type));
 
 				writeAttributes(method->attributes.get(), methodId);
 				methodId++;
@@ -1063,7 +1089,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 		// See the Generate function where the global is created for an explanation of why we're
 		// pointing a global variable at another global variable.
-		cls->GetBackendData<ClassData>()->classDataBlock->setInitializer(classDataBlock);
+		classData->classDataBlock->setInitializer(classDataBlock);
 	}
 
 	// Register the signatures table
@@ -1123,6 +1149,81 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 		    llvm::GlobalVariable::PrivateLinkage, value, "globals_table");
 
 		m_builder.CreateRet(globalsTable);
+	}
+}
+
+void LLVMBackendImpl::GenerateForeignStubs(Module *mod) {
+	// For each foreign method, generate a function we can jump to and pass
+	// arguments to like usual, but that calls into the runtime passing the
+	// method information and arguments which can then be dispatched to the
+	// real native method.
+
+	for (IRClass *cls : mod->GetClasses()) {
+		ClassData *classData = cls->GetBackendData<ClassData>();
+
+		auto process = [&](std::unordered_map<Signature *, llvm::Function *> &stubs, MethodInfo *method) {
+			if (!method->isForeign)
+				return;
+
+			std::string funcName = cls->info->name + "::" + method->signature->ToString() + "_foreignStub";
+
+			int arity = method->signature->arity;
+			int cArity = arity + 1; // Always has a receiver
+			if (!method->isStatic) {
+				// The receiver ('this') value.
+				arity++;
+			}
+
+			// The 'regular' arguments, that the user would see
+			std::vector<llvm::Type *> funcArgs;
+			funcArgs.insert(funcArgs.end(), arity, m_valueType);
+
+			llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
+			llvm::Function *function = llvm::Function::Create(ft, llvm::Function::PrivateLinkage, funcName, &m_module);
+
+			stubs[method->signature] = function;
+
+			llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", function);
+			m_builder.SetInsertPoint(bb);
+
+			// Create an on-stack array for the variables and stuff them in
+			llvm::Value *array = m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, cArity), "args_array");
+
+			// Store the receiver if it's not in the arguments
+			llvm::Value *clsObject = m_builder.CreateLoad(m_valueType, classData->object, "class_obj");
+			if (method->isStatic) {
+				m_builder.CreateStore(clsObject, array);
+			}
+
+			// Store each of the arguments
+			for (int i = 0; i < arity; i++) {
+				// If this is a static method we add the receiver ourselves, so the 1st
+				// argument goes in the 2nd array position to leave room for it.
+				int arrDest = method->isStatic ? i + 1 : i;
+
+				llvm::Value *entryPtr = m_builder.CreateGEP(m_valueType, array, {CInt::get(m_int32Type, arrDest)});
+				m_builder.CreateStore(function->getArg(i), entryPtr);
+			}
+
+			// Let the runtime call the native implementation. We make a global variable
+			// in which the runtime will store the pointer to the foreign function, to
+			// improve performance.
+			llvm::GlobalVariable *cacheVar = new llvm::GlobalVariable(m_module, m_pointerType, false,
+			    llvm::GlobalVariable::PrivateLinkage, m_nullPointer, "ff_cache_" + funcName);
+
+			// Passing in our function pointer to allow the runtime to figure out who we are.
+			llvm::Value *result = m_builder.CreateCall(m_callForeignMethod,
+			    {cacheVar, array, CInt::get(m_int32Type, arity), clsObject, function}, "result");
+
+			m_builder.CreateRet(result);
+		};
+
+		for (const auto &[_, method] : cls->info->methods) {
+			process(classData->foreignStubs, method.get());
+		}
+		for (const auto &[_, method] : cls->info->staticMethods) {
+			process(classData->foreignStaticStubs, method.get());
+		}
 	}
 }
 

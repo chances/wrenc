@@ -6,3 +6,6 @@
 # Change the module path to 'module', since it's not using names relative
 # to the testing directory.
 test/language/module/unknown_variable/unknown_variable.wren:runtime=Could not find a variable named 'DoesNotExist' in module 'module'.
+
+# We use a more descriptive error, stating specifically if a WrenConfiguration hasn't been loaded.
+test/language/foreign/unknown_method.wren:runtime=Could not look up foreign method 'someUnknownMethod' without configuration set.
