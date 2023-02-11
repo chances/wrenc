@@ -65,12 +65,6 @@ test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren
 test/core/function/new_wrong_arg_type.wren
 test/core/function/to_string.wren
-test/core/list/iterate_iterator_not_int.wren
-test/core/list/iterate_iterator_not_num.wren
-test/core/list/iterator_value_iterator_not_int.wren
-test/core/list/iterator_value_iterator_not_num.wren
-test/core/list/iterator_value_iterator_too_large.wren
-test/core/list/iterator_value_iterator_too_small.wren
 test/core/list/join_separator_not_string.wren
 test/core/list/multiply_negative.wren
 test/core/list/multiply_not_int.wren

@@ -7,6 +7,7 @@
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "SlabObjectAllocator.h"
+#include "binding_utils.h"
 
 #include <algorithm>
 #include <sstream>
@@ -102,13 +103,7 @@ Value ObjList::Iterate(Value current) {
 		return 0;
 	}
 
-	if (is_object(current)) {
-		// Already checked for null so this is safe
-		std::string type = get_object_value(current)->type->name;
-		errors::wrenAbort("Cannot supply object type %s to List.iterate(_)", type.c_str());
-	}
-
-	int i = get_number_value(current);
+	int i = checkInt(nullptr, "Iterator", 0, current);
 
 	// If the index is invalid, we're supposed to return false. Only check the lower bound here, since
 	// we'll check the upper bound after incrementing.
@@ -125,7 +120,10 @@ Value ObjList::Iterate(Value current) {
 	return encode_number(i);
 }
 
-Value ObjList::IteratorValue(int current) { return items.at(current); }
+Value ObjList::IteratorValue(int current) {
+	ValidateIndex(current, "Iterator");
+	return items.at(current);
+}
 
 Value ObjList::OperatorSubscript(int index) {
 	// Negative indices count backwards

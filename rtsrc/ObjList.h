@@ -33,8 +33,8 @@ class ObjList : public Obj {
 
 	WREN_METHOD() int IndexOf(Value toFind);
 
-	WREN_METHOD() Value Iterate(Value current);
-	WREN_METHOD() Value IteratorValue(int current);
+	WREN_METHOD() Value Iterate(Value iterator);
+	WREN_METHOD() Value IteratorValue(int iterator);
 
 	WREN_METHOD() Value OperatorSubscript(int subscript);
 	WREN_METHOD() Value OperatorSubscriptSet(int subscript, Value value);
