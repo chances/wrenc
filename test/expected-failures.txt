@@ -8,7 +8,6 @@
 #   test/language
 #   test/core
 
-test/core/fiber/abort_main_fiber.wren
 test/core/fiber/abort_not_string.wren
 test/core/fiber/abort_null.wren
 test/core/fiber/abort.wren
@@ -68,13 +67,10 @@ test/core/function/to_string.wren
 test/core/list/join_separator_not_string.wren
 test/core/list/multiply_negative.wren
 test/core/list/multiply_not_int.wren
-test/core/list/multiply_not_num.wren
 test/core/list/multiply.wren
 test/core/list/plus_not_iterable.wren
 test/core/list/plus.wren
-test/core/list/reduce_no_items.wren
 test/core/list/reduce_wrong_arity.wren
-test/core/list/sort.wren
 test/core/list/subscript_range_from_not_int.wren
 test/core/list/subscript_range_from_too_large.wren
 test/core/list/subscript_range_from_too_small.wren
@@ -148,11 +144,9 @@ test/core/sequence/is_empty.wren
 test/core/sequence/map.wren
 test/core/sequence/skip_negative.wren
 test/core/sequence/skip_not_int.wren
-test/core/sequence/skip_not_num.wren
 test/core/sequence/skip.wren
 test/core/sequence/take_negative.wren
 test/core/sequence/take_not_int.wren
-test/core/sequence/take_not_num.wren
 test/core/sequence/take.wren
 test/core/sequence/to_list.wren
 test/core/sequence/where.wren
@@ -184,14 +178,8 @@ test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren
 test/core/string/multiply_negative.wren
 test/core/string/multiply_not_int.wren
-test/core/string/multiply_not_num.wren
 test/core/string/multiply.wren
-test/core/string/replace_empty_old.wren
-test/core/string/replace_new_not_string.wren
-test/core/string/replace_old_not_string.wren
 test/core/string/replace.wren
-test/core/string/split_argument_not_string.wren
-test/core/string/split_empty_seperator.wren
 test/core/string/split.wren
 test/core/string/starts_with_invalid_arg.wren
 test/core/string/starts_with.wren
@@ -207,9 +195,6 @@ test/core/string/subscript_range_to_too_large.wren
 test/core/string/subscript_range_to_too_small.wren
 test/core/string/subscript_range.wren
 test/core/string/to_string.wren
-test/core/string/trim_chars_not_string.wren
-test/core/string/trim_end_chars_not_string.wren
 test/core/string/trim_end.wren
-test/core/string/trim_start_chars_not_string.wren
 test/core/string/trim_start.wren
 test/core/string/trim.wren

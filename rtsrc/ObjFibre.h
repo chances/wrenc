@@ -59,6 +59,8 @@ class ObjFibre : public Obj {
 	WREN_METHOD() static Value Yield();
 	WREN_METHOD() static Value Yield(Value argument);
 
+	WREN_METHOD() static void Abort(std::string errorMessage);
+
 	WREN_METHOD() Value Call();
 	WREN_METHOD() Value Call(Value argument);
 

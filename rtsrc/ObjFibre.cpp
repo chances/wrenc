@@ -6,6 +6,7 @@
 #define UNW_LOCAL_ONLY
 
 #include "ObjFibre.h"
+#include "Errors.h"
 #include "GCTracingScanner.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
@@ -280,4 +281,9 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 
 	fprintf(stderr, "Resumed thread that should be destroyed!\n");
 	abort();
+}
+
+void ObjFibre::Abort(std::string message) {
+	// TODO implement fibre abortion properly
+	errors::wrenAbort("%s", message.c_str());
 }
