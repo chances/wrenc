@@ -159,7 +159,7 @@ void ObjFibre::DeleteStack() {
 Value ObjFibre::Call() { return Call(NULL_VAL); }
 
 Value ObjFibre::Call(Value argument) {
-	Value result = CallImpl(argument);
+	Value result = CallImpl(argument, false);
 
 	// Exceptions propagate through fibres
 	if (m_exception) {
@@ -172,7 +172,7 @@ Value ObjFibre::Call(Value argument) {
 Value ObjFibre::Try() { return Try(NULL_VAL); }
 
 Value ObjFibre::Try(Value argument) {
-	Value result = CallImpl(argument);
+	Value result = CallImpl(argument, true);
 
 	// Exceptions return a string
 	if (m_exception) {
@@ -182,7 +182,7 @@ Value ObjFibre::Try(Value argument) {
 	return result;
 }
 
-Value ObjFibre::CallImpl(Value argument) {
+Value ObjFibre::CallImpl(Value argument, bool isTry) {
 	ObjFibre *previous = fibreCallStack.back();
 
 	switch (m_state) {
@@ -197,9 +197,15 @@ Value ObjFibre::CallImpl(Value argument) {
 	case State::WAITING:
 		errors::wrenAbort("Fiber has already been called.");
 	case State::FINISHED:
-		errors::wrenAbort("Cannot call a finished fiber.");
+		if (isTry)
+			errors::wrenAbort("Cannot try a finished fiber.");
+		else
+			errors::wrenAbort("Cannot call a finished fiber.");
 	case State::FAILED:
-		errors::wrenAbort("Cannot call an aborted fiber.");
+		if (isTry)
+			errors::wrenAbort("Cannot try an aborted fiber.");
+		else
+			errors::wrenAbort("Cannot call an aborted fiber.");
 	}
 	assert(0 && "Invalid fibre state");
 }

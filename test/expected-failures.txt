@@ -33,8 +33,6 @@ test/core/fiber/transfer_with_value_to_parameter.wren
 test/core/fiber/transfer_with_value_to_yielded.wren
 test/core/fiber/transfer_with_value.wren
 test/core/fiber/transfer.wren
-test/core/fiber/try_done.wren
-test/core/fiber/try_error.wren
 test/core/fiber/yield_from_main.wren
 test/core/fiber/yield_return_transfer_value.wren
 test/core/fiber/yield_with_no_caller.wren
