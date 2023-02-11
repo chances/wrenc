@@ -136,3 +136,14 @@ Value ObjList::OperatorSubscript(int index) {
 	ValidateIndex(index, "Subscript");
 	return items.at(index);
 }
+
+Value ObjList::OperatorSubscriptSet(int index, Value value) {
+	// Negative indices count backwards
+	if (index < 0) {
+		index += items.size();
+	}
+
+	ValidateIndex(index, "Subscript");
+	items.at(index) = value;
+	return value;
+}
