@@ -31,8 +31,6 @@ class ObjList : public Obj {
 	WREN_METHOD() Value Remove(Value toRemove);
 	WREN_METHOD() Value RemoveAt(int index);
 
-	WREN_METHOD() std::string Join();
-	WREN_METHOD() std::string Join(std::string joiner);
 	WREN_METHOD() int IndexOf(Value toFind);
 
 	WREN_METHOD() Value Iterate(Value current);

@@ -85,19 +85,6 @@ Value ObjList::RemoveAt(int index) {
 	return previous;
 }
 
-std::string ObjList::Join() { return Join(""); }
-std::string ObjList::Join(std::string joiner) {
-	std::stringstream result;
-	bool first = true;
-	for (Value value : items) {
-		if (!first)
-			result << joiner;
-		first = false;
-		result << Obj::ToString(value);
-	}
-	return result.str();
-}
-
 int ObjList::IndexOf(Value toFind) {
 	auto iter = std::find(items.begin(), items.end(), toFind);
 
