@@ -35,7 +35,7 @@ Value ObjString::ToString() { return encode_object(this); }
 
 int ObjString::ByteCount_() { return m_value.size(); }
 
-std::string ObjString::OperatorPlus(Value other) { return m_value + Obj::ToString(other); }
+std::string ObjString::OperatorPlus(std::string other) { return m_value + other; }
 
 std::string ObjString::OperatorSubscript(int index) {
 	// TODO return the unicode codepoint, not the single byte!

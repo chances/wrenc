@@ -24,7 +24,7 @@ class ObjString : public Obj {
 	WREN_METHOD(getter) Value ToString();
 	// Maybe we should implement Count for performance? Otherwise wren_core does it.
 	WREN_METHOD(getter) int ByteCount_();
-	WREN_METHOD() std::string OperatorPlus(Value other);
+	WREN_METHOD() std::string OperatorPlus(std::string other);
 	WREN_METHOD() std::string OperatorSubscript(int index);
 	WREN_METHOD() int ByteAt_(int index);
 
