@@ -15,9 +15,9 @@
 
 #include <math.h>
 
-double checkInt(const char *method, int arg, Value value);
-double checkDouble(const char *method, int arg, Value value);
-std::string checkString(const char *method, int arg, Value value);
+double checkInt(const char *method, const char *errorName, int arg, Value value);
+double checkDouble(const char *method, const char *errorName, int arg, Value value);
+std::string checkString(const char *method, const char *errorName, int arg, Value value);
 
 template <typename T> void throwArgTypeError(const char *errorName);
 
@@ -41,9 +41,7 @@ template <typename T> T *checkReceiver(const char *method, Value value) {
 
 template <typename T> T *checkArg(const char *method, const char *errorName, int arg, Value value, bool nullable) {
 	if (!is_object(value)) {
-		if (errorName)
-			throwArgTypeError<T>(errorName);
-		errors::wrenAbort("Native function %s: argument %d is not an object!", method, arg);
+		throwArgTypeError<T>(errorName);
 	}
 
 	Obj *obj = (Obj *)get_object_value(value);
@@ -55,10 +53,7 @@ template <typename T> T *checkArg(const char *method, const char *errorName, int
 
 	T *casted = dynamic_cast<T *>(obj);
 	if (!casted) {
-		if (errorName)
-			throwArgTypeError<T>(errorName);
-		errors::wrenAbort("Native function %s: argument %d is invalid type '%s'!", method, arg,
-		    obj->type->name.c_str());
+		throwArgTypeError<T>(errorName);
 	}
 
 	return casted;
@@ -72,21 +67,19 @@ std::string checkString(const char *method, const char *errorName, int arg, Valu
 	return str->m_value;
 }
 
-double checkDouble(const char *method, int arg, Value value) {
+double checkDouble(const char *method, const char *errorName, int arg, Value value) {
 	if (!is_value_float(value)) {
-		errors::wrenAbort("Native function %s: argument %d is not a number!", method, arg);
+		errors::wrenAbort("%s must be a number.", errorName);
 	}
 
 	return get_number_value(value);
 }
 
-double checkInt(const char *method, int arg, Value value) {
-	double num = checkDouble(method, arg, value);
+double checkInt(const char *method, const char *errorName, int arg, Value value) {
+	double num = checkDouble(method, errorName, arg, value);
 	int intValue = floor(num);
 	if (intValue != num) {
-		errors::wrenAbort(
-		    "Native function %s: argument %d is a floating point value '%f', not an integer or is too large", method,
-		    arg, num);
+		errors::wrenAbort("%s must be an integer.", errorName);
 	}
 
 	return intValue;

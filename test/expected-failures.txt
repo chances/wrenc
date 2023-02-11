@@ -65,10 +65,6 @@ test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren
 test/core/function/new_wrong_arg_type.wren
 test/core/function/to_string.wren
-test/core/list/filled_size_not_int.wren
-test/core/list/filled_size_not_num.wren
-test/core/list/insert_index_not_int.wren
-test/core/list/insert_index_not_num.wren
 test/core/list/iterate_iterator_not_int.wren
 test/core/list/iterate_iterator_not_num.wren
 test/core/list/iterator_value_iterator_not_int.wren
@@ -84,8 +80,6 @@ test/core/list/plus_not_iterable.wren
 test/core/list/plus.wren
 test/core/list/reduce_no_items.wren
 test/core/list/reduce_wrong_arity.wren
-test/core/list/remove_at_index_not_int.wren
-test/core/list/remove_at_index_not_num.wren
 test/core/list/sort.wren
 test/core/list/subscript_not_int.wren
 test/core/list/subscript_range_from_not_int.wren
@@ -197,11 +191,7 @@ test/core/sequence/take.wren
 test/core/sequence/to_list.wren
 test/core/sequence/where.wren
 test/core/string_byte_sequence/iterate.wren
-test/core/string_byte_sequence/iterator_value_not_int.wren
-test/core/string_byte_sequence/iterator_value_not_num.wren
 test/core/string_byte_sequence/iterator_value.wren
-test/core/string_byte_sequence/subscript_not_int.wren
-test/core/string_byte_sequence/subscript_not_num.wren
 test/core/string_byte_sequence/subscript.wren
 test/core/string/bytes.wren
 test/core/string_code_point_sequence/count.wren
@@ -242,8 +232,6 @@ test/core/string/index_of_start_too_small.wren
 test/core/string/index_of_start.wren
 test/core/string/index_of.wren
 test/core/string/iterate.wren
-test/core/string/iterator_value_iterator_not_int.wren
-test/core/string/iterator_value_iterator_not_num.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren

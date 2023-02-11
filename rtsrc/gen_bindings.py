@@ -253,9 +253,11 @@ def generate(output: TextIO, options: GenOptions):
                 output.write(f"\t{cls.name} *obj = checkReceiver<{cls.name}>(\"{debug_sig}\", receiver);\n")
 
             for i, arg in enumerate(method.args):
-                error_name = "nullptr"
-                if arg.error_name is not None:
-                    error_name = f'"{arg.error_name}"'
+                error_name = arg.error_name
+                if arg.error_name is None:
+                    # For single-word stuff, setting the argument name is often
+                    # enough and saves lots of ARG annotations.
+                    error_name = arg.name.capitalize()
 
                 cast_expr: str
                 if arg.type == "Value":
@@ -264,13 +266,13 @@ def generate(output: TextIO, options: GenOptions):
                     # Remove the pointer to use as a template parameter. Yeah, this will change Obj** to Obj, but we
                     # don't support that anyway, so no big loss there.
                     non_ptr = arg.type.replace('*', '')
-                    cast_expr = f"checkArg<{non_ptr}>(\"{debug_sig}\", {error_name}, {i + 1}, {arg.raw_name()}, true)"
+                    cast_expr = f"checkArg<{non_ptr}>(\"{debug_sig}\", \"{error_name}\", {i + 1}, {arg.raw_name()}, true)"
                 elif arg.type == "std::string":
-                    cast_expr = f"checkString(\"{debug_sig}\", {error_name}, {i + 1}, {arg.raw_name()})"
+                    cast_expr = f"checkString(\"{debug_sig}\", \"{error_name}\", {i + 1}, {arg.raw_name()})"
                 elif arg.type == "double":
-                    cast_expr = f"checkDouble(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                    cast_expr = f"checkDouble(\"{debug_sig}\", \"{error_name}\", {i + 1}, {arg.raw_name()})"
                 elif arg.type == "int":
-                    cast_expr = f"checkInt(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                    cast_expr = f"checkInt(\"{debug_sig}\", \"{error_name}\", {i + 1}, {arg.raw_name()})"
                 else:
                     raise Exception(f"Unknown arg type '{arg.type}' for method '{debug_sig}'")
 
