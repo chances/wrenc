@@ -83,6 +83,9 @@ class ObjFibre : public Obj {
 	struct ResumeFibreArgs;
 	struct FibreAbortException;
 
+	/// The main call implementation function, which both Call and Try use
+	Value CallImpl(Value argument);
+
 	/// If the stack isn't created, create it.
 	void CheckStack();
 

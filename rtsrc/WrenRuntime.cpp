@@ -98,7 +98,7 @@ RtModule *WrenRuntime::GetOrInitModuleCaught(void *getGlobalsFunction) {
 
 	if (error) {
 		fprintf(stderr, "%s\n", error->c_str());
-		abort();
+		exit(1);
 	} else {
 		return mod;
 	}

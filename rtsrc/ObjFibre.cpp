@@ -159,18 +159,7 @@ void ObjFibre::DeleteStack() {
 Value ObjFibre::Call() { return Call(NULL_VAL); }
 
 Value ObjFibre::Call(Value argument) {
-	ObjFibre *previous = fibreCallStack.back();
-	fibreCallStack.push_back(this);
-
-	Value result;
-	if (m_state == State::NOT_STARTED) {
-		result = StartAndSwitchTo(previous, argument);
-	} else if (m_state == State::SUSPENDED) {
-		result = ResumeSuspended(previous, argument, false);
-	} else {
-		fprintf(stderr, "ObjFibre: cannot run in invalid state: %d\n", (int)m_state);
-		abort();
-	}
+	Value result = CallImpl(argument);
 
 	// Exceptions propagate through fibres
 	if (m_exception) {
@@ -183,18 +172,7 @@ Value ObjFibre::Call(Value argument) {
 Value ObjFibre::Try() { return Try(NULL_VAL); }
 
 Value ObjFibre::Try(Value argument) {
-	ObjFibre *previous = fibreCallStack.back();
-	fibreCallStack.push_back(this);
-
-	Value result;
-	if (m_state == State::NOT_STARTED) {
-		result = StartAndSwitchTo(previous, argument);
-	} else if (m_state == State::SUSPENDED) {
-		result = ResumeSuspended(previous, argument, false);
-	} else {
-		fprintf(stderr, "ObjFibre: cannot try-run in invalid state: %d\n", (int)m_state);
-		abort();
-	}
+	Value result = CallImpl(argument);
 
 	// Exceptions return a string
 	if (m_exception) {
@@ -202,6 +180,26 @@ Value ObjFibre::Try(Value argument) {
 	}
 
 	return result;
+}
+
+Value ObjFibre::CallImpl(Value argument) {
+	ObjFibre *previous = fibreCallStack.back();
+
+	switch (m_state) {
+	case State::NOT_STARTED:
+		fibreCallStack.push_back(this);
+		return StartAndSwitchTo(previous, argument);
+	case State::SUSPENDED:
+		fibreCallStack.push_back(this);
+		return ResumeSuspended(previous, argument, false);
+	case State::RUNNING:
+		errors::wrenAbort("Fiber has already been called.");
+	case State::FINISHED:
+		errors::wrenAbort("Cannot call a finished fiber.");
+	case State::FAILED:
+		errors::wrenAbort("Cannot call an aborted fiber.");
+	}
+	assert(0 && "Invalid fibre state");
 }
 
 Value ObjFibre::Yield() { return Yield(NULL_VAL); }
@@ -259,7 +257,7 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	    .oldFibre = previous,
 	    .isTerminating = terminate,
 	};
-	previous->m_state = previous->m_exception ? State::FAILED : State::SUSPENDED;
+	previous->m_state = State::SUSPENDED;
 	m_state = State::RUNNING;
 
 	void *resumeStackAddr = m_resumeAddress;
@@ -289,7 +287,7 @@ Value ObjFibre::HandleResumed(ObjFibre::ResumeFibreArgs *result) {
 	Value arg = result->argument;
 
 	if (result->isTerminating) {
-		fibre->m_state = State::FINISHED;
+		fibre->m_state = fibre->m_exception ? State::FAILED : State::FINISHED;
 		fibre->m_function = nullptr; // Allow the function to be GCed.
 		fibre->DeleteStack();
 		// DO NOT ACCESS RESULT AFTER THIS POINT - IT HAS BEEN FREED!
