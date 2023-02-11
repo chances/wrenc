@@ -67,6 +67,46 @@ std::string ObjString::OperatorSubscript(int index) {
 	return m_value.substr(index, length);
 }
 
+int ObjString::CodePointAt_(int index) {
+	ValidateIndex(index, "Index");
+
+	uint8_t firstByte = (uint8_t)m_value[index];
+
+	// Special-case ASCII so we don't have to deal with it later
+	if ((firstByte & 0x80) == 0)
+		return firstByte;
+
+	// Return -1 if we're in the middle of a codepoint
+	if ((firstByte & 0b11000000) == 0b10000000)
+		return -1;
+
+	int length = GetUTF8Length(index);
+
+	// -1 if it's truncated by the end-of-string
+	if (index + length > m_value.size())
+		return -1;
+
+	// The number of ones at the start indicates the number
+	// of bytes in total, plus a following zero. Thus we can
+	// figure out how many bits of the first byte are part
+	// of the codepoint.
+	int validInFirstByte = 8 - (length + 1);
+	int codepoint = firstByte & ((1 << validInFirstByte) - 1);
+
+	// Go through the remaining bytes
+	for (int i = 1; i < length; i++) {
+		uint8_t byte = (uint8_t)m_value.at(index + i);
+
+		// This must be a continuation of the previous codepoint
+		if ((byte & 0b11000000) != 0b10000000)
+			return -1;
+
+		codepoint = (codepoint << 6) | (byte & 0b00111111);
+	}
+
+	return codepoint;
+}
+
 int ObjString::ByteAt_(int index) {
 	ValidateIndex(index, "Index");
 

@@ -160,17 +160,7 @@ test/core/string_byte_sequence/iterator_value.wren
 test/core/string_byte_sequence/subscript.wren
 test/core/string/bytes.wren
 test/core/string_code_point_sequence/count.wren
-test/core/string_code_point_sequence/iterator_value_incomplete.wren
-test/core/string_code_point_sequence/iterator_value_not_int.wren
-test/core/string_code_point_sequence/iterator_value_not_num.wren
-test/core/string_code_point_sequence/iterator_value_too_large.wren
-test/core/string_code_point_sequence/iterator_value_too_small.wren
 test/core/string_code_point_sequence/iterator_value.wren
-test/core/string_code_point_sequence/subscript_incomplete.wren
-test/core/string_code_point_sequence/subscript_not_int.wren
-test/core/string_code_point_sequence/subscript_not_num.wren
-test/core/string_code_point_sequence/subscript_too_large.wren
-test/core/string_code_point_sequence/subscript_too_small.wren
 test/core/string_code_point_sequence/subscript.wren
 test/core/string/concatenation_wrong_arg_type.wren
 test/core/string/contains_argument_not_string.wren

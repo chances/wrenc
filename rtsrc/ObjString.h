@@ -31,6 +31,7 @@ class ObjString : public Obj {
 	WREN_METHOD(getter) int ByteCount_();
 	WREN_METHOD() std::string OperatorPlus(std::string other);
 	WREN_METHOD() std::string OperatorSubscript(int index);
+	WREN_METHOD() int CodePointAt_(int index);
 	WREN_METHOD() int ByteAt_(int index);
 
 	WREN_METHOD() Value Iterate(Value previous);
