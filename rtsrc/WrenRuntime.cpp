@@ -10,6 +10,7 @@
 #include "GCTracingScanner.h"
 #include "GenEntry.h"
 #include "ObjClass.h"
+#include "ObjFibre.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
@@ -89,6 +90,18 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 	initFunc();
 
 	return ptr;
+}
+
+RtModule *WrenRuntime::GetOrInitModuleCaught(void *getGlobalsFunction) {
+	RtModule *mod = nullptr;
+	std::optional<std::string> error = ObjFibre::RunAndCatchAbort([&]() { mod = GetOrInitModule(getGlobalsFunction); });
+
+	if (error) {
+		fprintf(stderr, "%s\n", error->c_str());
+		abort();
+	} else {
+		return mod;
+	}
 }
 
 RtModule *WrenRuntime::GetPreInitialisedModule(void *getGlobalsFunction) {

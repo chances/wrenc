@@ -3,6 +3,7 @@
 //
 
 #include "Errors.h"
+#include "ObjFibre.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -19,8 +20,7 @@ using namespace errors;
 	va_end(args);
 
 	// TODO print a stack trace
-	fprintf(stderr, "%s\n", buffer);
-	abort();
+	ObjFibre::Abort(buffer);
 }
 
 double errors::validateNum(Value arg, const char *argName) {

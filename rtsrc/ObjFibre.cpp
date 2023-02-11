@@ -11,6 +11,7 @@
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
+#include "ObjString.h"
 #include "SlabObjectAllocator.h"
 
 #include <libunwind.h>
@@ -41,6 +42,10 @@ struct ObjFibre::ResumeFibreArgs {
 	/// If true then the fibre that just returned has finished executing, and
 	/// it's stack should be destroyed.
 	bool isTerminating = false;
+};
+
+struct ObjFibre::FibreAbortException {
+	std::string message;
 };
 
 int ObjFibre::stackSize = 0;
@@ -157,15 +162,46 @@ Value ObjFibre::Call(Value argument) {
 	ObjFibre *previous = fibreCallStack.back();
 	fibreCallStack.push_back(this);
 
+	Value result;
 	if (m_state == State::NOT_STARTED) {
-		return StartAndSwitchTo(previous, argument);
-	}
-	if (m_state == State::SUSPENDED) {
-		return ResumeSuspended(previous, argument, false);
+		result = StartAndSwitchTo(previous, argument);
+	} else if (m_state == State::SUSPENDED) {
+		result = ResumeSuspended(previous, argument, false);
+	} else {
+		fprintf(stderr, "ObjFibre: cannot run in invalid state: %d\n", (int)m_state);
+		abort();
 	}
 
-	// TODO
-	abort();
+	// Exceptions propagate through fibres
+	if (m_exception) {
+		Abort(m_exception->message);
+	}
+
+	return result;
+}
+
+Value ObjFibre::Try() { return Try(NULL_VAL); }
+
+Value ObjFibre::Try(Value argument) {
+	ObjFibre *previous = fibreCallStack.back();
+	fibreCallStack.push_back(this);
+
+	Value result;
+	if (m_state == State::NOT_STARTED) {
+		result = StartAndSwitchTo(previous, argument);
+	} else if (m_state == State::SUSPENDED) {
+		result = ResumeSuspended(previous, argument, false);
+	} else {
+		fprintf(stderr, "ObjFibre: cannot try-run in invalid state: %d\n", (int)m_state);
+		abort();
+	}
+
+	// Exceptions return a string
+	if (m_exception) {
+		return encode_object(ObjString::New(m_exception->message));
+	}
+
+	return result;
 }
 
 Value ObjFibre::Yield() { return Yield(NULL_VAL); }
@@ -223,7 +259,7 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	    .oldFibre = previous,
 	    .isTerminating = terminate,
 	};
-	previous->m_state = State::SUSPENDED;
+	previous->m_state = previous->m_exception ? State::FAILED : State::SUSPENDED;
 	m_state = State::RUNNING;
 
 	void *resumeStackAddr = m_resumeAddress;
@@ -269,10 +305,16 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 
 	ObjFn *fn = args.newFibre->m_function;
 	Value result;
-	if (fn->spec->arity == 0) {
-		result = fn->Call({});
-	} else {
-		result = fn->Call({args.argument});
+	// Using exceptions here *should* be safe, since we don't cross a stack while unwinding.
+	try {
+		if (fn->spec->arity == 0) {
+			result = fn->Call({});
+		} else {
+			result = fn->Call({args.argument});
+		}
+	} catch (const FibreAbortException &ex) {
+		args.newFibre->m_exception = std::make_unique<FibreAbortException>(ex);
+		result = NULL_VAL;
 	}
 
 	assert(fibreCallStack.back() == args.newFibre);
@@ -285,8 +327,18 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 }
 
 void ObjFibre::Abort(std::string message) {
-	// TODO implement fibre abortion properly
-	errors::wrenAbort("%s", message.c_str());
+	throw FibreAbortException{
+	    .message = message,
+	};
+}
+
+std::optional<std::string> ObjFibre::RunAndCatchAbort(const std::function<void()> &func) {
+	try {
+		func();
+		return std::nullopt;
+	} catch (const FibreAbortException &ex) {
+		return ex.message;
+	}
 }
 
 Value ObjFibre::IsDone() {
@@ -295,7 +347,7 @@ Value ObjFibre::IsDone() {
 }
 
 Value ObjFibre::Error() {
-	// Errors aren't yet supported, but when they are, return the string
-	// representing the error message.
-	return NULL_VAL;
+	if (!m_exception)
+		return NULL_VAL;
+	return encode_object(ObjString::New(m_exception->message));
 }

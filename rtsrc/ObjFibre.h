@@ -6,6 +6,9 @@
 
 #include "Obj.h"
 
+#include <functional>
+#include <memory>
+#include <optional>
 #include <vector>
 
 class ObjFn;
@@ -52,6 +55,10 @@ class ObjFibre : public Obj {
 
 	static ObjFibre *GetMainThreadFibre();
 
+	/// Runs a given function, and returns the error it throws.
+	/// For limited internal use only!
+	static std::optional<std::string> RunAndCatchAbort(const std::function<void()> &func);
+
 	void MarkGCValues(GCMarkOps *ops) override;
 
 	WREN_METHOD() static ObjFibre *New(ObjFn *func);
@@ -59,10 +66,14 @@ class ObjFibre : public Obj {
 	WREN_METHOD() static Value Yield();
 	WREN_METHOD() static Value Yield(Value argument);
 
+	[[noreturn]] // Has to be on a different line to avoid confusing the binding generator
 	WREN_METHOD() static void Abort(std::string errorMessage);
 
 	WREN_METHOD() Value Call();
 	WREN_METHOD() Value Call(Value argument);
+
+	WREN_METHOD() Value Try();
+	WREN_METHOD() Value Try(Value argument);
 
 	WREN_METHOD(getter) Value IsDone();
 	WREN_METHOD(getter) Value Error();
@@ -70,6 +81,7 @@ class ObjFibre : public Obj {
   private:
 	struct StartFibreArgs;
 	struct ResumeFibreArgs;
+	struct FibreAbortException;
 
 	/// If the stack isn't created, create it.
 	void CheckStack();
@@ -103,6 +115,9 @@ class ObjFibre : public Obj {
 
 	/// If the fibre is suspended, this is the stack address to switch back to
 	void *m_resumeAddress = nullptr;
+
+	/// If the fibre failed, this is the exception that caused it.
+	std::unique_ptr<FibreAbortException> m_exception;
 
 	/// If the fibre is suspended, this is a libunwind context from the last
 	/// function in that fibre's stack. This allows the GC to walk the stack

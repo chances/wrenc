@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
 	WrenRuntime::Initialise();
 
 	// Initialise and run the main module
-	WrenRuntime::Instance().GetOrInitModule((void *)wrenStandaloneMainModule);
+	WrenRuntime::Instance().GetOrInitModuleCaught((void *)wrenStandaloneMainModule);
 
 	return 0;
 }

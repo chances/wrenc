@@ -35,6 +35,9 @@ class WrenRuntime {
 
 	DLL_EXPORT RtModule *GetOrInitModule(void *getGlobalsFunction);
 
+	/// Like GetOrInitModule, but it catches fibre aborts. This is mainly to get around linkage issues.
+	DLL_EXPORT RtModule *GetOrInitModuleCaught(void *getGlobalsFunction);
+
 	/// Similar to GetOrInitModule, but won't initialise a module and works on the core module.
 	RtModule *GetPreInitialisedModule(void *getGlobalsFunction);
 

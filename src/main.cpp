@@ -524,6 +524,10 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 	// Use the glibc dynamic linker, this will need to be changed for other C libraries
 	prog.args.push_back("-dynamic-linker=/lib64/ld-linux-x86-64.so.2");
 
+	// Generate an eh_frame header, which allows runtime access to the exception information.
+	// This is required for C++ to throw exceptions through our generated functions.
+	prog.args.push_back("--eh-frame-hdr");
+
 	prog.withEnv = true;
 	prog.Run();
 }
