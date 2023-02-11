@@ -64,6 +64,9 @@ class ObjFibre : public Obj {
 	WREN_METHOD() Value Call();
 	WREN_METHOD() Value Call(Value argument);
 
+	WREN_METHOD(getter) Value IsDone();
+	WREN_METHOD(getter) Value Error();
+
   private:
 	struct StartFibreArgs;
 	struct ResumeFibreArgs;

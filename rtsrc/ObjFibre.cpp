@@ -8,6 +8,7 @@
 #include "ObjFibre.h"
 #include "Errors.h"
 #include "GCTracingScanner.h"
+#include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
 #include "SlabObjectAllocator.h"
@@ -286,4 +287,15 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 void ObjFibre::Abort(std::string message) {
 	// TODO implement fibre abortion properly
 	errors::wrenAbort("%s", message.c_str());
+}
+
+Value ObjFibre::IsDone() {
+	bool finished = m_state == State::FINISHED || m_state == State::FAILED;
+	return encode_object(ObjBool::Get(finished));
+}
+
+Value ObjFibre::Error() {
+	// Errors aren't yet supported, but when they are, return the string
+	// representing the error message.
+	return NULL_VAL;
 }

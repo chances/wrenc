@@ -24,7 +24,6 @@ test/core/fiber/call_with_value_indirect_reenter.wren
 test/core/fiber/call_with_value_transferred.wren
 test/core/fiber/error.wren
 test/core/fiber/is_done_after_error.wren
-test/core/fiber/is_done.wren
 test/core/fiber/new_wrong_arg_type.wren
 test/core/fiber/new_wrong_arity.wren
 test/core/fiber/transfer_direct_reenter.wren
