@@ -18,7 +18,7 @@
 #include "LLVMBackend.h"
 #include "Scope.h"
 #include "Utils.h"
-#include "common.h"
+#include "common/common.h"
 
 #include <fmt/format.h>
 #include <llvm/IR/Constants.h>

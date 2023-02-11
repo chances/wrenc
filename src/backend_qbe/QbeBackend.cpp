@@ -7,7 +7,7 @@
 #include "ClassInfo.h"
 #include "CompContext.h"
 #include "HashUtil.h"
-#include "common.h"
+#include "common/common.h"
 
 #include <Scope.h>
 #include <SymbolTable.h>

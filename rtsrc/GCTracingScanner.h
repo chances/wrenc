@@ -5,7 +5,7 @@
 #pragma once
 
 #include "Obj.h"
-#include "common.h"
+#include "common/common.h"
 
 #include <deque>
 #include <vector>

@@ -11,7 +11,7 @@
 #include "ObjClass.h"
 #include "ObjFn.h"
 #include "ObjString.h"
-#include "common.h"
+#include "common/common.h"
 
 #include <math.h>
 

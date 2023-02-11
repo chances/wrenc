@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "common.h"
+#include "common/common.h"
 
 // Also used by ObjFn
 struct UpvalueStorage {
