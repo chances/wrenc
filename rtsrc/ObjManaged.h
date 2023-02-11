@@ -12,6 +12,7 @@
 class ObjManagedClass;
 class ClassDescription; // From ClassDescription.h
 class AttributePack;
+class RtModule;
 
 /// Represents an object defined in Wren
 class ObjManaged : public Obj {
@@ -49,6 +50,9 @@ class ObjManagedClass : public ObjClass {
 	ObjManagedMetaClass meta;
 
 	std::unique_ptr<ClassDescription> spec;
+
+	/// The module in which this class was declared.
+	RtModule *declaringModule;
 
 	/// The byte offset between the start of this class and where this class's instance fields are.
 	int fieldOffset;

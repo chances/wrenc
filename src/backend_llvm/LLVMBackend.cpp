@@ -317,7 +317,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_allocObject = m_module.getOrInsertFunction("wren_alloc_obj", allocObjectType);
 
 	llvm::FunctionType *initClassType =
-	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType, m_valueType}, false);
+	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType, m_pointerType, m_valueType}, false);
 	m_initClass = m_module.getOrInsertFunction("wren_init_class", initClassType);
 
 	llvm::FunctionType *getFieldOffsetType = llvm::FunctionType::get(m_int32Type, {m_valueType}, false);
@@ -472,6 +472,14 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		// we have to add it to the object pointer to get the fields area.
 		classData->fieldOffset = new llvm::GlobalVariable(m_module, m_int32Type, false,
 		    llvm::GlobalVariable::InternalLinkage, CInt::get(m_int32Type, 0), "class_field_offset_" + cls->info->name);
+	}
+
+	// Create the get-global-table function early, as we pass a pointer to it for class initialisation.
+	{
+		std::string getGlobalName = mod->Name() + "_get_globals";
+		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
+		m_getGlobals =
+		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
 	}
 
 	for (IRFn *func : mod->GetFunctions()) {
@@ -817,14 +825,6 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 }
 
 void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
-	// Create the get-global-table function early, as we pass a pointer to it for string initialisation.
-	{
-		std::string getGlobalName = mod->Name() + "_get_globals";
-		llvm::FunctionType *getGblFuncType = llvm::FunctionType::get(m_pointerType, false);
-		m_getGlobals =
-		    llvm::Function::Create(getGblFuncType, llvm::Function::ExternalLinkage, getGlobalName, &m_module);
-	}
-
 	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context, "entry", m_initFunc);
 	m_builder.SetInsertPoint(bb);
 
@@ -1879,7 +1879,7 @@ StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineCla
 	llvm::Value *dataBlock = m_builder.CreateLoad(m_pointerType, data.classDataBlock, "class_data_" + cls->info->name);
 
 	llvm::Constant *className = GetStringConst(cls->info->name);
-	llvm::Value *classValue = m_builder.CreateCall(m_initClass, {className, dataBlock, supertype});
+	llvm::Value *classValue = m_builder.CreateCall(m_initClass, {m_getGlobals, className, dataBlock, supertype});
 
 	// C++ system classes are registered, but we don't do anything with the result - we're just telling C++ what
 	// methods exist on them.

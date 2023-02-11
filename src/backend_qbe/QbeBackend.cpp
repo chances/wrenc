@@ -786,8 +786,8 @@ QbeBackend::Snippet *QbeBackend::VisitStmtDefineClass(StmtDefineClass *node) {
 
 	VLocal *varName = AddTemporary("tmp_class_" + info->name);
 	std::string classNameSym = GetStringPtr(info->name);
-	snip->Add("%{} =l call $wren_init_class({} {}, {} $class_desc_{}, l %{})", varName->name, PTR_TYPE, classNameSym,
-	    PTR_TYPE, info->name, supertypeLocal->name);
+	snip->Add("%{} =l call $wren_init_class(l %get_globals_ptr, {} {}, {} $class_desc_{}, l %{})", varName->name,
+	    PTR_TYPE, classNameSym, PTR_TYPE, info->name, supertypeLocal->name);
 
 	// System classes are registered, but we don't do anything with the result - we're just telling C++ what
 	// methods exist on them.

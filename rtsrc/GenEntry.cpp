@@ -39,7 +39,7 @@ EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
 EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature, bool isStatic);
 EXPORT Value wren_init_string_literal(void *getGlobalsFunc, const char *literal, int length);
 EXPORT void wren_register_signatures_table(const char *signatures);
-EXPORT Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue);
+EXPORT Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock, Value parentClassValue);
 EXPORT Value wren_alloc_obj(Value classVar);
 EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
@@ -131,7 +131,7 @@ void wren_register_signatures_table(const char *signatures) {
 	}
 }
 
-Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassValue) {
+Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock, Value parentClassValue) {
 	std::unique_ptr<ClassDescription> spec = std::make_unique<ClassDescription>();
 	spec->Parse(dataBlock);
 
@@ -176,6 +176,11 @@ Value wren_init_class(const char *name, uint8_t *dataBlock, Value parentClassVal
 	}
 
 	ObjManagedClass *cls = WrenRuntime::Instance().New<ObjManagedClass>(name, std::move(spec), parentClass);
+
+	cls->declaringModule = WrenRuntime::Instance().GetPreInitialisedModule(getGlobalsFunc);
+	if (!cls->declaringModule) {
+		errors::wrenAbort("Couldn't find declaring module %p for class '%s'", getGlobalsFunc, name);
+	}
 
 	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
 		ObjClass *target = method.isStatic ? cls->type : cls;
