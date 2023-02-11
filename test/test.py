@@ -748,7 +748,7 @@ def main():
     if len(expected_failed_passed) != 0:
         print(red("The following tests were expected to fail, but passed! Please update expected-failures.txt,"))
         print(red(" to make sure someone notices if they are later broken!"))
-        for name in expected_failed_passed:
+        for name in sorted(expected_failed_passed):
             print("   " + name)
 
     if failed != 0:
