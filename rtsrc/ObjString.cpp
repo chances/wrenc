@@ -38,9 +38,21 @@ int ObjString::ByteCount_() { return m_value.size(); }
 std::string ObjString::OperatorPlus(std::string other) { return m_value + other; }
 
 std::string ObjString::OperatorSubscript(int index) {
-	// TODO return the unicode codepoint, not the single byte!
+	// Negative indices count backwards
+	if (index < 0) {
+		index += m_value.size();
+	}
+
 	ValidateIndex(index, "Subscript");
-	return m_value.substr(index, 1);
+
+	// Return the unicode codepoint, not the single byte!
+	int length = GetUTF8Length(index);
+
+	// If the string cuts off in the middle of a codepoint, return a single byte
+	if (index + length > (int)m_value.size())
+		return m_value.substr(index, 1);
+
+	return m_value.substr(index, length);
 }
 
 int ObjString::ByteAt_(int index) {
@@ -61,8 +73,19 @@ Value ObjString::IterateImpl(Value previous, bool unicode) const {
 
 	int position = errors::validateInt(previous, "Iterator");
 
-	// TODO unicode handling
-	position++;
+	if (position < 0)
+		return encode_object(ObjBool::Get(false)); // Invalid, specified by the iterate.wren test
+
+	if (unicode) {
+		// Walk forwards over the codepoint, unless it's truncated, in
+		// which case step through byte-by-byte.
+		int len = GetUTF8Length(position);
+		if (position + len > (int)m_value.size())
+			len = 1;
+		position += len;
+	} else {
+		position++;
+	}
 
 	if (position >= (int)m_value.size())
 		return encode_object(ObjBool::Get(false));
@@ -85,6 +108,25 @@ void ObjString::ValidateIndex(int index, const char *argName) const {
 		// TODO throw Wren error with this exact message
 		errors::wrenAbort("%s out of bounds.", argName);
 	}
+}
+
+int ObjString::GetUTF8Length(int index) const {
+	uint8_t c = m_value[index];
+
+	// ASCII characters have the top bit clear
+	if ((c & 0x80) == 0)
+		return 1;
+
+	if ((c & 0b11100000) == 0b11000000)
+		return 2;
+	if ((c & 0b11110000) == 0b11100000)
+		return 3;
+	if ((c & 0b11111000) == 0b11110000)
+		return 4;
+
+	// Anything else is broken, just assume it's a single byte.
+	// This can happen if we cut into the middle of a string.
+	return 1;
 }
 
 void ObjString::MarkGCValues(GCMarkOps *ops) {

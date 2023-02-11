@@ -38,4 +38,7 @@ class ObjString : public Obj {
 	Value IterateImpl(Value previous, bool unicode) const;
 
 	void ValidateIndex(int index, const char *argName) const;
+
+	// Find the byte length of the UTF-8 codepoint at the given index
+	int GetUTF8Length(int index) const;
 };

@@ -190,12 +190,10 @@ test/core/sequence/take_not_num.wren
 test/core/sequence/take.wren
 test/core/sequence/to_list.wren
 test/core/sequence/where.wren
-test/core/string_byte_sequence/iterate.wren
 test/core/string_byte_sequence/iterator_value.wren
 test/core/string_byte_sequence/subscript.wren
 test/core/string/bytes.wren
 test/core/string_code_point_sequence/count.wren
-test/core/string_code_point_sequence/iterate.wren
 test/core/string_code_point_sequence/iterator_value_incomplete.wren
 test/core/string_code_point_sequence/iterator_value_not_int.wren
 test/core/string_code_point_sequence/iterator_value_not_num.wren
@@ -231,10 +229,8 @@ test/core/string/index_of_start_too_large.wren
 test/core/string/index_of_start_too_small.wren
 test/core/string/index_of_start.wren
 test/core/string/index_of.wren
-test/core/string/iterate.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
-test/core/string/iterator_value.wren
 test/core/string/join_separator_not_string.wren
 test/core/string/multiply_negative.wren
 test/core/string/multiply_not_int.wren
@@ -260,7 +256,6 @@ test/core/string/subscript_range_to_not_int.wren
 test/core/string/subscript_range_to_too_large.wren
 test/core/string/subscript_range_to_too_small.wren
 test/core/string/subscript_range.wren
-test/core/string/subscript.wren
 test/core/string/to_string.wren
 test/core/string/trim_chars_not_string.wren
 test/core/string/trim_end_chars_not_string.wren
