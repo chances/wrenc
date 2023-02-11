@@ -21,6 +21,8 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() bool Is(double receiver, ObjClass *cls);
 	WREN_METHOD(getter) std::string ToString(double receiver);
 
+	WREN_METHOD(getter) static double Pi();
+
 	WREN_METHOD(getter) double OperatorMinus(double receiver); // Negation
 	WREN_METHOD(getter) bool OperatorBoolNegate(double receiver);
 	WREN_METHOD(getter) double OperatorBitwiseNegate(double receiver);
@@ -46,4 +48,32 @@ class ObjNumClass : public ObjNativeClass {
 
 	WREN_METHOD() ObjRange *OperatorDotDot(double receiver, double other);
 	WREN_METHOD() ObjRange *OperatorDotDotDot(double receiver, double other);
+
+	// Trig functions
+	WREN_METHOD(getter) double Sin(double receiver);
+	WREN_METHOD(getter) double Cos(double receiver);
+	WREN_METHOD(getter) double Tan(double receiver);
+	WREN_METHOD(getter) double Asin(double receiver);
+	WREN_METHOD(getter) double Acos(double receiver);
+	WREN_METHOD(getter) double Atan(double receiver);
+	WREN_METHOD() double Atan(double receiver, ARG("x value") double divisor); // atan2
+
+	// Misc getter functions
+	WREN_METHOD(getter) double Abs(double receiver);
+	WREN_METHOD(getter) double Sqrt(double receiver);
+	WREN_METHOD(getter) double Cbrt(double receiver);
+	WREN_METHOD(getter) double Round(double receiver);
+	WREN_METHOD(getter) double Floor(double receiver);
+	WREN_METHOD(getter) double Ceil(double receiver);
+	WREN_METHOD(getter) double Log(double receiver);
+	WREN_METHOD(getter) double Log2(double receiver);
+	WREN_METHOD(getter) double Sign(double receiver);
+	WREN_METHOD(getter) double Fraction(double receiver);
+	WREN_METHOD(getter) double Exp(double receiver);
+
+	// Misc non-getter number functions
+	WREN_METHOD() double Pow(double receiver, ARG("Power value") double power);
+	WREN_METHOD() double Clamp(double receiver, ARG("Min value") double min, ARG("Max value") double max);
+	WREN_METHOD() double Min(double receiver, double other);
+	WREN_METHOD() double Max(double receiver, double other);
 };

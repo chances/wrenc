@@ -134,4 +134,46 @@ ObjRange *ObjNumClass::OperatorDotDotDot(double receiver, double other) {
 	return SlabObjectAllocator::GetInstance()->AllocateNative<ObjRange>(receiver, other, false);
 }
 
+// Trig stuff
+double ObjNumClass::Pi() { return M_PI; }
+double ObjNumClass::Sin(double receiver) { return sin(receiver); }
+double ObjNumClass::Cos(double receiver) { return cos(receiver); }
+double ObjNumClass::Tan(double receiver) { return tan(receiver); }
+double ObjNumClass::Asin(double receiver) { return asin(receiver); }
+double ObjNumClass::Acos(double receiver) { return acos(receiver); }
+double ObjNumClass::Atan(double receiver) { return atan(receiver); }
+double ObjNumClass::Atan(double receiver, double divisor) { return atan2(receiver, divisor); }
+
+// Misc getter functions
+double ObjNumClass::Abs(double receiver) { return abs(receiver); }
+double ObjNumClass::Sqrt(double receiver) { return sqrt(receiver); }
+double ObjNumClass::Cbrt(double receiver) { return cbrt(receiver); }
+double ObjNumClass::Round(double receiver) { return round(receiver); }
+double ObjNumClass::Floor(double receiver) { return floor(receiver); }
+double ObjNumClass::Ceil(double receiver) { return ceil(receiver); }
+double ObjNumClass::Log(double receiver) { return log(receiver); }
+double ObjNumClass::Log2(double receiver) { return log2(receiver); }
+double ObjNumClass::Sign(double receiver) {
+	if (receiver > 0)
+		return 1;
+	if (receiver < 0)
+		return -1;
+	return 0;
+}
+double ObjNumClass::Fraction(double receiver) {
+	double result = receiver - (int)receiver;
+	if (result == 0 && receiver < 0)
+		return -0.0; // We have to return the same sign
+	return result;
+}
+double ObjNumClass::Exp(double receiver) { return exp(receiver); }
+
+// Misc non-getter number functions
+double ObjNumClass::Pow(double receiver, double power) { return pow(receiver, power); }
+double ObjNumClass::Clamp(double receiver, double minValue, double maxValue) {
+	return std::min(maxValue, std::max(receiver, minValue));
+}
+double ObjNumClass::Min(double receiver, double other) { return std::min(receiver, other); }
+double ObjNumClass::Max(double receiver, double other) { return std::max(receiver, other); }
+
 // NOLINTEND(readability-convert-member-functions-to-static)
