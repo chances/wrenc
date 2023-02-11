@@ -9,6 +9,7 @@
 #include "Errors.h"
 #include "Obj.h"
 #include "ObjClass.h"
+#include "ObjFn.h"
 #include "ObjString.h"
 #include "common.h"
 
@@ -17,6 +18,8 @@
 double checkInt(const char *method, int arg, Value value);
 double checkDouble(const char *method, int arg, Value value);
 std::string checkString(const char *method, int arg, Value value);
+
+template <typename T> void throwArgTypeError(const char *errorName);
 
 template <typename T> T *checkReceiver(const char *method, Value value) {
 	if (!is_object(value)) {
@@ -36,8 +39,10 @@ template <typename T> T *checkReceiver(const char *method, Value value) {
 	return casted;
 }
 
-template <typename T> T *checkArg(const char *method, int arg, Value value, bool nullable) {
+template <typename T> T *checkArg(const char *method, const char *errorName, int arg, Value value, bool nullable) {
 	if (!is_object(value)) {
+		if (errorName)
+			throwArgTypeError<T>(errorName);
 		errors::wrenAbort("Native function %s: argument %d is not an object!", method, arg);
 	}
 
@@ -50,6 +55,8 @@ template <typename T> T *checkArg(const char *method, int arg, Value value, bool
 
 	T *casted = dynamic_cast<T *>(obj);
 	if (!casted) {
+		if (errorName)
+			throwArgTypeError<T>(errorName);
 		errors::wrenAbort("Native function %s: argument %d is invalid type '%s'!", method, arg,
 		    obj->type->name.c_str());
 	}
@@ -60,8 +67,8 @@ template <typename T> T *checkArg(const char *method, int arg, Value value, bool
 // Put the implementations into the generated file, so they can be inlined
 #ifdef BINDINGS_GEN
 
-std::string checkString(const char *method, int arg, Value value) {
-	ObjString *str = checkArg<ObjString>(method, arg, value, false);
+std::string checkString(const char *method, const char *errorName, int arg, Value value) {
+	ObjString *str = checkArg<ObjString>(method, errorName, arg, value, false);
 	return str->m_value;
 }
 
@@ -83,6 +90,18 @@ double checkInt(const char *method, int arg, Value value) {
 	}
 
 	return intValue;
+}
+
+template <> void throwArgTypeError<ObjString>(const char *errorName) {
+	errors::wrenAbort("%s must be a string.", errorName);
+}
+
+template <> void throwArgTypeError<ObjFn>(const char *errorName) {
+	errors::wrenAbort("%s must be a function.", errorName);
+}
+
+template <> void throwArgTypeError<ObjClass>(const char *errorName) {
+	errors::wrenAbort("%s must be a class.", errorName);
 }
 
 #endif

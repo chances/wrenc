@@ -1,14 +1,15 @@
 import re
 import sys
 from optparse import OptionParser
-from typing import TextIO, List
+from typing import TextIO, List, Optional
 from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
     r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<stat_virt>static\s+|virtual\s+)?" +
-    r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>[^)]*)\)(?:\s+const)?\s*;$")
+    r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>.*)\)(?:\s+const)?\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
 ARG_REGEX = re.compile(r"^\s*(?P<type>.+\s[*&]*)(?P<name>\w+)\s*$")
+ARG_INFO_REGEX = re.compile(r'^\s*ARG\("(?P<error_name>[^"]+)"\)')
 
 # Making a C++ method called (for example) OperatorPlus would have a Wren signature of '+'
 OPERATOR_PREFIX = "Operator"
@@ -53,6 +54,7 @@ class Arg:
     type: str
     name: str
     pos: int
+    error_name: Optional[str]
 
     def raw_name(self) -> str:
         return f"arg{self.pos}"
@@ -170,6 +172,17 @@ def parse_file(fi: TextIO) -> List[Class]:
             if args_str == "":
                 continue
 
+            error_name = None
+
+            # Grab the argument information
+            info = ARG_INFO_REGEX.match(arg_str)
+            if info:
+                # Get rid of this argument group from the arg, so we
+                # can process it as usual.
+                arg_str = arg_str.removeprefix(info.group(0)).strip()
+
+                error_name = info.group("error_name")
+
             # We can't just split the argument to type+name by split(' '), since that wouldn't handle
             # pointers like "Obj *thing", as it would think the name is "*thing".
             arg_match = ARG_REGEX.match(arg_str)
@@ -177,7 +190,7 @@ def parse_file(fi: TextIO) -> List[Class]:
                 raise Exception(f"Could not match arguments for method {current_class.name}::{name}: '{arg_str}'")
 
             arg_type = arg_match.group("type").replace(" ", "")  # Remove space before pointer
-            args.append(Arg(arg_type, arg_match.group("name"), len(args)))
+            args.append(Arg(arg_type, arg_match.group("name"), len(args), error_name))
 
         # Variadic functions have a last argument that's the array of values, and that's not something Wren
         # actually passes values into.
@@ -240,6 +253,10 @@ def generate(output: TextIO, options: GenOptions):
                 output.write(f"\t{cls.name} *obj = checkReceiver<{cls.name}>(\"{debug_sig}\", receiver);\n")
 
             for i, arg in enumerate(method.args):
+                error_name = "nullptr"
+                if arg.error_name is not None:
+                    error_name = f'"{arg.error_name}"'
+
                 cast_expr: str
                 if arg.type == "Value":
                     cast_expr = arg.raw_name()
@@ -247,9 +264,9 @@ def generate(output: TextIO, options: GenOptions):
                     # Remove the pointer to use as a template parameter. Yeah, this will change Obj** to Obj, but we
                     # don't support that anyway, so no big loss there.
                     non_ptr = arg.type.replace('*', '')
-                    cast_expr = f"checkArg<{non_ptr}>(\"{debug_sig}\", {i + 1}, {arg.raw_name()}, true)"
+                    cast_expr = f"checkArg<{non_ptr}>(\"{debug_sig}\", {error_name}, {i + 1}, {arg.raw_name()}, true)"
                 elif arg.type == "std::string":
-                    cast_expr = f"checkString(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
+                    cast_expr = f"checkString(\"{debug_sig}\", {error_name}, {i + 1}, {arg.raw_name()})"
                 elif arg.type == "double":
                     cast_expr = f"checkDouble(\"{debug_sig}\", {i + 1}, {arg.raw_name()})"
                 elif arg.type == "int":

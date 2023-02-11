@@ -19,6 +19,9 @@ class ObjRange;
 // A macro read by the bindings generator to mark a method as being accessible from Wren.
 #define WREN_METHOD(...)
 
+// Used by the binding generator to set the name of an argument
+#define ARG(...)
+
 /// A collection of functions provided by the GC to objects which are reporting their contents.
 struct GCMarkOps {
 	void (*ReportValue)(GCMarkOps *thisObj, Value value);
