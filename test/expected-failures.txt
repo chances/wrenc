@@ -65,12 +65,8 @@ test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren
 test/core/function/new_wrong_arg_type.wren
 test/core/function/to_string.wren
-test/core/list/clear.wren
-test/core/list/filled_size_negative.wren
 test/core/list/filled_size_not_int.wren
 test/core/list/filled_size_not_num.wren
-test/core/list/filled.wren
-test/core/list/index_of.wren
 test/core/list/insert_index_not_int.wren
 test/core/list/insert_index_not_num.wren
 test/core/list/iterate_iterator_not_int.wren
@@ -91,8 +87,6 @@ test/core/list/reduce_no_items.wren
 test/core/list/reduce_wrong_arity.wren
 test/core/list/remove_at_index_not_int.wren
 test/core/list/remove_at_index_not_num.wren
-test/core/list/remove_at.wren
-test/core/list/remove.wren
 test/core/list/sort.wren
 test/core/list/subscript_not_int.wren
 test/core/list/subscript_range_from_not_int.wren

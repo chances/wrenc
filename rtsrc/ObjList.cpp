@@ -8,6 +8,7 @@
 #include "ObjClass.h"
 #include "SlabObjectAllocator.h"
 
+#include <algorithm>
 #include <sstream>
 
 class ObjListClass : public ObjNativeClass {
@@ -34,6 +35,17 @@ void ObjList::ValidateIndex(int index, const char *argName) const {
 
 ObjList *ObjList::New() { return SlabObjectAllocator::GetInstance()->AllocateNative<ObjList>(); }
 
+ObjList *ObjList::Filled(int size, Value element) {
+	if (size < 0) {
+		errors::wrenAbort("Size cannot be negative.");
+	}
+	ObjList *list = New();
+	list->items.assign(size, element);
+	return list;
+}
+
+void ObjList::Clear() { items.clear(); }
+
 Value ObjList::Add(Value toAdd) {
 	items.push_back(toAdd);
 	return toAdd;
@@ -53,6 +65,13 @@ Value ObjList::Insert(int index, Value toAdd) {
 	return toAdd;
 }
 
+Value ObjList::Remove(Value toRemove) {
+	int index = IndexOf(toRemove);
+	if (index == -1)
+		return NULL_VAL;
+	return RemoveAt(index);
+}
+
 Value ObjList::RemoveAt(int index) {
 	// Negative index handling: -1 means last item (which is size-1), -2=size-2 etc
 	if (index < 0) {
@@ -61,8 +80,9 @@ Value ObjList::RemoveAt(int index) {
 
 	ValidateIndex(index, "Index");
 
+	Value previous = items[index];
 	items.erase(items.begin() + index);
-	return 0;
+	return previous;
 }
 
 std::string ObjList::Join() { return Join(""); }
@@ -76,6 +96,15 @@ std::string ObjList::Join(std::string joiner) {
 		result << Obj::ToString(value);
 	}
 	return result.str();
+}
+
+int ObjList::IndexOf(Value toFind) {
+	auto iter = std::find(items.begin(), items.end(), toFind);
+
+	if (iter == items.end())
+		return -1;
+
+	return iter - items.begin();
 }
 
 Value ObjList::Iterate(Value current) {

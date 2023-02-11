@@ -22,13 +22,18 @@ class ObjList : public Obj {
 	void ValidateIndex(int index, const char *argName) const;
 
 	WREN_METHOD() static ObjList *New();
+	WREN_METHOD() static ObjList *Filled(int size, Value element);
+
+	WREN_METHOD() void Clear();
 
 	WREN_METHOD() Value Add(Value toAdd);
 	WREN_METHOD() Value Insert(int index, Value toAdd);
+	WREN_METHOD() Value Remove(Value toRemove);
 	WREN_METHOD() Value RemoveAt(int index);
 
 	WREN_METHOD() std::string Join();
 	WREN_METHOD() std::string Join(std::string joiner);
+	WREN_METHOD() int IndexOf(Value toFind);
 
 	WREN_METHOD() Value Iterate(Value current);
 	WREN_METHOD() Value IteratorValue(int current);
