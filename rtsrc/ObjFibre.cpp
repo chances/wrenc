@@ -88,7 +88,7 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 	// If we're not suspended, we don't need to walk the stack:
 	// * Running: stack is scanned by the GC automatically.
 	// * Finished/not started/failed: there's no stack to scan.
-	if (m_state != State::SUSPENDED) {
+	if (!IsSuspended()) {
 		return;
 	}
 
@@ -191,8 +191,10 @@ Value ObjFibre::CallImpl(Value argument) {
 		return StartAndSwitchTo(previous, argument);
 	case State::SUSPENDED:
 		fibreCallStack.push_back(this);
+		previous->m_state = State::WAITING;
 		return ResumeSuspended(previous, argument, false);
 	case State::RUNNING:
+	case State::WAITING:
 		errors::wrenAbort("Fiber has already been called.");
 	case State::FINISHED:
 		errors::wrenAbort("Cannot call a finished fiber.");
@@ -208,6 +210,8 @@ Value ObjFibre::Yield(Value argument) {
 	ObjFibre *oldFibre = fibreCallStack.back();
 	fibreCallStack.pop_back();
 	ObjFibre *newFibre = fibreCallStack.back();
+
+	oldFibre->m_state = State::SUSPENDED;
 
 	return newFibre->ResumeSuspended(oldFibre, argument, false);
 }
@@ -226,7 +230,7 @@ Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
 	    .oldFibre = previous,
 	};
 
-	previous->m_state = State::SUSPENDED;
+	previous->m_state = State::WAITING;
 	m_state = State::RUNNING;
 
 	// Save the current context, so our stack can be unwound by the GC. It's
@@ -246,7 +250,7 @@ Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
 }
 
 Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool terminate) {
-	if (m_state != State::SUSPENDED) {
+	if (!IsSuspended()) {
 		fprintf(stderr, "Cannot call ObjFibre::ResumeSuspended on fibre in state %d\n", (int)m_state);
 		abort();
 	}
@@ -257,7 +261,6 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	    .oldFibre = previous,
 	    .isTerminating = terminate,
 	};
-	previous->m_state = State::SUSPENDED;
 	m_state = State::RUNNING;
 
 	void *resumeStackAddr = m_resumeAddress;
@@ -287,7 +290,6 @@ Value ObjFibre::HandleResumed(ObjFibre::ResumeFibreArgs *result) {
 	Value arg = result->argument;
 
 	if (result->isTerminating) {
-		fibre->m_state = fibre->m_exception ? State::FAILED : State::FINISHED;
 		fibre->m_function = nullptr; // Allow the function to be GCed.
 		fibre->DeleteStack();
 		// DO NOT ACCESS RESULT AFTER THIS POINT - IT HAS BEEN FREED!
@@ -310,8 +312,10 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 		} else {
 			result = fn->Call({args.argument});
 		}
+		args.newFibre->m_state = State::FINISHED;
 	} catch (const FibreAbortException &ex) {
 		args.newFibre->m_exception = std::make_unique<FibreAbortException>(ex);
+		args.newFibre->m_state = State::FAILED;
 		result = NULL_VAL;
 	}
 
@@ -349,3 +353,5 @@ Value ObjFibre::Error() {
 		return NULL_VAL;
 	return encode_object(ObjString::New(m_exception->message));
 }
+
+bool ObjFibre::IsSuspended() const { return m_state == State::SUSPENDED || m_state == State::WAITING; }

@@ -10,10 +10,8 @@
 
 test/core/fiber/abort_not_string.wren
 test/core/fiber/abort_null.wren
-test/core/fiber/call_indirect_reenter.wren
 test/core/fiber/call_root.wren
 test/core/fiber/call_transferred.wren
-test/core/fiber/call_with_value_indirect_reenter.wren
 test/core/fiber/call_with_value_transferred.wren
 test/core/fiber/new_wrong_arg_type.wren
 test/core/fiber/new_wrong_arity.wren
@@ -37,7 +35,6 @@ test/core/fiber/transfer_with_value.wren
 test/core/fiber/transfer.wren
 test/core/fiber/try_done.wren
 test/core/fiber/try_error.wren
-test/core/fiber/try_indirect_reenter.wren
 test/core/fiber/yield_from_main.wren
 test/core/fiber/yield_return_transfer_value.wren
 test/core/fiber/yield_with_no_caller.wren

@@ -43,7 +43,8 @@ class ObjFibre : public Obj {
 	enum class State {
 		NOT_STARTED,
 		RUNNING,
-		SUSPENDED,
+		SUSPENDED, // This fibre called yield and is waiting to be resumed
+		WAITING,   // This fibre called another fibre and is waiting for that to yield
 		FINISHED,
 		FAILED,
 	};
@@ -60,6 +61,10 @@ class ObjFibre : public Obj {
 	static std::optional<std::string> RunAndCatchAbort(const std::function<void()> &func);
 
 	void MarkGCValues(GCMarkOps *ops) override;
+
+	/// Returns true if this thread is not currently executing, due to being in either the
+	/// suspended or waiting state.
+	bool IsSuspended() const;
 
 	WREN_METHOD() static ObjFibre *New(ObjFn *func);
 
