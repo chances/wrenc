@@ -20,7 +20,11 @@ extern "C" wren_main_func_t wrenStandaloneMainModule;
 // Zero it, and let this definition be replaced when we link something else in
 __attribute__((weak)) wren_main_func_t wrenStandaloneMainModule = nullptr;
 
-static void lastFibreExitHandler() { exit(0); }
+static void lastFibreExitHandler(const char *errorMessage) {
+	if (errorMessage)
+		puts(errorMessage);
+	exit(0);
+}
 
 int main(int argc, char **argv) {
 	WrenRuntime::Initialise();

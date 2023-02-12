@@ -349,7 +349,10 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 	assert(currentFibre == args.newFibre);
 	ObjFibre *next = args.newFibre->m_parent;
 	if (next == nullptr) {
-		WrenRuntime::Instance().LastFibreExited();
+		std::optional<std::string> errorMessage;
+		if (args.newFibre->m_exception)
+			errorMessage = args.newFibre->m_exception->message;
+		WrenRuntime::Instance().LastFibreExited(errorMessage);
 	}
 	next->ResumeSuspended(result, true);
 

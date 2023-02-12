@@ -7,6 +7,7 @@
 #include "common/common.h"
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
@@ -16,7 +17,7 @@ class SlabObjectAllocator;
 
 class WrenRuntime {
   public:
-	typedef void (*FibreExitHandler)();
+	typedef void (*FibreExitHandler)(const char *errorMessage);
 
 	DLL_EXPORT static WrenRuntime &Instance();
 
@@ -48,7 +49,7 @@ class WrenRuntime {
 	RtModule *GetCoreModule();
 
 	/// Called by ObjFibre when the last fibre exists on a non-main stack.
-	void LastFibreExited();
+	void LastFibreExited(std::optional<std::string> message);
 
 	/// Sets the handler that defines what happens when the last fibre exits on a non-main stack.
 	DLL_EXPORT void SetLastFibreExitHandler(FibreExitHandler handler);

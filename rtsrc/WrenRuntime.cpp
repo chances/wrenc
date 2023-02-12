@@ -142,13 +142,16 @@ RtModule *WrenRuntime::GetCoreModule() { return m_coreModule.get(); }
 
 void WrenRuntime::SetLastFibreExitHandler(WrenRuntime::FibreExitHandler handler) { m_fibreExitHandler = handler; }
 
-void WrenRuntime::LastFibreExited() {
+void WrenRuntime::LastFibreExited(std::optional<std::string> message) {
 	if (m_fibreExitHandler == nullptr) {
 		fprintf(stderr, "The last fibre finished on the non-main thread!\n");
 		abort();
 	}
 
-	m_fibreExitHandler();
+	// Avoid using std::optional for ABI reasons
+	const char *errMessagePtr = message ? message->c_str() : nullptr;
+
+	m_fibreExitHandler(errMessagePtr);
 	fprintf(stderr, "Last fibre exit handler returned!\n");
 	abort();
 }
