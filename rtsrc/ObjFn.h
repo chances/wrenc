@@ -59,7 +59,7 @@ class ObjFn : public Obj {
 	///
 	/// The user's perfectly well allowed to create their own function that does the exact same
 	/// thing, this method is merely a convenience.
-	WREN_METHOD() static ObjFn *New(ObjFn *fn);
+	WREN_METHOD() static ObjFn *New(ObjFn *argument);
 
 	// Variadic functions aren't a Wren thing, but with some creative code generation in gen_bindings we can get them
 	WREN_METHOD(variadic) Value Call(const std::initializer_list<Value> &values);
@@ -84,7 +84,7 @@ class ObjFn : public Obj {
   private:
 	// Implemented in bindings.gen.cpp
 	// If upvaluePack is nullptr, then it won't be passed as an argument
-	static Value FunctionDispatch(void *fnPtr, void *upvaluePack, const std::initializer_list<Value> &args);
+	static Value FunctionDispatch(void *fnPtr, void *upvaluePack, int arity, const std::initializer_list<Value> &args);
 };
 
 /// Stores information about a closure, allocated on module load.

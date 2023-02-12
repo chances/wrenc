@@ -8,10 +8,6 @@
 #   test/language
 #   test/core
 
-test/core/function/call_extra_arguments.wren
-test/core/function/call_missing_arguments.wren
-test/core/function/new_wrong_arg_type.wren
-test/core/list/reduce_wrong_arity.wren
 test/core/list/swap.wren
 test/core/map/iterate_iterator_not_int.wren
 test/core/map/iterate_iterator_not_num.wren

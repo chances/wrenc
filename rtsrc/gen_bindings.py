@@ -396,11 +396,11 @@ def generate(output: TextIO, options: GenOptions):
         output.write("}\n")
 
     output.write(
-        "Value ObjFn::FunctionDispatch(void *fn, void *upvalues, const std::initializer_list<Value> &args) {\n")
+        "Value ObjFn::FunctionDispatch(void *fn, void *upvalues, int arity, const std::initializer_list<Value> &args) {\n")
     output.write("\tconst Value *a = args.begin();\n")
     for i in range(max_args):
         split_args = "".join([f", a[{n}]" for n in range(i)])
-        output.write(f"\tif (args.size() == {i})\n")
+        output.write(f"\tif (arity == {i})\n")
         output.write(f"\t\treturn fnDispatch{i}(fn, upvalues {split_args});\n")
     output.write("\terrors::wrenAbort(\"Unsupported function arity: %d\", (int)args.size());\n")
     output.write("}\n")

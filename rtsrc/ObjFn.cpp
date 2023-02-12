@@ -60,17 +60,18 @@ ObjClass *ObjFn::Class() {
 ObjFn *ObjFn::New(ObjFn *fn) { return fn; }
 
 Value ObjFn::Call(const std::initializer_list<Value> &values) {
-	if ((int)values.size() != spec->arity) {
-		errors::wrenAbort("Cannot call closure '%s' with invalid arity %d (should be %d)", spec->name.c_str(),
-		    (int)values.size(), spec->arity);
+	if ((int)values.size() < spec->arity) {
+		errors::wrenAbort("Function expects more arguments.");
 	}
+
+	// Passing in too many arguments is fine, they're just ignored.
 
 	void *upvalueData = nullptr;
 	if (!spec->upvalueOffsets.empty()) {
 		upvalueData = upvaluePointers.data();
 	}
 
-	Value result = FunctionDispatch(spec->funcPtr, upvalueData, values);
+	Value result = FunctionDispatch(spec->funcPtr, upvalueData, spec->arity, values);
 
 	return result;
 }
