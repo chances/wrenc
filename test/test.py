@@ -124,6 +124,7 @@ class Test:
         self.compiler_args = None
         self.expected_to_fail = self.name in EXPECTED_FAILURES
         self.use_api_runner = False
+        self.ignore_output = False
 
     def parse(self):
         global num_skipped
@@ -206,6 +207,9 @@ class Test:
             self.runtime_error_status_expected = False
             self.runtime_error_message = None
             local_expectations = 0
+            # The test might generate output that it doesn't have expects for, since
+            # it was intended to fail.
+            self.ignore_output = True
         if override_compile_time_fail == "linking":
             self.linking_error_expected = True
             self.compile_error_expected = True
@@ -474,6 +478,11 @@ class Test:
         self.failures += error_lines
 
     def validate_output(self, out):
+        # Skip validating the output for tests that are expected
+        # to fail in Wren but succeed here.
+        if self.ignore_output:
+            return
+
         # Remove the trailing last empty line.
         out_lines = out.split('\n')
         if out_lines[-1] == '':
