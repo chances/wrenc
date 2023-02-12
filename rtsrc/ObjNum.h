@@ -39,6 +39,7 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() double OperatorMinus(double receiver, ARG("Right operand") double other);
 	WREN_METHOD() double OperatorMultiply(double receiver, ARG("Right operand") double other);
 	WREN_METHOD() double OperatorDivide(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorModulo(double receiver, ARG("Right operand") double other);
 
 	// Bitwise binary operators
 	WREN_METHOD() double OperatorAnd(double receiver, ARG("Right operand") double other);

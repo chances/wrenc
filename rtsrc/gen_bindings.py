@@ -18,6 +18,7 @@ OPERATOR_TYPES = {
     "Minus": "-",
     "Multiply": "*",
     "Divide": "/",
+    "Modulo": "%",
     "And": "&",
     "Or": "|",
     "XOr": "^",

@@ -85,6 +85,7 @@ double ObjNumClass::OperatorPlus(double receiver, double other) { return receive
 double ObjNumClass::OperatorMinus(double receiver, double other) { return receiver - other; }
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }
 double ObjNumClass::OperatorDivide(double receiver, double other) { return receiver / other; }
+double ObjNumClass::OperatorModulo(double receiver, double other) { return fmodf64(receiver, other); }
 
 // All of these cast without warning - see DEF_NUM_BITWISE in Wren
 double ObjNumClass::OperatorAnd(double receiver, double other) {
