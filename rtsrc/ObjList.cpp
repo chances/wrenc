@@ -6,6 +6,7 @@
 #include "Errors.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
+#include "ObjRange.h"
 #include "SlabObjectAllocator.h"
 #include "binding_utils.h"
 
@@ -125,7 +126,36 @@ Value ObjList::IteratorValue(int current) {
 	return items.at(current);
 }
 
-Value ObjList::OperatorSubscript(int index) {
+Value ObjList::OperatorSubscript(Value indexOrRange) {
+	// Range support
+	if (is_object(indexOrRange)) {
+		ObjRange *range = dynamic_cast<ObjRange *>(get_object_value(indexOrRange));
+
+		if (!range) {
+			errors::wrenAbort("Subscript must be a number or a range.");
+		}
+
+		int start, end;
+		bool reversed;
+		range->ToSubscriptUtil(items.size(), start, end, reversed);
+
+		ObjList *slice = New();
+		slice->items.assign(items.begin() + start, items.begin() + end);
+
+		// Reverse the contents if necessary
+		if (reversed) {
+			std::reverse(slice->items.begin(), slice->items.end());
+		}
+
+		return encode_object(slice);
+	}
+
+	double num = get_number_value(indexOrRange);
+	int index = (int)num;
+	if (index != num) {
+		errors::wrenAbort("Subscript must be an integer.");
+	}
+
 	// Negative indices count backwards
 	if (index < 0) {
 		index += items.size();
