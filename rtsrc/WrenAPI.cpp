@@ -311,7 +311,7 @@ WrenType wrenGetSlotType(WrenVM *vm, int slot) {
 
 // List functions
 
-void wrenSetSlotNewList(WrenVM *vm, int slot) { TODO; }
+void wrenSetSlotNewList(WrenVM *vm, int slot) { vm->stack.at(slot) = encode_object(ObjList::New()); }
 
 int wrenGetListCount(WrenVM *vm, int slot) {
 	ObjList *list = vm->GetSlotAsObject<ObjList>(slot, "List", "GetListCount");
@@ -320,11 +320,19 @@ int wrenGetListCount(WrenVM *vm, int slot) {
 
 void wrenGetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) {
 	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "GetListElement");
-	vm->stack.at(elementSlot) = list->items.at(index);
+	// Use OperatorSubscript for the negative index handling
+	vm->stack.at(elementSlot) = list->OperatorSubscript(encode_number(index));
 }
 
-void wrenSetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
-void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
+void wrenSetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) {
+	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "SetListElement");
+	list->OperatorSubscriptSet(index, vm->stack.at(elementSlot));
+}
+
+void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) {
+	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "InsertInList");
+	list->Insert(index, vm->stack.at(elementSlot));
+}
 
 // Map functions
 

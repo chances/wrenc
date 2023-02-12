@@ -25,7 +25,6 @@ test/core/map/value_iterate_iterator_not_num.wren
 test/core/map/value_iterate.wren
 test/core/string/to_string.wren
 
-test/api/call_calls_foreign.wren
 test/api/reset_stack_after_foreign_construct.wren
 test/api/maps.wren
 test/api/get_variable.wren
@@ -35,6 +34,5 @@ test/api/foreign_class.wren
 test/api/resolution.wren
 test/api/new_vm.wren
 test/api/call_wren_call_root.wren
-test/api/lists.wren
 test/api/reset_stack_after_call_abort.wren
 test/api/handle.wren
