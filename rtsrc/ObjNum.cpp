@@ -62,6 +62,8 @@ std::string ObjNumClass::ToString(double receiver) {
 	return buffer;
 }
 
+ObjClass *ObjNumClass::Type(double receiver) { return Instance(); }
+
 double ObjNumClass::OperatorMinus(double receiver) { return -receiver; }
 
 bool ObjNumClass::OperatorBoolNegate(double receiver) {
