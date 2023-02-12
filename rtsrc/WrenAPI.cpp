@@ -2,6 +2,10 @@
 // Created by znix on 11/02/23.
 //
 
+// Use our standard DLL_EXPORT macro for the Wren functions
+#include "common/common.h"
+#define WREN_API DLL_EXPORT
+
 #include "WrenAPIPublic.h"
 
 #include "WrenAPI.h"
@@ -47,16 +51,6 @@ struct WrenVM {
 		return obj;
 	}
 };
-
-int wrenGetVersionNumber() { return WREN_VERSION_NUMBER; }
-
-WrenVM *wrenNewVM(WrenConfiguration *configuration) {
-	// Due to our use of global variables in generated code, there really
-	// can only be one VM.
-	// TODO how we'll match up this API difference.
-	currentConfiguration = *configuration;
-	return nullptr;
-}
 
 void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &className,
     const ClassDescription::MethodDecl &method) {
@@ -146,7 +140,39 @@ void ForeignClassInterface::Finalise(ObjManaged *obj) {}
 // --- Wren API function definitions ---
 // -------------------------------------
 
+#define TODO abort()
+
 // Get slot functions
+
+bool wrenGetSlotBool(WrenVM *vm, int slot) { TODO; }
+const char *wrenGetSlotBytes(WrenVM *vm, int slot, int *length) { TODO; }
+
+double wrenGetSlotDouble(WrenVM *vm, int slot) {
+	Value value = vm->stack.at(slot);
+	if (!is_value_float(value))
+		errors::wrenAbort("Cannot call GetSlotDouble on slot %d that contains an object", slot);
+
+	return get_number_value(value);
+}
+
+void *wrenGetSlotForeign(WrenVM *vm, int slot) {
+	ObjManaged *obj = vm->GetSlotAsObject<ObjManaged>(slot, "ObjManaged", "GetSlotForeign");
+	ObjManagedClass *cls = (ObjManagedClass *)obj->type;
+	if (!cls->foreignClass) {
+		errors::wrenAbort("Cannot get foreign class data from non-foreign class '%s'", cls->name.c_str());
+	}
+	return obj->fields;
+}
+
+const char *wrenGetSlotString(WrenVM *vm, int slot) { TODO; }
+
+// Set slot functions
+
+void wrenSetSlotBool(WrenVM *vm, int slot, bool value) { TODO; }
+
+void wrenSetSlotBytes(WrenVM *vm, int slot, const char *bytes, size_t length) { TODO; }
+
+void wrenSetSlotDouble(WrenVM *vm, int slot, double value) { vm->stack.at(slot) = encode_number(value); }
 
 void *wrenSetSlotNewForeign(WrenVM *vm, int slot, int classSlot, size_t size) {
 	ObjManagedClass *cls = vm->GetSlotAsObject<ObjManagedClass>(classSlot, "ObjManagedClass", "SetSlotNewForeign");
@@ -163,23 +189,64 @@ void *wrenSetSlotNewForeign(WrenVM *vm, int slot, int classSlot, size_t size) {
 	return (void *)obj->fields;
 }
 
-void *wrenGetSlotForeign(WrenVM *vm, int slot) {
-	ObjManaged *obj = vm->GetSlotAsObject<ObjManaged>(slot, "ObjManaged", "GetSlotForeign");
-	ObjManagedClass *cls = (ObjManagedClass *)obj->type;
-	if (!cls->foreignClass) {
-		errors::wrenAbort("Cannot get foreign class data from non-foreign class '%s'", cls->name.c_str());
-	}
-	return obj->fields;
+void wrenSetSlotNull(WrenVM *vm, int slot) { TODO; }
+void wrenSetSlotString(WrenVM *vm, int slot, const char *text) { TODO; }
+
+// Misc slot functions
+
+int wrenGetSlotCount(WrenVM *vm) { TODO; }
+void wrenEnsureSlots(WrenVM *vm, int numSlots) { TODO; }
+WrenType wrenGetSlotType(WrenVM *vm, int slot) { TODO; }
+
+// List functions
+
+void wrenSetSlotNewList(WrenVM *vm, int slot) { TODO; }
+int wrenGetListCount(WrenVM *vm, int slot) { TODO; }
+void wrenGetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
+void wrenSetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
+void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
+
+// Map functions
+
+void wrenSetSlotNewMap(WrenVM *vm, int slot) { TODO; }
+int wrenGetMapCount(WrenVM *vm, int slot) { TODO; }
+bool wrenGetMapContainsKey(WrenVM *vm, int mapSlot, int keySlot) { TODO; }
+void wrenGetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) { TODO; }
+void wrenSetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) { TODO; }
+void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSlot) { TODO; }
+
+// Handle functions
+
+WrenHandle *wrenGetSlotHandle(WrenVM *vm, int slot) { TODO; }
+void wrenSetSlotHandle(WrenVM *vm, int slot, WrenHandle *handle) { TODO; }
+
+WrenHandle *wrenMakeCallHandle(WrenVM *vm, const char *signature) { TODO; }
+WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) { TODO; }
+
+void wrenReleaseHandle(WrenVM *vm, WrenHandle *handle) { TODO; }
+
+// Execution, runtime and fibre functions
+
+int wrenGetVersionNumber() { return WREN_VERSION_NUMBER; }
+
+void wrenAbortFiber(WrenVM *vm, int slot) { TODO; }
+void *wrenGetUserData(WrenVM *vm) { TODO; }
+void wrenSetUserData(WrenVM *vm, void *userData) { TODO; }
+
+void wrenGetVariable(WrenVM *vm, const char *module, const char *name, int slot) { TODO; }
+bool wrenHasVariable(WrenVM *vm, const char *module, const char *name) { TODO; }
+bool wrenHasModule(WrenVM *vm, const char *module) { TODO; }
+
+WrenVM *wrenNewVM(WrenConfiguration *configuration) {
+	// Due to our use of global variables in generated code, there really
+	// can only be one VM.
+	// TODO how we'll match up this API difference.
+	currentConfiguration = *configuration;
+	return nullptr;
 }
 
-double wrenGetSlotDouble(WrenVM *vm, int slot) {
-	Value value = vm->stack.at(slot);
-	if (!is_value_float(value))
-		errors::wrenAbort("Cannot call GetSlotDouble on slot %d that contains an object", slot);
+void wrenFreeVM(WrenVM *vm) { TODO; }
 
-	return get_number_value(value);
-}
+void wrenInitConfiguration(WrenConfiguration *configuration) { TODO; }
 
-// Set slot functions
-
-void wrenSetSlotDouble(WrenVM *vm, int slot, double value) { vm->stack.at(slot) = encode_number(value); }
+WrenInterpretResult wrenInterpret(WrenVM *vm, const char *module, const char *source) { TODO; }
