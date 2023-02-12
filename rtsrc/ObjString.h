@@ -29,7 +29,7 @@ class ObjString : public Obj {
 	WREN_METHOD(getter) Value ToString();
 	// Maybe we should implement Count for performance? Otherwise wren_core does it.
 	WREN_METHOD(getter) int ByteCount_();
-	WREN_METHOD() std::string OperatorPlus(std::string other);
+	WREN_METHOD() std::string OperatorPlus(ARG("Right operand") std::string other);
 	WREN_METHOD() std::string OperatorSubscript(Value indexOrRange);
 	WREN_METHOD() int CodePointAt_(int index);
 	WREN_METHOD() int ByteAt_(int index);
