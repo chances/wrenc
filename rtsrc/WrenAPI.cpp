@@ -436,14 +436,32 @@ WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) {
 		    method->signatureStr.c_str());
 	}
 
-	Value result = ObjFn::FunctionDispatch(func->func, nullptr, method->arity, vm->stack.data());
-	vm->stack.at(0) = result;
+	WrenInterpretResult error;
+	try {
+		Value result = ObjFn::FunctionDispatch(func->func, nullptr, method->arity, vm->stack.data());
+		vm->stack.at(0) = result;
+		error = WREN_RESULT_SUCCESS;
+	} catch (const ObjFibre::FibreAbortException &ex) {
+		vm->stack.at(0) = NULL_VAL;
+		error = WREN_RESULT_RUNTIME_ERROR;
+
+		// Try to call the error function, but if it's not set then we
+		// silently swallow the error.
+		std::string message = Obj::ToString(ex.message);
+		WrenErrorFn errorFn = currentConfiguration->errorFn;
+		if (errorFn) {
+			const char *moduleName = "<unknown>";
+			if (ex.originatingModule) {
+				moduleName = ex.originatingModule->moduleName.c_str();
+			}
+			errorFn(vm, WREN_ERROR_RUNTIME, moduleName, -1, message.c_str());
+		}
+	}
 
 	// Required for the call.wren test
 	vm->stack.resize(1);
 
-	// TODO error handling
-	return WREN_RESULT_SUCCESS;
+	return error;
 }
 
 void wrenReleaseHandle(WrenVM *vm, WrenHandle *handle) { delete handle; }

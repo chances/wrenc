@@ -13,6 +13,7 @@
 
 class ObjFn;
 class GCTracingScanner;
+class RtModule;
 
 // Whenever we're interacting with assembly we'll use the Microsoft calling convention, to avoid
 // writing bits of the assembly twice.
@@ -49,16 +50,17 @@ class ObjFibre : public Obj {
 		FAILED,
 	};
 
+	struct FibreAbortException {
+		Value message = NULL_VAL;
+		RtModule *originatingModule = nullptr;
+	};
+
 	~ObjFibre();
 	ObjFibre();
 
 	static ObjClass *Class();
 
 	static ObjFibre *GetMainThreadFibre();
-
-	/// Runs a given function, and returns the error it throws.
-	/// For limited internal use only!
-	static std::optional<std::string> RunAndCatchAbort(const std::function<void()> &func);
 
 	void MarkGCValues(GCMarkOps *ops) override;
 
@@ -92,7 +94,6 @@ class ObjFibre : public Obj {
   private:
 	struct StartFibreArgs;
 	struct ResumeFibreArgs;
-	struct FibreAbortException;
 
 	/// The main call implementation function, which both Call and Try use
 	Value CallImpl(Value argument, bool isTry, bool isTransfer);

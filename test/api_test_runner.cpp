@@ -58,6 +58,23 @@ static WrenForeignClassMethods bindClassWrapper(WrenVM *vm, const char *mod, con
 	return APITest_bindForeignClass(vm, mod, className);
 }
 
+static void reportError(WrenVM *vm, WrenErrorType type, const char *module, int line, const char *message) {
+	// Copied from Wren's test.c
+	switch (type) {
+	case WREN_ERROR_COMPILE:
+		fprintf(stderr, "[%s line %d] %s\n", module, line, message);
+		break;
+
+	case WREN_ERROR_RUNTIME:
+		fprintf(stderr, "%s\n", message);
+		break;
+
+	case WREN_ERROR_STACK_TRACE:
+		fprintf(stderr, "[%s line %d] in %s\n", module, line, message);
+		break;
+	}
+}
+
 int main(int argc, char **argv) {
 	// Disable stdout buffering. Our System.write uses the platform write
 	// call directly, rather than printf. Thus the messages may end up
@@ -88,10 +105,11 @@ int main(int argc, char **argv) {
 	}
 
 	// Create the VM object
-	WrenConfiguration config = {
-	    .bindForeignMethodFn = bindMethodWrapper,
-	    .bindForeignClassFn = bindClassWrapper,
-	};
+	WrenConfiguration config;
+	wrenInitConfiguration(&config);
+	config.bindForeignMethodFn = bindMethodWrapper;
+	config.bindForeignClassFn = bindClassWrapper;
+	config.errorFn = reportError;
 	WrenVM *vm = wrenNewVM(&config);
 
 	// Transform all the module names in the API, to avoid

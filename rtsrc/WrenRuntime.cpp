@@ -95,7 +95,13 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 
 RtModule *WrenRuntime::GetOrInitModuleCaught(void *getGlobalsFunction) {
 	RtModule *mod = nullptr;
-	std::optional<std::string> error = ObjFibre::RunAndCatchAbort([&]() { mod = GetOrInitModule(getGlobalsFunction); });
+
+	std::optional<std::string> error;
+	try {
+		mod = GetOrInitModule(getGlobalsFunction);
+	} catch (const ObjFibre::FibreAbortException &ex) {
+		error = Obj::ToString(ex.message);
+	}
 
 	if (error) {
 		fprintf(stderr, "%s\n", error->c_str());

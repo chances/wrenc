@@ -45,10 +45,6 @@ struct ObjFibre::ResumeFibreArgs {
 	bool isTerminating = false;
 };
 
-struct ObjFibre::FibreAbortException {
-	Value message;
-};
-
 int ObjFibre::stackSize = 0;
 ObjFibre *ObjFibre::currentFibre = nullptr;
 
@@ -239,6 +235,7 @@ Value ObjFibre::TransferError(Value message) {
 	// Mark the fibre as failed.
 	m_exception = std::make_unique<FibreAbortException>();
 	m_exception->message = message;
+	// TODO find the module
 	m_state = State::FAILED;
 
 	// Clean up this fibre, it won't be used again.
@@ -452,16 +449,8 @@ void ObjFibre::Abort(Value message) {
 
 	throw FibreAbortException{
 	    .message = message,
+	    // TODO find the module
 	};
-}
-
-std::optional<std::string> ObjFibre::RunAndCatchAbort(const std::function<void()> &func) {
-	try {
-		func();
-		return std::nullopt;
-	} catch (const FibreAbortException &ex) {
-		return Obj::ToString(ex.message);
-	}
 }
 
 Value ObjFibre::IsDone() {
