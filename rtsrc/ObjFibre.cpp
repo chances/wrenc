@@ -291,8 +291,16 @@ Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {
 Value ObjFibre::Yield() { return Yield(NULL_VAL); }
 
 Value ObjFibre::Yield(Value argument) {
+	// Initialise currentFibre if it's currently null
+	Current();
+
 	ObjFibre *oldFibre = currentFibre;
 	oldFibre->m_state = State::SUSPENDED;
+
+	// If we're yielding from a fibre with no parents, that ends execution
+	if (oldFibre->m_parent == nullptr) {
+		WrenRuntime::Instance().LastFibreExited(std::nullopt);
+	}
 
 	return oldFibre->m_parent->ResumeSuspended(argument, false);
 }
