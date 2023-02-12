@@ -414,7 +414,7 @@ class Test:
             if line in IGNORED_ERR_LINES:
                 continue
 
-            if "Programme ld failed with status code" in line:
+            if "Programme ld.gold failed with status code" in line:
                 found_link_error = True
 
             if self.linking_error_expected:

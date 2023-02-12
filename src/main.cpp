@@ -510,7 +510,7 @@ static void runAssembler(const std::vector<int> &assemblyFDs, const std::string 
 
 static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles) {
 	RunProgramme prog;
-	prog.args.push_back("ld"); // Using gold or lld would be good, but -lc seems to look for i386 libs on Gentoo/gold?
+	prog.args.push_back("ld.gold"); // Using lld would be even better, but it can't find -lc by itself
 	prog.args.push_back("-o");
 	prog.args.push_back(executableFile);
 
