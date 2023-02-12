@@ -12,6 +12,8 @@
 #include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
 
+#include "random/random_native.h"
+
 #include <deque>
 #include <optional>
 
@@ -58,6 +60,15 @@ WrenVM *wrenNewVM(WrenConfiguration *configuration) {
 
 void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &className,
     const ClassDescription::MethodDecl &method) {
+
+	WrenForeignMethodFn func;
+
+	// Try looking the function up in the loosely-built-in random module
+	func = wren_random::bindRandomForeignMethod(mod->moduleName, className, method.isStatic, method.name);
+	if (func != nullptr) {
+		return (void *)func;
+	}
+
 	if (!currentConfiguration) {
 		errors::wrenAbort("Could not look up foreign method '%s' without configuration set.", method.name.c_str());
 	}
@@ -67,8 +78,7 @@ void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &class
 		errors::wrenAbort("Could not look up foreign method '%s' without binding function.", method.name.c_str());
 	}
 
-	WrenForeignMethodFn func =
-	    bindFunc(nullptr, mod->moduleName.c_str(), className.c_str(), method.isStatic, method.name.c_str());
+	func = bindFunc(nullptr, mod->moduleName.c_str(), className.c_str(), method.isStatic, method.name.c_str());
 	if (!func) {
 		errors::wrenAbort("Could not find foreign method '%s' for class %s in module '%s'.", method.name.c_str(),
 		    className.c_str(), mod->moduleName.c_str());
@@ -99,7 +109,13 @@ std::unique_ptr<ForeignClassInterface> ForeignClassInterface::Lookup(RtModule *m
 		return fci;
 	};
 
-	// TODO foreign class lookup
+	// Try looking the function up in the loosely-built-in random module
+	fcm = wren_random::bindRandomForeignClass(mod->moduleName, className);
+	if (fcm.allocate) {
+		return convert();
+	}
+
+	// TODO configuration-based foreign class lookup
 	abort();
 }
 

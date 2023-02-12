@@ -140,6 +140,20 @@ llvm_backend = shared_module('llvm_backend',
   override_options: ['cpp_std=c++20'],
 )
 
+# Compile and build the random and meta libraries, which will be linked into rtlib.
+rtlib_random_wren = custom_target('rtlib_random_wren',
+  output: ['rtlib_random_wren.o'],
+  input: ['lib/wren-main/src/optional/wren_opt_random.wren'],
+  depends: [llvm_backend],
+  command: [wrenc, '-c', '-o', '@OUTPUT@', '@INPUT@', '--module=random', '--backend-llvm'],
+)
+rtlib_random = static_library('rtlib_random',
+  'rtsrc/random/random_native.cpp',
+  rtlib_random_wren,
+  include_directories: ['rtsrc', 'rtsrc/random'],
+  override_options: ['cpp_std=c++20'],
+)
+
 # Compile the Wren part of the main runtime library
 rtlib_wren_core = custom_target('wren-core',
   output: ['wren_core.o'],
@@ -212,6 +226,11 @@ rtlib_lib = shared_library('wren-rtlib',
   rtlib_bindings,
   include_directories: ['rtsrc'],
   override_options: ['cpp_std=c++20'],
+  link_with: [rtlib_random],
+  link_args: [
+    # Force the linker to include the random globals function, otherwise it would be removed.
+    '-Wl,--undefined=random_get_globals',
+  ],
   dependencies: [
     common,
     dependency('libunwind'),
