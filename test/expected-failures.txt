@@ -94,11 +94,7 @@ test/core/range/inclusive_range_wrong_rhs_type.wren
 test/core/range/iterate.wren
 test/core/range/iterator_value.wren
 test/core/range/join_separator_not_string.wren
-test/core/string_byte_sequence/iterator_value.wren
-test/core/string_byte_sequence/subscript.wren
 test/core/string_code_point_sequence/count.wren
-test/core/string_code_point_sequence/iterator_value.wren
-test/core/string_code_point_sequence/subscript.wren
 test/core/string/concatenation_wrong_arg_type.wren
 test/core/string/contains_argument_not_string.wren
 test/core/string/contains.wren

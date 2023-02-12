@@ -63,7 +63,7 @@ std::string ObjString::OperatorSubscript(int index) {
 }
 
 int ObjString::CodePointAt_(int index) {
-	ValidateIndex(index, "Index");
+	index = PrepareIndex(index, "Index");
 
 	uint8_t firstByte = (uint8_t)m_value[index];
 
@@ -103,7 +103,7 @@ int ObjString::CodePointAt_(int index) {
 }
 
 int ObjString::ByteAt_(int index) {
-	ValidateIndex(index, "Index");
+	index = PrepareIndex(index, "Index");
 
 	// Cast to unsigned so we don't get negatives
 	return (uint8_t)m_value[index];
