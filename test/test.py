@@ -43,6 +43,7 @@ if max_threads == -1:
 WRENCC_DIR = Path(__file__).parent.parent
 WREN_DIR: Path = WRENCC_DIR / "lib" / "wren-main"
 WREN_APP: Path = WRENCC_DIR / "build" / f"wrencc{args.suffix}"
+API_TEST_RUNNER: Path = WRENCC_DIR / "build" / "test" / "api-test-runner"
 
 WREN_APP_WITH_EXT = WREN_APP
 if platform.system() == "Windows":
@@ -122,6 +123,7 @@ class Test:
         self.failures = []
         self.compiler_args = None
         self.expected_to_fail = self.name in EXPECTED_FAILURES
+        self.use_api_runner = False
 
     def parse(self):
         global num_skipped
@@ -235,8 +237,14 @@ class Test:
         return True
 
     def run(self, compiler_path: Path, type: str):
+        # These are obviously the Windows filenames, but they
+        # also work just fine on Linux.
+        extension = "exe"
+        if self.use_api_runner:
+            extension = "dll"
+
         # Auto-delete the file when we're done with it
-        tmp_name = "wrencc-test-%08x.exe" % int(random.random() * 0xffffffff)
+        tmp_name = "wrencc-test-%08x.%s" % (int(random.random() * 0xffffffff), extension)
         dest_file = Path(tempfile.gettempdir()) / tmp_name
         try:
             self._run_impl(compiler_path, type, dest_file)
@@ -252,7 +260,13 @@ class Test:
             return
 
         # Invoke wren and run the test.
-        proc = Popen([testprog_path], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        # For normal tests we just run the executable directly, but C API tests
+        # go through a separate runner executable.
+        if self.use_api_runner:
+            proc_args = [API_TEST_RUNNER, testprog_path, self.path]
+        else:
+            proc_args = [testprog_path]
+        proc = Popen(proc_args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
         # If a test takes longer than five seconds, kill it.
         #
@@ -287,6 +301,11 @@ class Test:
             "--module=test",
             self.path,
         ]
+
+        # If this is an API test, build it as a shared library so we can test
+        # it against the C code.
+        if self.use_api_runner:
+            self.compiler_args.append("--output-type=shared")
 
         # Add each of the modules we're using, including transitive dependencies
         transitive_deps = self.resolve_module_dependencies()
@@ -559,7 +578,9 @@ def walk(path: Path, callback, ignored=None):
         ignored = []
     ignored += [".", ".."]
 
-    for file in [file for file in path.iterdir() if file not in ignored]:
+    for file in [file for file in path.iterdir()]:
+        if file.name in ignored:
+            continue
         nfile: Path = path / file
         if nfile.is_dir():
             walk(nfile, callback)
@@ -625,6 +646,11 @@ def run_script(app, path: Path, type):
 
     # Read the test and parse out the expectations.
     test = Test(path)
+
+    # If this is testing the C API, build the Wren file as a shared object and
+    # run our testing executable to load it and run the test C code.
+    if type == "api test":
+        test.use_api_runner = True
 
     if not test.parse():
         # It's a skipped or non-test file.

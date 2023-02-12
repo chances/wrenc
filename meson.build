@@ -244,3 +244,5 @@ rtlib = declare_dependency(
   link_with: [rtlib_lib],
   include_directories: ['rtsrc'],
 )
+
+subdir('test')
