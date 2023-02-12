@@ -193,6 +193,13 @@ Value ObjFibre::Try(Value argument) {
 Value ObjFibre::Transfer() { return Transfer(NULL_VAL); }
 
 Value ObjFibre::Transfer(Value argument) {
+	// Transferring to ourselves effectively just returns the
+	// value passed in. Check for this specifically because our
+	// standard fibre-switching system can't handle it.
+	if (Current() == this) {
+		return argument;
+	}
+
 	// Transferring puts this fibre into the same SUSPENDED state
 	// as yielding, so it can later be transferred back to.
 	Value result = CallImpl(argument, false, true);
