@@ -17,6 +17,8 @@ class ObjRange : public Obj {
 	// Utility function for List and String, as they support range subscripts
 	void ToSubscriptUtil(int length, int &outStart, int &outEnd, bool &outReverse) const;
 
+	bool EqualTo(Obj *other) override;
+
 	double from = 0;
 	double to = 0;
 	bool inclusive = false;
@@ -27,6 +29,6 @@ class ObjRange : public Obj {
 	WREN_METHOD(getter) double Max() const;
 	WREN_METHOD(getter) bool IsInclusive() const;
 	WREN_METHOD() Value Iterate(Value prev) const;
-	WREN_METHOD() double IteratorValue(double value) const;
+	WREN_METHOD() Value IteratorValue(Value value) const;
 	WREN_METHOD(getter) std::string ToString() const;
 };

@@ -30,7 +30,7 @@ Value ObjRange::Iterate(Value prev) const {
 	// Note: this implementation is largely copied from Wren's wren_core.c
 
 	// Empty ranges never iterate
-	if (prev == to && !inclusive)
+	if (from == to && !inclusive)
 		return encode_object(ObjBool::Get(false));
 
 	// Other than that, the starting case is simple enough
@@ -58,7 +58,7 @@ Value ObjRange::Iterate(Value prev) const {
 
 	return encode_number(current);
 }
-double ObjRange::IteratorValue(double value) const { return value; }
+Value ObjRange::IteratorValue(Value value) const { return value; }
 
 std::string ObjRange::ToString() const {
 	std::string str = ObjNumClass::Instance()->ToString(from);
@@ -141,4 +141,12 @@ void ObjRange::ToSubscriptUtil(int length, int &start, int &end, bool &reverse) 
 	if (end < 0 || end > length) {
 		errors::wrenAbort("%s out of bounds.", endName);
 	}
+}
+
+bool ObjRange::EqualTo(Obj *other) {
+	ObjRange *range = dynamic_cast<ObjRange *>(other);
+	if (!range)
+		return false;
+
+	return to == range->to && from == range->from && inclusive == range->inclusive;
 }

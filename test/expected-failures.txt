@@ -21,7 +21,6 @@ test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren
 test/core/function/new_wrong_arg_type.wren
 test/core/function/to_string.wren
-test/core/list/multiply.wren
 test/core/list/reduce_wrong_arity.wren
 test/core/list/swap.wren
 test/core/map/iterate_iterator_not_int.wren
@@ -53,10 +52,6 @@ test/core/number/type.wren
 test/core/object/is.wren
 test/core/object/nonclass_on_right.wren
 test/core/object/same.wren
-test/core/range/equality.wren
-test/core/range/iterate.wren
-test/core/range/iterator_value.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
-test/core/string/multiply.wren
 test/core/string/to_string.wren
