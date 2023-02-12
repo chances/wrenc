@@ -95,10 +95,6 @@ test/core/range/iterate.wren
 test/core/range/iterator_value.wren
 test/core/range/join_separator_not_string.wren
 test/core/string/concatenation_wrong_arg_type.wren
-test/core/string/from_byte_too_large.wren
-test/core/string/from_byte_too_small.wren
-test/core/string/from_code_point_too_large.wren
-test/core/string/from_code_point_too_small.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren

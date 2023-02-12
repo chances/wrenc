@@ -38,6 +38,11 @@ ObjString *ObjString::FromCodePoint(int codepoint) {
 }
 
 ObjString *ObjString::FromByte(int byte) {
+	if (byte < 0)
+		errors::wrenAbort("Byte cannot be negative.");
+	if (byte > 0xff)
+		errors::wrenAbort("Byte cannot be greater than 0xff.");
+
 	ObjString *str = New("");
 	str->m_value.push_back(byte);
 	return str;
@@ -227,7 +232,7 @@ bool ObjString::EqualTo(Obj *other) {
 
 void ObjString::AppendCodepoint(int codepoint) {
 	if (codepoint < 0)
-		errors::wrenAbort("Cannot append negative codepoint to string: %d", codepoint);
+		errors::wrenAbort("Code point cannot be negative.");
 
 	// Simple UTF-8 encoding
 	if (codepoint < 0x80) {
@@ -245,6 +250,6 @@ void ObjString::AppendCodepoint(int codepoint) {
 		m_value.push_back(0b10000000 | ((codepoint >> 6) & 0x3f));
 		m_value.push_back(0b10000000 | (codepoint & 0x3f));
 	} else {
-		errors::wrenAbort("Codepoint too large: %d", codepoint);
+		errors::wrenAbort("Code point cannot be greater than 0x10ffff.");
 	}
 }
