@@ -137,11 +137,15 @@ Value ObjString::IterateImpl(Value previous, bool unicode) const {
 		return encode_object(ObjBool::Get(false)); // Invalid, specified by the iterate.wren test
 
 	if (unicode) {
-		// Walk forwards over the codepoint, unless it's truncated, in
-		// which case step through byte-by-byte.
+		// Walk forwards over the codepoint, unless it's truncated or
+		// it's contents are invalid, in which case step through byte-by-byte.
 		int len = GetUTF8Length(position);
 		if (position + len > (int)m_value.size())
 			len = 1;
+		for (int i = 1; i < len; i++) {
+			if ((m_value[position + i] & 0xc0) != 0x80)
+				len = 1;
+		}
 		position += len;
 	} else {
 		position++;
