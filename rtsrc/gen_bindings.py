@@ -230,7 +230,7 @@ def generate(output: TextIO, options: GenOptions):
             # The number class is special, because the receiver is the first number argument
             receiver_def = "Value receiver"
             is_num_class = cls.name == NUMBER_CLASS
-            if is_num_class:
+            if is_num_class and not method.static:
                 receiver_def = ""
 
             args_str = ", ".join([f"Value {arg.raw_name()}" for arg in method.args])

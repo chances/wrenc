@@ -195,4 +195,29 @@ double ObjNumClass::Clamp(double receiver, double minValue, double maxValue) {
 double ObjNumClass::Min(double receiver, double other) { return std::min(receiver, other); }
 double ObjNumClass::Max(double receiver, double other) { return std::max(receiver, other); }
 
+Value ObjNumClass::FromString(std::string value) {
+	if (value.empty())
+		return NULL_VAL;
+
+	// This method was copied and modified from wren_core.c num_fromString.
+
+	errno = 0;
+	char *end = nullptr;
+	double result = std::strtod(value.c_str(), &end);
+
+	if (errno == ERANGE)
+		errors::wrenAbort("Number literal is too large.");
+
+	// Skip past any trailing whitespace.
+	while (*end != '\0' && isspace((unsigned char)*end))
+		end++;
+
+	// We must have consumed the entire string. Otherwise, it contains non-number
+	// characters and we can't parse it.
+	if (end < value.c_str() + value.length())
+		return NULL_VAL;
+
+	return encode_number(result);
+}
+
 // NOLINTEND(readability-convert-member-functions-to-static)

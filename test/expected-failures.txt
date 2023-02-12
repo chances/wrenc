@@ -23,7 +23,4 @@ test/core/map/key_types.wren
 test/core/map/value_iterate_iterator_not_int.wren
 test/core/map/value_iterate_iterator_not_num.wren
 test/core/map/value_iterate.wren
-test/core/number/from_string_not_string.wren
-test/core/number/from_string_too_large.wren
-test/core/number/from_string.wren
 test/core/string/to_string.wren

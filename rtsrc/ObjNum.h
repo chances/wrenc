@@ -90,4 +90,6 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() double Clamp(double receiver, ARG("Min value") double min, ARG("Max value") double max);
 	WREN_METHOD() double Min(double receiver, ARG("Other value") double other);
 	WREN_METHOD() double Max(double receiver, ARG("Other value") double other);
+
+	WREN_METHOD() static Value FromString(std::string argument);
 };
