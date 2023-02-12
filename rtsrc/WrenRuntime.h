@@ -10,6 +10,7 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <string>
 
 class RtModule;
 class GCTracingScanner;

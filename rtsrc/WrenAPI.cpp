@@ -450,8 +450,16 @@ void wrenGetVariable(WrenVM *vm, const char *modName, const char *name, int slot
 	Value *value = mod->GetOrNull(name);
 	vm->stack.at(slot) = *value;
 }
-bool wrenHasVariable(WrenVM *vm, const char *modName, const char *name) { TODO; }
-bool wrenHasModule(WrenVM *vm, const char *modName) { TODO; }
+
+bool wrenHasVariable(WrenVM *vm, const char *modName, const char *name) {
+	RtModule *mod = lookupModule(modName);
+	return mod->GetOrNull(name) != nullptr;
+}
+
+bool wrenHasModule(WrenVM *vm, const char *modName) {
+	RtModule *mod = lookupModule(modName);
+	return mod != nullptr;
+}
 
 WrenVM *wrenNewVM(WrenConfiguration *configuration) {
 	// Due to our use of global variables in generated code, there really
