@@ -66,7 +66,7 @@ class ObjFibre : public Obj {
 	/// suspended or waiting state.
 	bool IsSuspended() const;
 
-	WREN_METHOD() static ObjFibre *New(ObjFn *func);
+	WREN_METHOD() static ObjFibre *New(ObjFn *argument);
 
 	WREN_METHOD() static Value Yield();
 	WREN_METHOD() static Value Yield(Value argument);

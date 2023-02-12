@@ -102,6 +102,12 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 }
 
 ObjFibre *ObjFibre::New(ObjFn *func) {
+	// You can't pass more than one parameter to call(), so anything else will never
+	// be usable.
+	if (func->spec->arity > 1) {
+		errors::wrenAbort("Function cannot take more than one parameter.");
+	}
+
 	// If we're just starting up (and thus the fibre call stack is empty), then place the
 	// main thread fibre on it. There has to be something there to be able to switch properly.
 	// Current() does this, so just use it.
