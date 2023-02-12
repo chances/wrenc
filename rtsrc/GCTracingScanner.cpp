@@ -11,6 +11,7 @@
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "StackMapDescription.h"
+#include "WrenAPI.h"
 #include "WrenRuntime.h"
 
 #include <algorithm>
@@ -115,6 +116,10 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 	if (ObjFibre::currentFibre != nullptr) {
 		ObjFibre::currentFibre->MarkGCValues(&m_markOps);
 	}
+}
+
+void GCTracingScanner::MarkAPIRoots() {
+	api_interface::markGCRoots(&m_markOps);
 }
 
 void GCTracingScanner::MarkThreadRoots(void *unwindContext) {

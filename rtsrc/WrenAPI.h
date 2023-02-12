@@ -9,6 +9,7 @@
 
 class ObjManaged;
 class ObjManagedClass;
+struct GCMarkOps;
 
 namespace api_interface {
 
@@ -29,5 +30,7 @@ class ForeignClassInterface {
 void *lookupForeignMethod(RtModule *mod, const std::string &className, const ClassDescription::MethodDecl &method);
 
 Value dispatchForeignCall(void *funcPtr, Value *args, int argsLen);
+
+void markGCRoots(GCMarkOps *ops);
 
 } // namespace api_interface

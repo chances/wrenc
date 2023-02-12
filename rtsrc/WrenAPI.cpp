@@ -26,10 +26,19 @@
 #include "random/random_native.h"
 
 #include <optional>
+#include <set>
 #include <vector>
 
 static std::optional<WrenConfiguration> currentConfiguration;
 static ModuleNameTransformer moduleNameTransformer = nullptr;
+
+// Keep a list of all the active handles, so they can be marked
+// as GC roots.
+static std::set<WrenHandle *> currentHandles;
+
+// Have a list of all the VMs around so we can mark their stack
+// as GC roots.
+static std::set<WrenVM *> currentVMs;
 
 // Since it's not really possible to have multiple independent
 // VMs, trying to store this inside the VM and keep track of
@@ -42,6 +51,9 @@ using api_interface::ForeignClassInterface;
 // basically just a stack.
 struct WrenVM {
 	std::vector<Value> stack;
+
+	WrenVM() { currentVMs.insert(this); }
+	~WrenVM() { currentVMs.erase(this); }
 
 	template <typename T> T *GetSlotAsObject(int slot, const char *typeName, const char *msg) {
 		if (slot < 0)
@@ -65,7 +77,6 @@ struct WrenVM {
 	}
 };
 
-// TODO mark these as GC roots!
 struct WrenHandle {
 	// For value handles
 	Value value = NULL_VAL;
@@ -74,6 +85,9 @@ struct WrenHandle {
 	SignatureId signature;
 	std::string signatureStr;
 	int arity = -1;
+
+	WrenHandle() { currentHandles.insert(this); }
+	~WrenHandle() { currentHandles.erase(this); }
 };
 
 void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &className,
@@ -115,6 +129,15 @@ Value api_interface::dispatchForeignCall(void *funcPtr, Value *args, int argsLen
 
 	// Variables are returned in slot 0
 	return vm.stack.at(0);
+}
+
+void api_interface::markGCRoots(GCMarkOps *ops) {
+	for (WrenVM *vm : currentVMs) {
+		ops->ReportValues(ops, vm->stack.data(), vm->stack.size());
+	}
+	for (WrenHandle *handle : currentHandles) {
+		ops->ReportValue(ops, handle->value);
+	}
 }
 
 std::unique_ptr<ForeignClassInterface> ForeignClassInterface::Lookup(RtModule *mod, const std::string &className) {
@@ -390,7 +413,9 @@ void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSl
 
 WrenHandle *wrenGetSlotHandle(WrenVM *vm, int slot) {
 	Value value = vm->stack.at(slot);
-	return new WrenHandle{.value = value};
+	WrenHandle *handle = new WrenHandle;
+	handle->value = value;
+	return handle;
 }
 void wrenSetSlotHandle(WrenVM *vm, int slot, WrenHandle *handle) { vm->stack.at(slot) = handle->value; }
 
@@ -417,7 +442,11 @@ WrenHandle *wrenMakeCallHandle(WrenVM *vm, const char *signatureCStr) {
 	// Add the receiver
 	arity++;
 
-	return new WrenHandle{.signature = sigId, .signatureStr = signature, .arity = arity};
+	WrenHandle *handle = new WrenHandle;
+	handle->signature = sigId;
+	handle->signatureStr = signature;
+	handle->arity = arity;
+	return handle;
 }
 WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) {
 	if ((int)vm->stack.size() < method->arity) {

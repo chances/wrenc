@@ -26,7 +26,6 @@ test/core/map/value_iterate.wren
 test/core/string/to_string.wren
 
 test/api/call_wren_call_root.wren
-test/api/handle.wren
 
 # These two can't be used without modification as they call wrenInterpret.
 test/api/resolution.wren

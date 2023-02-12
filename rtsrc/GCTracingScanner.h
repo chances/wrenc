@@ -27,6 +27,9 @@ class GCTracingScanner {
 	/// Walk the current thread's stack, and find and mark any values in managed (Wren) code as roots
 	void MarkCurrentThreadRoots();
 
+	/// Add the roots from the Wren C API.
+	void MarkAPIRoots();
+
 	// Implement a simple tri-colour scanner: black is unreachable, grey is reachable but un-scanned, and
 	// white is reachable and scanned.
 

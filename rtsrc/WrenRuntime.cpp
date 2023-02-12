@@ -148,6 +148,8 @@ void WrenRuntime::RunGC() {
 	// TODO when we support multithreading, mark all the threads
 	m_gcScanner->MarkCurrentThreadRoots();
 
+	m_gcScanner->MarkAPIRoots();
+
 	// Walk the heap and clear out the allocator
 	m_gcScanner->EndGCCycle();
 }
