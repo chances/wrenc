@@ -169,12 +169,18 @@ double ObjNumClass::Sign(double receiver) {
 	return 0;
 }
 double ObjNumClass::Fraction(double receiver) {
-	double result = receiver - (int)receiver;
-	if (result == 0 && receiver < 0)
+	double result = receiver - (int64_t)receiver;
+	if (result == 0 && signbit(receiver))
 		return -0.0; // We have to return the same sign
 	return result;
 }
 double ObjNumClass::Exp(double receiver) { return exp(receiver); }
+double ObjNumClass::Truncate(double receiver) {
+	double result = (int64_t)receiver;
+	if (result == 0 && signbit(receiver))
+		return -0.0; // We have to return the same sign
+	return result;
+}
 
 bool ObjNumClass::IsInteger(double receiver) { return (int)receiver == receiver; }
 bool ObjNumClass::IsNan(double receiver) { return isnan(receiver); }

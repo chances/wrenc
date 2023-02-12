@@ -78,6 +78,7 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD(getter) double Sign(double receiver);
 	WREN_METHOD(getter) double Fraction(double receiver);
 	WREN_METHOD(getter) double Exp(double receiver);
+	WREN_METHOD(getter) double Truncate(double receiver);
 
 	WREN_METHOD(getter) bool IsInteger(double receiver);
 	WREN_METHOD(getter) bool IsNan(double receiver);
