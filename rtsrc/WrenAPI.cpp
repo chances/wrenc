@@ -84,7 +84,7 @@ void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &class
 	}
 
 	WrenBindForeignMethodFn bindFunc = currentConfiguration->bindForeignMethodFn;
-	if (!currentConfiguration) {
+	if (!bindFunc) {
 		errors::wrenAbort("Could not look up foreign method '%s' without binding function.", method.name.c_str());
 	}
 
@@ -125,8 +125,22 @@ std::unique_ptr<ForeignClassInterface> ForeignClassInterface::Lookup(RtModule *m
 		return convert();
 	}
 
-	// TODO configuration-based foreign class lookup
-	abort();
+	if (!currentConfiguration) {
+		errors::wrenAbort("Could not look up foreign class '%s' without configuration set.", className.c_str());
+	}
+
+	WrenBindForeignClassFn bindFunc = currentConfiguration->bindForeignClassFn;
+	if (!bindFunc) {
+		errors::wrenAbort("Could not look up foreign class '%s' without binding function.", className.c_str());
+	}
+
+	fcm = bindFunc(nullptr, mod->moduleName.c_str(), className.c_str());
+	if (!fcm.allocate) {
+		errors::wrenAbort("Could not find foreign class '%s' in module '%s'.", className.c_str(),
+		    mod->moduleName.c_str());
+	}
+
+	return convert();
 }
 
 ObjManaged *ForeignClassInterface::Allocate(ObjManagedClass *cls) {
