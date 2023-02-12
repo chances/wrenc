@@ -8,6 +8,7 @@
 #include "ObjRange.h"
 #include "SlabObjectAllocator.h"
 
+#include <float.h>
 #include <math.h>
 
 ObjNumClass::~ObjNumClass() {}
@@ -134,8 +135,17 @@ ObjRange *ObjNumClass::OperatorDotDotDot(double receiver, double other) {
 	return SlabObjectAllocator::GetInstance()->AllocateNative<ObjRange>(receiver, other, false);
 }
 
-// Trig stuff
+// Constants
+double ObjNumClass::Infinity() { return INFINITY; }
+Value ObjNumClass::Nan() { return 0x7ff8000000000000; }
 double ObjNumClass::Pi() { return M_PI; }
+double ObjNumClass::Tau() { return M_PI * 2; }
+double ObjNumClass::Largest() { return DBL_MAX; }
+double ObjNumClass::Smallest() { return DBL_MIN; }
+double ObjNumClass::MaxSafeInteger() { return 9007199254740991.0; }
+double ObjNumClass::MinSafeInteger() { return -9007199254740991.0; }
+
+// Trig stuff
 double ObjNumClass::Sin(double receiver) { return sin(receiver); }
 double ObjNumClass::Cos(double receiver) { return cos(receiver); }
 double ObjNumClass::Tan(double receiver) { return tan(receiver); }

@@ -27,12 +27,8 @@ test/core/null/type.wren
 test/core/number/from_string_not_string.wren
 test/core/number/from_string_too_large.wren
 test/core/number/from_string.wren
-test/core/number/largest.wren
-test/core/number/maxSafeInteger.wren
-test/core/number/minSafeInteger.wren
 test/core/number/mod_operand_not_num.wren
 test/core/number/mod.wren
-test/core/number/smallest.wren
 test/core/number/truncate.wren
 test/core/number/type.wren
 test/core/object/is.wren

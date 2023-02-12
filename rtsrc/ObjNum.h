@@ -21,7 +21,14 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() bool Is(double receiver, ObjClass *cls);
 	WREN_METHOD(getter) std::string ToString(double receiver);
 
+	WREN_METHOD(getter) static double Infinity();
+	WREN_METHOD(getter) static Value Nan();
 	WREN_METHOD(getter) static double Pi();
+	WREN_METHOD(getter) static double Tau();
+	WREN_METHOD(getter) static double Largest();
+	WREN_METHOD(getter) static double Smallest();
+	WREN_METHOD(getter) static double MaxSafeInteger();
+	WREN_METHOD(getter) static double MinSafeInteger();
 
 	WREN_METHOD(getter) double OperatorMinus(double receiver); // Negation
 	WREN_METHOD(getter) bool OperatorBoolNegate(double receiver);
