@@ -29,3 +29,5 @@ void ObjNull::MarkGCValues(GCMarkOps *ops) {
 	// Never called - it can't be, since no instances of this class are ever created :)
 	abort();
 }
+
+ObjClass *ObjNull::Type() { return Class(); }
