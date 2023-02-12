@@ -46,8 +46,8 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD() bool OperatorGreaterThan(double receiver, ARG("Right operand") double other);
 	WREN_METHOD() bool OperatorGreaterThanEq(double receiver, ARG("Right operand") double other);
 
-	WREN_METHOD() ObjRange *OperatorDotDot(double receiver, double other);
-	WREN_METHOD() ObjRange *OperatorDotDotDot(double receiver, double other);
+	WREN_METHOD() ObjRange *OperatorDotDot(double receiver, ARG("Right hand side of range") double other);
+	WREN_METHOD() ObjRange *OperatorDotDotDot(double receiver, ARG("Right hand side of range") double other);
 
 	// Trig functions
 	WREN_METHOD(getter) double Sin(double receiver);

@@ -54,8 +54,6 @@ test/core/object/is.wren
 test/core/object/nonclass_on_right.wren
 test/core/object/same.wren
 test/core/range/equality.wren
-test/core/range/exclusive_range_wrong_rhs_type.wren
-test/core/range/inclusive_range_wrong_rhs_type.wren
 test/core/range/iterate.wren
 test/core/range/iterator_value.wren
 test/core/string/iterator_value_iterator_too_large.wren
