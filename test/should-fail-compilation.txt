@@ -20,3 +20,7 @@ test/language/module/unknown_module.wren: linking
 # All modules are compiled at compile time, instead of Wren's compiling
 # at first import.
 test/language/module/compile_error/compile_error.wren: 2 # This line is actually for module.wren
+
+# Imports the module "set" that doesn't exist.
+# This is only here so you can run test.py without any filters.
+example/syntax.wren: linking
