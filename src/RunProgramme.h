@@ -13,6 +13,8 @@ class RunProgramme {
 	RunProgramme();
 	~RunProgramme();
 
+	static bool printCommands;
+
 	std::vector<std::string> args;
 
 	/// A list of file descriptors to leave open and accessible from the child process.
@@ -26,4 +28,7 @@ class RunProgramme {
 	bool withEnv = false;
 
 	void Run();
+
+  private:
+	void PrintCommand();
 };

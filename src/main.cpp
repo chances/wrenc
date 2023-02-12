@@ -37,6 +37,7 @@ static int globalDontAssemble = 0;
 static int globalBuildCoreLib = 0;
 static int globalNoDebugInfo = 0;
 static int globalDisableGC = 0;
+static int globalVerbose = 0;
 static SelectedBackend globalSelectedBackend = BACKEND_AUTO;
 
 typedef IBackend *(*createBackendFunc_t)();
@@ -51,6 +52,7 @@ static option options[] = {
     {"help", no_argument, 0, 'h'},
     {"no-debug-info", no_argument, &globalNoDebugInfo, true},
     {"disable-gc", no_argument, &globalDisableGC, true},
+    {"verbose", no_argument, &globalVerbose, true},
 
     // Don't put the LLVM backend behind an ifdef flag, if the user issues it
     // we'll give them a more descriptive warning about LLVM being disabled.
@@ -141,6 +143,7 @@ int main(int argc, char **argv) {
 	backendOpts.includeDebugInfo = !globalNoDebugInfo;
 	backendOpts.forceAssemblyOutput = globalDontAssemble;
 	backendOpts.enableGCSupport = !globalDisableGC;
+	RunProgramme::printCommands = globalVerbose;
 
 	if (needsHelp) {
 		fmt::print("Usage: {} [-hc] [-o «filename»] inputs...\n", argv[0]);
@@ -155,6 +158,7 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
 		optHelp.emplace_back("", "--disable-gc", "Don't include any GC-support code in the generated assembly");
+		optHelp.emplace_back("", "--verbose", "Print diagnostic information, eg linker command line");
 
 		optHelp.emplace_back("", "--backend-qbe", "Use the QBE backend");
 #ifdef USE_LLVM

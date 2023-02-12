@@ -21,10 +21,15 @@ struct ExecData {
 	bool useEnv;
 };
 
+bool RunProgramme::printCommands = false;
+
 RunProgramme::RunProgramme() {}
 RunProgramme::~RunProgramme() {}
 
 void RunProgramme::Run() {
+	if (printCommands)
+		PrintCommand();
+
 	int stdinPipePair[2];
 	if (pipe(stdinPipePair)) {
 		fmt::print(stderr, "Failed to create stdin pipe: {} {}", args.at(0), errno, strerror(errno));
@@ -85,6 +90,40 @@ void RunProgramme::Run() {
 		fmt::print(stderr, "Programme {} failed with status code {}\n", args.at(0), status);
 		exit(1);
 	}
+}
+
+void RunProgramme::PrintCommand() {
+	std::string result;
+
+	for (std::string arg : args) {
+		// First, check if there's anything in this string that would require it to be quoted
+		bool needsQuotes = false;
+		for (char c : arg) {
+			if (c == ' ' || c == '|' || c == '$' || c == '\\' || c == '#')
+				needsQuotes = true;
+			if (c == '"' || c == '\'' || c == '`')
+				needsQuotes = true;
+		}
+
+		result.reserve(result.size() + arg.size() + 10); // 10 for quotes, escapes etc
+
+		if (!result.empty())
+			result.push_back(' ');
+
+		if (needsQuotes)
+			result.push_back('"');
+
+		for (char c : arg) {
+			if (c == '"' || c == '\\')
+				result.push_back('\\');
+			result.push_back(c);
+		}
+
+		if (needsQuotes)
+			result.push_back('"');
+	}
+
+	fmt::print("Running command: {}\n", result);
 }
 
 static int execSubProgramme(void *voidArgs) {
