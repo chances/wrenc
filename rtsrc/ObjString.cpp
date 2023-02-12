@@ -50,12 +50,7 @@ int ObjString::ByteCount_() { return m_value.size(); }
 std::string ObjString::OperatorPlus(std::string other) { return m_value + other; }
 
 std::string ObjString::OperatorSubscript(int index) {
-	// Negative indices count backwards
-	if (index < 0) {
-		index += m_value.size();
-	}
-
-	ValidateIndex(index, "Subscript");
+	index = PrepareIndex(index, "Subscript");
 
 	// Return the unicode codepoint, not the single byte!
 	int length = GetUTF8Length(index);
@@ -116,12 +111,7 @@ int ObjString::ByteAt_(int index) {
 
 int ObjString::IndexOf(std::string target) const { return IndexOf(target, 0); }
 int ObjString::IndexOf(std::string target, int startIndex) const {
-	// Negative indices count backwards
-	if (startIndex < 0) {
-		startIndex += m_value.size();
-	}
-
-	ValidateIndex(startIndex, "Start");
+	startIndex = PrepareIndex(startIndex, "Start");
 
 	if (target.empty())
 		return startIndex;
@@ -175,9 +165,18 @@ std::string ObjString::IteratorValue(int iterator) {
 
 void ObjString::ValidateIndex(int index, const char *argName) const {
 	if (index < 0 || index >= (int)m_value.size()) {
-		// TODO throw Wren error with this exact message
 		errors::wrenAbort("%s out of bounds.", argName);
 	}
+}
+
+int ObjString::PrepareIndex(int index, const char *argName) const {
+	// Negative indices count backwards
+	if (index < 0) {
+		index += m_value.size();
+	}
+
+	ValidateIndex(index, argName);
+	return index;
 }
 
 int ObjString::GetUTF8Length(int index) const {

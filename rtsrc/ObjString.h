@@ -48,6 +48,9 @@ class ObjString : public Obj {
 
 	void ValidateIndex(int index, const char *argName) const;
 
+	// Handles both ValidateIndex and wrap-arounds from negative indexes
+	int PrepareIndex(int index, const char *argName) const;
+
 	// Find the byte length of the UTF-8 codepoint at the given index
 	int GetUTF8Length(int index) const;
 };
