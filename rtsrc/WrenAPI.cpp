@@ -3,6 +3,7 @@
 //
 
 // Use our standard DLL_EXPORT macro for the Wren functions
+#include "common/HashUtil.h"
 #include "common/common.h"
 #define WREN_API DLL_EXPORT
 
@@ -11,24 +12,28 @@
 #include "WrenAPI.h"
 
 #include "Errors.h"
+#include "ObjBool.h"
+#include "ObjFn.h"
 #include "ObjManaged.h"
+#include "ObjString.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
 
 #include "random/random_native.h"
 
-#include <deque>
 #include <optional>
+#include <vector>
 
 static std::optional<WrenConfiguration> currentConfiguration;
+static ModuleNameTransformer moduleNameTransformer = nullptr;
 
 using api_interface::ForeignClassInterface;
 
 // WrenVM instances are only used for FFI-type stuff, so they're
 // basically just a stack.
 struct WrenVM {
-	std::deque<Value> stack;
+	std::vector<Value> stack;
 
 	template <typename T> T *GetSlotAsObject(int slot, const char *typeName, const char *msg) {
 		if (slot < 0)
@@ -50,6 +55,17 @@ struct WrenVM {
 
 		return obj;
 	}
+};
+
+// TODO mark these as GC roots!
+struct WrenHandle {
+	// For value handles
+	Value value = NULL_VAL;
+
+	// For function handles
+	SignatureId signature;
+	std::string signatureStr;
+	int arity = -1;
 };
 
 void *api_interface::lookupForeignMethod(RtModule *mod, const std::string &className,
@@ -136,11 +152,35 @@ ObjManaged *ForeignClassInterface::Allocate(ObjManagedClass *cls) {
 
 void ForeignClassInterface::Finalise(ObjManaged *obj) {}
 
+void wrencSetModuleNameTransformer(ModuleNameTransformer transformer) { moduleNameTransformer = transformer; }
+
+static std::string transformModuleName(const char *name) {
+	if (!moduleNameTransformer)
+		return name;
+
+	char *modified = moduleNameTransformer(name);
+	if (!modified)
+		return name;
+
+	std::string str = modified;
+	free(modified);
+	return str;
+}
+
+static RtModule *lookupModule(const char *name) {
+	std::string newName = transformModuleName(name);
+	return WrenRuntime::Instance().GetModuleByName(newName);
+}
+
 // -------------------------------------
 // --- Wren API function definitions ---
 // -------------------------------------
 
-#define TODO abort()
+#define TODO                                                                                                           \
+	do {                                                                                                               \
+		fprintf(stderr, "TODO implement API method: %s\n", __func__);                                                  \
+		abort();                                                                                                       \
+	} while (1)
 
 // Get slot functions
 
@@ -168,9 +208,12 @@ const char *wrenGetSlotString(WrenVM *vm, int slot) { TODO; }
 
 // Set slot functions
 
-void wrenSetSlotBool(WrenVM *vm, int slot, bool value) { TODO; }
+void wrenSetSlotBool(WrenVM *vm, int slot, bool value) { vm->stack.at(slot) = encode_object(ObjBool::Get(value)); }
 
-void wrenSetSlotBytes(WrenVM *vm, int slot, const char *bytes, size_t length) { TODO; }
+void wrenSetSlotBytes(WrenVM *vm, int slot, const char *bytes, size_t length) {
+	std::string str(bytes, length);
+	vm->stack.at(slot) = encode_object(ObjString::New(std::move(str)));
+}
 
 void wrenSetSlotDouble(WrenVM *vm, int slot, double value) { vm->stack.at(slot) = encode_number(value); }
 
@@ -189,13 +232,19 @@ void *wrenSetSlotNewForeign(WrenVM *vm, int slot, int classSlot, size_t size) {
 	return (void *)obj->fields;
 }
 
-void wrenSetSlotNull(WrenVM *vm, int slot) { TODO; }
-void wrenSetSlotString(WrenVM *vm, int slot, const char *text) { TODO; }
+void wrenSetSlotNull(WrenVM *vm, int slot) { vm->stack.at(slot) = encode_object(nullptr); }
+
+void wrenSetSlotString(WrenVM *vm, int slot, const char *text) {
+	vm->stack.at(slot) = encode_object(ObjString::New(text));
+}
 
 // Misc slot functions
 
-int wrenGetSlotCount(WrenVM *vm) { TODO; }
-void wrenEnsureSlots(WrenVM *vm, int numSlots) { TODO; }
+int wrenGetSlotCount(WrenVM *vm) { return vm->stack.size(); }
+void wrenEnsureSlots(WrenVM *vm, int numSlots) {
+	if ((int)vm->stack.size() < numSlots)
+		vm->stack.resize(numSlots);
+}
 WrenType wrenGetSlotType(WrenVM *vm, int slot) { TODO; }
 
 // List functions
@@ -217,13 +266,70 @@ void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSl
 
 // Handle functions
 
-WrenHandle *wrenGetSlotHandle(WrenVM *vm, int slot) { TODO; }
-void wrenSetSlotHandle(WrenVM *vm, int slot, WrenHandle *handle) { TODO; }
+WrenHandle *wrenGetSlotHandle(WrenVM *vm, int slot) {
+	Value value = vm->stack.at(slot);
+	return new WrenHandle{.value = value};
+}
+void wrenSetSlotHandle(WrenVM *vm, int slot, WrenHandle *handle) { vm->stack.at(slot) = handle->value; }
 
-WrenHandle *wrenMakeCallHandle(WrenVM *vm, const char *signature) { TODO; }
-WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) { TODO; }
+WrenHandle *wrenMakeCallHandle(WrenVM *vm, const char *signatureCStr) {
+	std::string signature = signatureCStr;
+	SignatureId sigId = hash_util::findSignatureId(signature);
 
-void wrenReleaseHandle(WrenVM *vm, WrenHandle *handle) { TODO; }
+	// We need to find the function's arity, so build a *very* quick
+	// and hacky signature parser.
+	int arity = -1;
+	for (char c : signature) {
+		// Wait until we find something that looks like it starts the arguments list
+		if (arity == -1) {
+			if (c == '(' || c == '[')
+				arity = 0;
+			continue;
+		}
+		if (arity != -1 && c == '_')
+			arity++;
+	}
+	if (arity == -1)
+		arity = 0; // Fix up getters
+
+	// Add the receiver
+	arity++;
+
+	return new WrenHandle{.signature = sigId, .signatureStr = signature, .arity = arity};
+}
+WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) {
+	if ((int)vm->stack.size() < method->arity) {
+		errors::wrenAbort("MakeCallHandle: Insufficient stack slots for arity %d", method->arity - 1);
+	}
+
+	// Sadly the receiver type can change between MakeCallHandle and Call, so we have
+	// to do function lookup each time.
+	// TODO remember the last type and function to skip lookups if the receiver type
+	//  hasn't changed.
+	Value receiver = vm->stack.at(0);
+
+	// TODO non-object receivers (null and numbers)
+	Obj *object = (Obj *)get_object_value(receiver);
+	ObjClass *type = object->type;
+
+	FunctionTable::Entry *func = type->LookupMethod(method->signature);
+
+	if (!func) {
+		errors::wrenAbort("MakeCallHandle: %s does not implement '%s'.", type->name.c_str(),
+		    method->signatureStr.c_str());
+	}
+
+	Value result = ObjFn::FunctionDispatch(func->func, nullptr, method->arity, vm->stack.data());
+	vm->stack.at(0) = result;
+
+	// Required for the call.wren test
+	vm->stack.resize(1);
+
+	// TODO error handling
+	return WREN_RESULT_SUCCESS;
+}
+
+void wrenReleaseHandle(WrenVM *vm, WrenHandle *handle) { delete handle; }
 
 // Execution, runtime and fibre functions
 
@@ -233,20 +339,24 @@ void wrenAbortFiber(WrenVM *vm, int slot) { TODO; }
 void *wrenGetUserData(WrenVM *vm) { TODO; }
 void wrenSetUserData(WrenVM *vm, void *userData) { TODO; }
 
-void wrenGetVariable(WrenVM *vm, const char *module, const char *name, int slot) { TODO; }
-bool wrenHasVariable(WrenVM *vm, const char *module, const char *name) { TODO; }
-bool wrenHasModule(WrenVM *vm, const char *module) { TODO; }
+void wrenGetVariable(WrenVM *vm, const char *modName, const char *name, int slot) {
+	RtModule *mod = lookupModule(modName);
+	Value *value = mod->GetOrNull(name);
+	vm->stack.at(slot) = *value;
+}
+bool wrenHasVariable(WrenVM *vm, const char *modName, const char *name) { TODO; }
+bool wrenHasModule(WrenVM *vm, const char *modName) { TODO; }
 
 WrenVM *wrenNewVM(WrenConfiguration *configuration) {
 	// Due to our use of global variables in generated code, there really
 	// can only be one VM.
-	// TODO how we'll match up this API difference.
+	// We'll return a sort-of dummy VM for the user to call functions etc.
 	currentConfiguration = *configuration;
-	return nullptr;
+	return new WrenVM;
 }
 
-void wrenFreeVM(WrenVM *vm) { TODO; }
+void wrenFreeVM(WrenVM *vm) { delete vm; }
 
 void wrenInitConfiguration(WrenConfiguration *configuration) { TODO; }
 
-WrenInterpretResult wrenInterpret(WrenVM *vm, const char *module, const char *source) { TODO; }
+WrenInterpretResult wrenInterpret(WrenVM *vm, const char *modName, const char *source) { TODO; }

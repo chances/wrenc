@@ -44,6 +44,10 @@ class WrenRuntime {
 	/// Similar to GetOrInitModule, but won't initialise a module and works on the core module.
 	RtModule *GetPreInitialisedModule(void *getGlobalsFunction);
 
+	/// Find a module by name. This is for implementing the Wren C API, and should be
+	/// disfavoured for other purposes.
+	RtModule *GetModuleByName(const std::string &name);
+
 	DLL_EXPORT void RunGC();
 
 	RtModule *GetCoreModule();
@@ -60,6 +64,7 @@ class WrenRuntime {
 
 	std::unique_ptr<RtModule> m_coreModule;
 	std::unordered_map<void *, std::unique_ptr<RtModule>> m_userModules;
+	std::unordered_map<std::string, RtModule*> m_modulesByName;
 
 	std::unique_ptr<SlabObjectAllocator> m_objectAllocator;
 	std::unique_ptr<GCTracingScanner> m_gcScanner;

@@ -541,6 +541,17 @@ WREN_API void *wrenGetUserData(WrenVM *vm);
 // Sets user data associated with the WrenVM.
 WREN_API void wrenSetUserData(WrenVM *vm, void *userData);
 
+// ----------------------
+// --- WRENC SPECIFIC ---
+// ----------------------
+
+typedef char *(*ModuleNameTransformer)(const char *name);
+
+// Whenever a module is accessed by name, this function will be run to
+// modify it. This was added for the API test suite, and probably shouldn't
+// be used in other applications.
+WREN_API void wrencSetModuleNameTransformer(ModuleNameTransformer transformer);
+
 #ifdef __cplusplus
 }
 #endif

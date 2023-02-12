@@ -73,6 +73,7 @@ RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
 	std::unique_ptr<RtModule> mod = std::make_unique<RtModule>(globalsTable);
 	RtModule *ptr = mod.get();
 	m_userModules[getGlobalsFunction] = std::move(mod);
+	m_modulesByName[ptr->moduleName] = ptr;
 
 	// Destroy the GC, which will need to rebuild it's function table with the newly-added functions in the
 	// stackmap table.
@@ -115,6 +116,13 @@ RtModule *WrenRuntime::GetPreInitialisedModule(void *getGlobalsFunction) {
 
 	errors::wrenAbort("Could not find supposedly pre-initialised module %p", getGlobalsFunction);
 	return nullptr;
+}
+
+RtModule *WrenRuntime::GetModuleByName(const std::string &name) {
+	auto iter = m_modulesByName.find(name);
+	if (iter == m_modulesByName.end())
+		return nullptr;
+	return iter->second;
 }
 
 void WrenRuntime::RunGC() {
