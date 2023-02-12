@@ -10,6 +10,7 @@
 #include "common/common.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef Value (*wren_main_func_t)();
 
@@ -19,8 +20,14 @@ extern "C" wren_main_func_t wrenStandaloneMainModule;
 // Zero it, and let this definition be replaced when we link something else in
 __attribute__((weak)) wren_main_func_t wrenStandaloneMainModule = nullptr;
 
+static void lastFibreExitHandler() { exit(0); }
+
 int main(int argc, char **argv) {
 	WrenRuntime::Initialise();
+
+	// Set a noop handler for the last fibre exiting. Since there isn't an application
+	// embedding Wren here, we don't care if we end on a useless stack.
+	WrenRuntime::Instance().SetLastFibreExitHandler(lastFibreExitHandler);
 
 	// Initialise and run the main module
 	WrenRuntime::Instance().GetOrInitModuleCaught((void *)wrenStandaloneMainModule);

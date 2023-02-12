@@ -80,6 +80,9 @@ class ObjFibre : public Obj {
 	WREN_METHOD() Value Try();
 	WREN_METHOD() Value Try(Value argument);
 
+	WREN_METHOD() Value Transfer();
+	WREN_METHOD() Value Transfer(Value argument);
+
 	WREN_METHOD(getter) Value IsDone();
 	WREN_METHOD(getter) Value Error();
 
@@ -89,7 +92,7 @@ class ObjFibre : public Obj {
 	struct FibreAbortException;
 
 	/// The main call implementation function, which both Call and Try use
-	Value CallImpl(Value argument, bool isTry);
+	Value CallImpl(Value argument, bool isTry, bool isTransfer);
 
 	/// If the stack isn't created, create it.
 	void CheckStack();

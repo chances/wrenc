@@ -13,6 +13,7 @@
 #include "ObjFn.h"
 #include "ObjString.h"
 #include "SlabObjectAllocator.h"
+#include "WrenRuntime.h"
 
 #include <libunwind.h>
 #include <string.h>
@@ -160,7 +161,7 @@ void ObjFibre::DeleteStack() {
 Value ObjFibre::Call() { return Call(NULL_VAL); }
 
 Value ObjFibre::Call(Value argument) {
-	Value result = CallImpl(argument, false);
+	Value result = CallImpl(argument, false, false);
 
 	// Exceptions propagate through fibres
 	if (m_exception) {
@@ -173,7 +174,7 @@ Value ObjFibre::Call(Value argument) {
 Value ObjFibre::Try() { return Try(NULL_VAL); }
 
 Value ObjFibre::Try(Value argument) {
-	Value result = CallImpl(argument, true);
+	Value result = CallImpl(argument, true, false);
 
 	// Exceptions return a string
 	if (m_exception) {
@@ -183,13 +184,27 @@ Value ObjFibre::Try(Value argument) {
 	return result;
 }
 
-Value ObjFibre::CallImpl(Value argument, bool isTry) {
+Value ObjFibre::Transfer() { return Transfer(NULL_VAL); }
+
+Value ObjFibre::Transfer(Value argument) {
+	// Transferring doesn't set a parent, so it should never return?
+	CallImpl(argument, false, true);
+
+	assert(false && "transferred back!");
+}
+
+Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {
+	// Don't set the actual parent yet, since if call() is called on this
+	// fibre and it's already running, we mustn't overwrite m_parent.
+	ObjFibre *nextParent = isTransfer ? nullptr : currentFibre;
+
 	switch (m_state) {
 	case State::NOT_STARTED:
+		m_parent = nextParent;
 		return StartAndSwitchTo(argument);
 	case State::SUSPENDED:
 		currentFibre->m_state = State::WAITING;
-		m_parent = currentFibre;
+		m_parent = nextParent;
 		return ResumeSuspended(argument, false);
 	case State::RUNNING:
 	case State::WAITING:
@@ -231,7 +246,6 @@ Value ObjFibre::StartAndSwitchTo(Value argument) {
 	    .oldFibre = currentFibre,
 	};
 
-	m_parent = currentFibre;
 	currentFibre->m_state = State::WAITING;
 	m_state = State::RUNNING;
 
@@ -329,8 +343,7 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 	assert(currentFibre == args.newFibre);
 	ObjFibre *next = args.newFibre->m_parent;
 	if (next == nullptr) {
-		fprintf(stderr, "The last fibre finished on the non-main thread!\n");
-		abort();
+		WrenRuntime::Instance().LastFibreExited();
 	}
 	next->ResumeSuspended(result, true);
 

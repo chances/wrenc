@@ -16,6 +16,8 @@ class SlabObjectAllocator;
 
 class WrenRuntime {
   public:
+	typedef void (*FibreExitHandler)();
+
 	DLL_EXPORT static WrenRuntime &Instance();
 
 	/// Do all the first-time Wren setup stuff, like initialising the standard library.
@@ -45,6 +47,12 @@ class WrenRuntime {
 
 	RtModule *GetCoreModule();
 
+	/// Called by ObjFibre when the last fibre exists on a non-main stack.
+	void LastFibreExited();
+
+	/// Sets the handler that defines what happens when the last fibre exits on a non-main stack.
+	DLL_EXPORT void SetLastFibreExitHandler(FibreExitHandler handler);
+
   private:
 	WrenRuntime();
 	~WrenRuntime();
@@ -54,6 +62,8 @@ class WrenRuntime {
 
 	std::unique_ptr<SlabObjectAllocator> m_objectAllocator;
 	std::unique_ptr<GCTracingScanner> m_gcScanner;
+
+	FibreExitHandler m_fibreExitHandler = nullptr;
 
 	// The GC needs special access to all the loaded modules
 	friend GCTracingScanner;
