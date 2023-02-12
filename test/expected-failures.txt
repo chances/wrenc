@@ -26,7 +26,6 @@ test/core/map/value_iterate.wren
 test/core/string/to_string.wren
 
 test/api/user_data.wren
-test/api/foreign_class.wren
 test/api/resolution.wren
 test/api/new_vm.wren
 test/api/call_wren_call_root.wren

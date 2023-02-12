@@ -19,7 +19,14 @@ ObjManaged::ObjManaged(ObjManagedClass *type) : Obj(type) {
 		fields[i] = NULL_VAL;
 	}
 }
-ObjManaged::~ObjManaged() = default;
+ObjManaged::~ObjManaged() {
+	ObjManagedClass *cls = (ObjManagedClass *)type;
+
+	// If this is a foreign class, run it's finaliser.
+	if (cls->foreignClass) {
+		cls->foreignClass->Finalise(this);
+	}
+}
 
 void ObjManaged::MarkGCValues(GCMarkOps *ops) {
 	ObjManagedClass *cls = (ObjManagedClass *)type;

@@ -170,7 +170,14 @@ ObjManaged *ForeignClassInterface::Allocate(ObjManagedClass *cls, Value *args, i
 	return result;
 }
 
-void ForeignClassInterface::Finalise(ObjManaged *obj) {}
+void ForeignClassInterface::Finalise(ObjManaged *obj) {
+	// Note the finaliser is optional, classes that just store data and
+	// don't need any cleanup beyond that being freed don't need them.
+	WrenFinalizerFn fn = (WrenFinalizerFn)m_deallocate;
+	if (fn) {
+		fn(obj->fields);
+	}
+}
 
 void wrencSetModuleNameTransformer(ModuleNameTransformer transformer) { moduleNameTransformer = transformer; }
 
