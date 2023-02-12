@@ -27,24 +27,24 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD(getter) bool OperatorBoolNegate(double receiver);
 	WREN_METHOD(getter) double OperatorBitwiseNegate(double receiver);
 
-	WREN_METHOD() double OperatorPlus(double receiver, double other);
-	WREN_METHOD() double OperatorMinus(double receiver, double other);
-	WREN_METHOD() double OperatorMultiply(double receiver, double other);
-	WREN_METHOD() double OperatorDivide(double receiver, double other);
+	WREN_METHOD() double OperatorPlus(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorMinus(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorMultiply(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorDivide(double receiver, ARG("Right operand") double other);
 
 	// Bitwise binary operators
-	WREN_METHOD() double OperatorAnd(double receiver, double other);
-	WREN_METHOD() double OperatorOr(double receiver, double other);
-	WREN_METHOD() double OperatorXOr(double receiver, double other);
-	WREN_METHOD() double OperatorLeftShift(double receiver, double other);
-	WREN_METHOD() double OperatorRightShift(double receiver, double other);
+	WREN_METHOD() double OperatorAnd(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorOr(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorXOr(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorLeftShift(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() double OperatorRightShift(double receiver, ARG("Right operand") double other);
 
-	WREN_METHOD() bool OperatorEqualTo(double receiver, Value other);
-	WREN_METHOD() bool OperatorNotEqual(double receiver, Value other);
-	WREN_METHOD() bool OperatorLessThan(double receiver, double other);
-	WREN_METHOD() bool OperatorLessThanEq(double receiver, double other);
-	WREN_METHOD() bool OperatorGreaterThan(double receiver, double other);
-	WREN_METHOD() bool OperatorGreaterThanEq(double receiver, double other);
+	WREN_METHOD() bool OperatorEqualTo(double receiver, ARG("Right operand") Value other);
+	WREN_METHOD() bool OperatorNotEqual(double receiver, ARG("Right operand") Value other);
+	WREN_METHOD() bool OperatorLessThan(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() bool OperatorLessThanEq(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() bool OperatorGreaterThan(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() bool OperatorGreaterThanEq(double receiver, ARG("Right operand") double other);
 
 	WREN_METHOD() ObjRange *OperatorDotDot(double receiver, double other);
 	WREN_METHOD() ObjRange *OperatorDotDotDot(double receiver, double other);
@@ -78,6 +78,6 @@ class ObjNumClass : public ObjNativeClass {
 	// Misc non-getter number functions
 	WREN_METHOD() double Pow(double receiver, ARG("Power value") double power);
 	WREN_METHOD() double Clamp(double receiver, ARG("Min value") double min, ARG("Max value") double max);
-	WREN_METHOD() double Min(double receiver, double other);
-	WREN_METHOD() double Max(double receiver, double other);
+	WREN_METHOD() double Min(double receiver, ARG("Other value") double other);
+	WREN_METHOD() double Max(double receiver, ARG("Other value") double other);
 };
