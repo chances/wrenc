@@ -39,5 +39,9 @@ class ObjList : public Obj {
 	WREN_METHOD() Value OperatorSubscript(Value indexOrRange);
 	WREN_METHOD() Value OperatorSubscriptSet(int subscript, Value value);
 
+	// It *does* work without this, using Sequence's implementation of iterating through and counting.
+	// It's just a lot faster this way.
+	WREN_METHOD(getter) int Count() const;
+
 	std::vector<Value> items;
 };

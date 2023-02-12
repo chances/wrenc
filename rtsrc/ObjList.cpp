@@ -175,3 +175,5 @@ Value ObjList::OperatorSubscriptSet(int index, Value value) {
 	items.at(index) = value;
 	return value;
 }
+
+int ObjList::Count() const { return items.size(); }
