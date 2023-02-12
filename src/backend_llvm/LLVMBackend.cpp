@@ -1167,19 +1167,15 @@ void LLVMBackendImpl::GenerateForeignStubs(Module *mod) {
 
 			std::string funcName = cls->info->name + "::" + method->signature->ToString() + "_foreignStub";
 
-			int arity = method->signature->arity;
-			int cArity = arity + 1; // Always has a receiver
-			if (!method->isStatic) {
-				// The receiver ('this') value.
-				arity++;
-			}
+			// All methods, static or not, take a receiver argument.
+			int arity = method->signature->arity + 1;
 
 			// The 'regular' arguments, that the user would see
 			std::vector<llvm::Type *> funcArgs;
 			funcArgs.insert(funcArgs.end(), arity, m_valueType);
 
 			llvm::FunctionType *ft = llvm::FunctionType::get(m_valueType, funcArgs, false);
-			llvm::Function *function = llvm::Function::Create(ft, llvm::Function::PrivateLinkage, funcName, &m_module);
+			llvm::Function *function = llvm::Function::Create(ft, llvm::Function::InternalLinkage, funcName, &m_module);
 
 			stubs[method->signature] = function;
 
@@ -1187,21 +1183,14 @@ void LLVMBackendImpl::GenerateForeignStubs(Module *mod) {
 			m_builder.SetInsertPoint(bb);
 
 			// Create an on-stack array for the variables and stuff them in
-			llvm::Value *array = m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, cArity), "args_array");
+			llvm::Value *array = m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, arity), "args_array");
 
-			// Store the receiver if it's not in the arguments
+			// Grab the class object, the runtime will use this to know what native function to call
 			llvm::Value *clsObject = m_builder.CreateLoad(m_valueType, classData->object, "class_obj");
-			if (method->isStatic) {
-				m_builder.CreateStore(clsObject, array);
-			}
 
 			// Store each of the arguments
 			for (int i = 0; i < arity; i++) {
-				// If this is a static method we add the receiver ourselves, so the 1st
-				// argument goes in the 2nd array position to leave room for it.
-				int arrDest = method->isStatic ? i + 1 : i;
-
-				llvm::Value *entryPtr = m_builder.CreateGEP(m_valueType, array, {CInt::get(m_int32Type, arrDest)});
+				llvm::Value *entryPtr = m_builder.CreateGEP(m_valueType, array, {CInt::get(m_int32Type, i)});
 				m_builder.CreateStore(function->getArg(i), entryPtr);
 			}
 
