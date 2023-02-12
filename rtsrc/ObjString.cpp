@@ -227,6 +227,10 @@ Value ObjString::Iterate(Value previous) { return IterateImpl(previous, true); }
 Value ObjString::IterateByte_(Value previous) { return IterateImpl(previous, false); }
 
 std::string ObjString::IteratorValue(int iterator) {
+	// This is checked by OperatorSubscript anyway, but check it here
+	// to get the correct error message.
+	ValidateIndex(iterator, "Iterator");
+
 	// Note the values from iterateByte_ are only used in wren_core by StringByteSequence, and they're
 	// passed into byteAt_ - so IteratorValue doesn't have to care about them.
 	return OperatorSubscript(encode_number(iterator));
