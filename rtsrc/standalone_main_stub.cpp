@@ -21,8 +21,10 @@ extern "C" wren_main_func_t wrenStandaloneMainModule;
 __attribute__((weak)) wren_main_func_t wrenStandaloneMainModule = nullptr;
 
 static void lastFibreExitHandler(const char *errorMessage) {
-	if (errorMessage)
-		puts(errorMessage);
+	if (errorMessage) {
+		fputs(errorMessage, stderr);
+		exit(1);
+	}
 	exit(0);
 }
 

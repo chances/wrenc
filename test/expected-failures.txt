@@ -8,7 +8,6 @@
 #   test/language
 #   test/core
 
-test/core/fiber/call_root.wren
 test/core/function/arity.wren
 test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren

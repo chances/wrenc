@@ -73,7 +73,7 @@ class ObjFibre : public Obj {
 
 	WREN_METHOD() static void Abort(Value errorMessage);
 
-	WREN_METHOD(getter) static ObjFibre* Current();
+	WREN_METHOD(getter) static ObjFibre *Current();
 
 	WREN_METHOD() Value Call();
 	WREN_METHOD() Value Call(Value argument);

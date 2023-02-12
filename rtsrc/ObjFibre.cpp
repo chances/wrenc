@@ -258,6 +258,12 @@ Value ObjFibre::TransferError(Value message) {
 }
 
 Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {
+	// In regular Wren you're not allowed to call the root fibre, which
+	// is just fine for our implementation.
+	if (this == GetMainThreadFibre() && !isTransfer) {
+		errors::wrenAbort("Cannot call root fiber.");
+	}
+
 	auto setupState = [this, isTransfer]() {
 		// If this is a transfer, don't set the parent. Transferring
 		// back to a fibre that was transferred away from keeps it's
