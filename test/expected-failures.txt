@@ -95,10 +95,6 @@ test/core/range/iterate.wren
 test/core/range/iterator_value.wren
 test/core/range/join_separator_not_string.wren
 test/core/string/concatenation_wrong_arg_type.wren
-test/core/string/contains_argument_not_string.wren
-test/core/string/contains.wren
-test/core/string/ends_with_invalid_arg.wren
-test/core/string/ends_with.wren
 test/core/string/from_byte_too_large.wren
 test/core/string/from_byte_too_small.wren
 test/core/string/from_code_point_too_large.wren
@@ -109,8 +105,6 @@ test/core/string/join_separator_not_string.wren
 test/core/string/multiply.wren
 test/core/string/replace.wren
 test/core/string/split.wren
-test/core/string/starts_with_invalid_arg.wren
-test/core/string/starts_with.wren
 test/core/string/subscript_not_int.wren
 test/core/string/subscript_not_num.wren
 test/core/string/subscript_range_from_not_int.wren

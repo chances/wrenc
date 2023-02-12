@@ -122,6 +122,18 @@ int ObjString::IndexOf(std::string target, int startIndex) const {
 	return position;
 }
 
+bool ObjString::Contains(std::string argument) const { return m_value.find(argument) != std::string::npos; }
+bool ObjString::StartsWith(std::string argument) const {
+	if (m_value.size() < argument.size())
+		return false;
+	return m_value.substr(0, argument.size()) == argument;
+}
+bool ObjString::EndsWith(std::string argument) const {
+	if (m_value.size() < argument.size())
+		return false;
+	return m_value.substr(m_value.size() - argument.size()) == argument;
+}
+
 Value ObjString::IterateImpl(Value previous, bool unicode) const {
 	// Empty strings are obviously empty
 	if (m_value.empty())
