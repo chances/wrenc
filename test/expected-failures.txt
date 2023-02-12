@@ -26,7 +26,6 @@ test/core/map/value_iterate.wren
 test/core/string/to_string.wren
 
 test/api/reset_stack_after_foreign_construct.wren
-test/api/maps.wren
 test/api/get_variable.wren
 test/api/user_data.wren
 test/api/error.wren

@@ -336,19 +336,39 @@ void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) {
 
 // Map functions
 
-void wrenSetSlotNewMap(WrenVM *vm, int slot) { TODO; }
-int wrenGetMapCount(WrenVM *vm, int slot) { TODO; }
-bool wrenGetMapContainsKey(WrenVM *vm, int mapSlot, int keySlot) { TODO; }
+void wrenSetSlotNewMap(WrenVM *vm, int slot) { vm->stack.at(slot) = encode_object(ObjMap::New()); }
+
+int wrenGetMapCount(WrenVM *vm, int slot) {
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(slot, "Map", "GetMapCount");
+	return map->Count();
+}
+
+bool wrenGetMapContainsKey(WrenVM *vm, int mapSlot, int keySlot) {
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapContainsKey");
+	Value key = vm->stack.at(keySlot);
+	return map->ContainsKey(key);
+}
 
 void wrenGetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapElement");
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapValue");
 	Value key = vm->stack.at(keySlot);
 	Value result = map->OperatorSubscript(key);
 	vm->stack.at(valueSlot) = result;
 }
 
-void wrenSetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) { TODO; }
-void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSlot) { TODO; }
+void wrenSetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) {
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "SetMapValue");
+	Value key = vm->stack.at(keySlot);
+	Value value = vm->stack.at(valueSlot);
+	map->OperatorSubscriptSet(key, value);
+}
+
+void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSlot) {
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "RemoveMapValue");
+	Value key = vm->stack.at(keySlot);
+	Value oldValue = map->Remove(key);
+	vm->stack.at(removedValueSlot) = oldValue;
+}
 
 // Handle functions
 
