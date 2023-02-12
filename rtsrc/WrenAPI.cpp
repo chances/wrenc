@@ -14,7 +14,9 @@
 #include "Errors.h"
 #include "ObjBool.h"
 #include "ObjFn.h"
+#include "ObjList.h"
 #include "ObjManaged.h"
+#include "ObjMap.h"
 #include "ObjString.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
@@ -198,8 +200,16 @@ static RtModule *lookupModule(const char *name) {
 
 // Get slot functions
 
-bool wrenGetSlotBool(WrenVM *vm, int slot) { TODO; }
-const char *wrenGetSlotBytes(WrenVM *vm, int slot, int *length) { TODO; }
+bool wrenGetSlotBool(WrenVM *vm, int slot) {
+	ObjBool *obj = vm->GetSlotAsObject<ObjBool>(slot, "Bool", "GetSlotBool");
+	return obj->AsBool();
+}
+
+const char *wrenGetSlotBytes(WrenVM *vm, int slot, int *length) {
+	ObjString *obj = vm->GetSlotAsObject<ObjString>(slot, "String", "GetSlotBytes");
+	*length = obj->m_value.length();
+	return obj->m_value.c_str();
+}
 
 double wrenGetSlotDouble(WrenVM *vm, int slot) {
 	Value value = vm->stack.at(slot);
@@ -218,7 +228,10 @@ void *wrenGetSlotForeign(WrenVM *vm, int slot) {
 	return obj->fields;
 }
 
-const char *wrenGetSlotString(WrenVM *vm, int slot) { TODO; }
+const char *wrenGetSlotString(WrenVM *vm, int slot) {
+	ObjString *obj = vm->GetSlotAsObject<ObjString>(slot, "String", "GetSlotString");
+	return obj->m_value.c_str();
+}
 
 // Set slot functions
 
@@ -255,17 +268,61 @@ void wrenSetSlotString(WrenVM *vm, int slot, const char *text) {
 // Misc slot functions
 
 int wrenGetSlotCount(WrenVM *vm) { return vm->stack.size(); }
+
 void wrenEnsureSlots(WrenVM *vm, int numSlots) {
 	if ((int)vm->stack.size() < numSlots)
 		vm->stack.resize(numSlots);
 }
-WrenType wrenGetSlotType(WrenVM *vm, int slot) { TODO; }
+
+WrenType wrenGetSlotType(WrenVM *vm, int slot) {
+	Value value = vm->stack.at(slot);
+
+	if (is_value_float(value))
+		return WREN_TYPE_NUM;
+
+	Obj *obj = get_object_value(value);
+	if (obj == nullptr)
+		return WREN_TYPE_NULL;
+
+	if (obj->type == ObjBool::Class())
+		return WREN_TYPE_BOOL;
+
+	if (obj->type == ObjList::Class())
+		return WREN_TYPE_LIST;
+
+	if (obj->type == ObjMap::Class())
+		return WREN_TYPE_MAP;
+
+	if (obj->type == ObjString::Class())
+		return WREN_TYPE_STRING;
+
+	// If it's not a managed class (eg, a range) then bail now
+	ObjManagedClass *type = dynamic_cast<ObjManagedClass *>(obj->type);
+	if (!type)
+		return WREN_TYPE_UNKNOWN;
+
+	// A foreign managed class
+	if (type->foreignClass)
+		return WREN_TYPE_FOREIGN;
+
+	// Some non-foreign managed class
+	return WREN_TYPE_UNKNOWN;
+}
 
 // List functions
 
 void wrenSetSlotNewList(WrenVM *vm, int slot) { TODO; }
-int wrenGetListCount(WrenVM *vm, int slot) { TODO; }
-void wrenGetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
+
+int wrenGetListCount(WrenVM *vm, int slot) {
+	ObjList *list = vm->GetSlotAsObject<ObjList>(slot, "List", "GetListCount");
+	return list->Count();
+}
+
+void wrenGetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) {
+	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "GetListElement");
+	vm->stack.at(elementSlot) = list->items.at(index);
+}
+
 void wrenSetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
 void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) { TODO; }
 
@@ -274,7 +331,14 @@ void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) { TO
 void wrenSetSlotNewMap(WrenVM *vm, int slot) { TODO; }
 int wrenGetMapCount(WrenVM *vm, int slot) { TODO; }
 bool wrenGetMapContainsKey(WrenVM *vm, int mapSlot, int keySlot) { TODO; }
-void wrenGetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) { TODO; }
+
+void wrenGetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) {
+	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapElement");
+	Value key = vm->stack.at(keySlot);
+	Value result = map->OperatorSubscript(key);
+	vm->stack.at(valueSlot) = result;
+}
+
 void wrenSetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) { TODO; }
 void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSlot) { TODO; }
 
@@ -371,6 +435,6 @@ WrenVM *wrenNewVM(WrenConfiguration *configuration) {
 
 void wrenFreeVM(WrenVM *vm) { delete vm; }
 
-void wrenInitConfiguration(WrenConfiguration *configuration) { TODO; }
+void wrenInitConfiguration(WrenConfiguration *configuration) { *configuration = {}; }
 
 WrenInterpretResult wrenInterpret(WrenVM *vm, const char *modName, const char *source) { TODO; }

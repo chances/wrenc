@@ -35,7 +35,6 @@ test/api/foreign_class.wren
 test/api/resolution.wren
 test/api/new_vm.wren
 test/api/call_wren_call_root.wren
-test/api/slots.wren
 test/api/lists.wren
 test/api/reset_stack_after_call_abort.wren
 test/api/handle.wren

@@ -15,10 +15,32 @@ extern "C" {
 
 typedef Value (*wren_main_func_t)();
 
+static const char *testModule = nullptr;
+
 static char *nameTransformer(const char *originalName) {
 	// The real module is always named 'test', but the testing
 	// C code doesn't know that.
 	return strdup("test");
+}
+
+static WrenForeignMethodFn bindMethodWrapper(WrenVM *vm, const char *mod, const char *className, bool isStatic,
+    const char *signature) {
+
+	// Edit the module name, to account for the differences in the test environment
+	if (strcmp(mod, "test") == 0) {
+		mod = "./test/api/whatever";
+	}
+
+	return APITest_bindForeignMethod(vm, mod, className, isStatic, signature);
+}
+
+static WrenForeignClassMethods bindClassWrapper(WrenVM *vm, const char *mod, const char *className) {
+	// Edit the module name, to account for the differences in the test environment
+	if (strcmp(mod, "test") == 0) {
+		mod = "./test/api/whatever";
+	}
+
+	return APITest_bindForeignClass(vm, mod, className);
 }
 
 int main(int argc, char **argv) {
@@ -35,6 +57,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	testModule = argv[2];
+
 	void *handle = dlopen(argv[1], RTLD_NOW);
 	if (!handle) {
 		fprintf(stderr, "Failed to load test library: %s\n", dlerror());
@@ -49,7 +73,10 @@ int main(int argc, char **argv) {
 	}
 
 	// Create the VM object
-	WrenConfiguration config = {};
+	WrenConfiguration config = {
+	    .bindForeignMethodFn = bindMethodWrapper,
+	    .bindForeignClassFn = bindClassWrapper,
+	};
 	WrenVM *vm = wrenNewVM(&config);
 
 	// Transform all the module names in the API, to avoid
@@ -60,7 +87,7 @@ int main(int argc, char **argv) {
 	WrenRuntime::Instance().GetOrInitModuleCaught(getGlobalsFunc);
 
 	// Run the API tests
-	int exitCode = APITest_Run(vm, argv[2]);
+	int exitCode = APITest_Run(vm, testModule);
 
 	wrenFreeVM(vm);
 
