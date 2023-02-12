@@ -13,6 +13,7 @@
 
 #include "Errors.h"
 #include "ObjBool.h"
+#include "ObjFibre.h"
 #include "ObjFn.h"
 #include "ObjList.h"
 #include "ObjManaged.h"
@@ -441,7 +442,8 @@ void wrenReleaseHandle(WrenVM *vm, WrenHandle *handle) { delete handle; }
 
 int wrenGetVersionNumber() { return WREN_VERSION_NUMBER; }
 
-void wrenAbortFiber(WrenVM *vm, int slot) { TODO; }
+void wrenAbortFiber(WrenVM *vm, int slot) { ObjFibre::Abort(vm->stack.at(slot)); }
+
 void *wrenGetUserData(WrenVM *vm) { TODO; }
 void wrenSetUserData(WrenVM *vm, void *userData) { TODO; }
 
