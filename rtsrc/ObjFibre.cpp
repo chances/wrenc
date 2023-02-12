@@ -187,24 +187,35 @@ Value ObjFibre::Try(Value argument) {
 Value ObjFibre::Transfer() { return Transfer(NULL_VAL); }
 
 Value ObjFibre::Transfer(Value argument) {
-	// Transferring doesn't set a parent, so it should never return?
-	CallImpl(argument, false, true);
+	// Transferring puts this fibre into the same SUSPENDED state
+	// as yielding, so it can later be transferred back to.
+	Value result = CallImpl(argument, false, true);
 
-	assert(false && "transferred back!");
+	// TODO exception handling
+
+	return result;
 }
 
 Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {
-	// Don't set the actual parent yet, since if call() is called on this
-	// fibre and it's already running, we mustn't overwrite m_parent.
-	ObjFibre *nextParent = isTransfer ? nullptr : currentFibre;
+	auto setupState = [this, isTransfer]() {
+		// If this is a transfer, don't set the parent. Transferring
+		// back to a fibre that was transferred away from keeps it's
+		// parent, so there can effectively be multiple 'stacks' of
+		// fibres that are transferred between.
+		if (!isTransfer)
+			m_parent = currentFibre;
+
+		// Transfers mark their fibre as suspended, so they can be transferred
+		// back into.
+		currentFibre->m_state = isTransfer ? State::SUSPENDED : State::WAITING;
+	};
 
 	switch (m_state) {
 	case State::NOT_STARTED:
-		m_parent = nextParent;
+		setupState();
 		return StartAndSwitchTo(argument);
 	case State::SUSPENDED:
-		currentFibre->m_state = State::WAITING;
-		m_parent = nextParent;
+		setupState();
 		return ResumeSuspended(argument, false);
 	case State::RUNNING:
 	case State::WAITING:
@@ -252,7 +263,6 @@ Value ObjFibre::StartAndSwitchTo(Value argument) {
 	    .oldFibre = currentFibre,
 	};
 
-	currentFibre->m_state = State::WAITING;
 	m_state = State::RUNNING;
 
 	// Save the current context, so our stack can be unwound by the GC. It's

@@ -43,7 +43,7 @@ class ObjFibre : public Obj {
 	enum class State {
 		NOT_STARTED,
 		RUNNING,
-		SUSPENDED, // This fibre called yield and is waiting to be resumed
+		SUSPENDED, // This fibre called yield or transfer and is waiting to be resumed
 		WAITING,   // This fibre called another fibre and is waiting for that to yield
 		FINISHED,
 		FAILED,
