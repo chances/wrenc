@@ -18,12 +18,18 @@
 
 static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
+enum class OutputType {
+	OT_EXEC,
+	OT_LIB_STATIC,
+	OT_LIB_SHARED,
+};
+
 std::string filenameForFd(int fd);
 static int runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
     const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
-static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles);
+static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles, OutputType type);
 
 static std::string compilerInstallDir;
 
@@ -53,6 +59,7 @@ static option options[] = {
     {"no-debug-info", no_argument, &globalNoDebugInfo, true},
     {"disable-gc", no_argument, &globalDisableGC, true},
     {"verbose", no_argument, &globalVerbose, true},
+    {"output-type", required_argument, 0, 't'},
 
     // Don't put the LLVM backend behind an ifdef flag, if the user issues it
     // we'll give them a more descriptive warning about LLVM being disabled.
@@ -86,14 +93,16 @@ int main(int argc, char **argv) {
 	}
 
 	bool needsHelp = false; // Print the help page?
+	bool optError = false;
 	bool compileOnly = false;
 	std::string outputFile;
 	std::vector<std::string> moduleNames;
 
 	CompilationOptions backendOpts;
+	OutputType outputType = OutputType::OT_EXEC;
 
 	while (true) {
-		int opt = getopt_long(argc, argv, "o:m:O:ch", options, nullptr);
+		int opt = getopt_long(argc, argv, "o:m:O:t:ch", options, nullptr);
 
 		// -1 means we ran out of options
 		if (opt == -1)
@@ -123,6 +132,21 @@ int main(int argc, char **argv) {
 				backendOpts.optimisationLevel = WrenOptimisationLevel::FAST;
 			} else {
 				fmt::print(stderr, "Invalid optimisation level '{}', see --help\n", argv[0]);
+				optError = true;
+			}
+			break;
+		}
+		case 't': {
+			std::string arg = optarg;
+			if (arg == "exec") {
+				outputType = OutputType::OT_EXEC;
+			} else if (arg == "static") {
+				outputType = OutputType::OT_LIB_STATIC;
+			} else if (arg == "shared") {
+				outputType = OutputType::OT_LIB_SHARED;
+			} else {
+				fmt::print(stderr, "Invalid output type '{}', see --help\n", argv[0]);
+				optError = true;
 			}
 			break;
 		}
@@ -154,6 +178,8 @@ int main(int argc, char **argv) {
 		optHelp.emplace_back("-o file", "--output=file", "Write the output to the file [file]");
 		optHelp.emplace_back("-m name", "--module=name", "Sets the module name. Repeat for multiple files.");
 		optHelp.emplace_back("-O level", "--optimise=level", "Sets the optimisation mode, one of 'none' or 'fast'");
+		optHelp.emplace_back("-t type", "--output-type=type",
+		    "Sets the type of file to make, one of exec, static or shared.");
 
 		optHelp.emplace_back("", "--dont-assemble", "Write out an assembly file");
 		optHelp.emplace_back("", "--no-debug-info", "Don't include any debugging information");
@@ -190,6 +216,11 @@ int main(int argc, char **argv) {
 
 		exit(0);
 	}
+
+	// Check for option errors after printing the help page, if requested.
+	// This is so you can toss -h onto a malformed command.
+	if (optError)
+		return 1;
 
 	if (outputFile.empty()) {
 		fmt::print(stderr, "{}: missing option --output. Use --help for more information.\n", argv[0]);
@@ -248,7 +279,8 @@ int main(int argc, char **argv) {
 			input.exceptions(std::ios::badbit | std::ios::failbit);
 			input.open(sourceFile);
 			// TODO add a proper way of selecting the main module
-			CompilationResult result = runCompiler(input, thisModuleName, sourceFile, sourceFileId == 0, &backendOpts);
+			bool isMain = sourceFileId == 0 && outputType == OutputType::OT_EXEC;
+			CompilationResult result = runCompiler(input, thisModuleName, sourceFile, isMain, &backendOpts);
 			if (!result.successful) {
 				hitError = true;
 				continue;
@@ -342,7 +374,7 @@ int main(int argc, char **argv) {
 			runAssembler(assemblyFiles, "/tmp/wren-output-test.o");
 			objectFiles.push_back("/tmp/wren-output-test.o");
 		}
-		runLinker(outputFile, objectFiles);
+		runLinker(outputFile, objectFiles, outputType);
 	}
 }
 
@@ -508,14 +540,13 @@ static void runAssembler(const std::vector<int> &assemblyFDs, const std::string 
 	prog.Run();
 }
 
-static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles) {
+static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles, OutputType type) {
 	RunProgramme prog;
 	prog.args.push_back("ld.gold"); // Using lld would be even better, but it can't find -lc by itself
 	prog.args.push_back("-o");
 	prog.args.push_back(executableFile);
 
-	// Link it to the standalone programme stub and the runtime library
-	prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub");
+	// Link it to the runtime library
 	prog.args.push_back(compilerInstallDir + "/libwren-rtlib.so");
 
 	// Tell the dynamic link loader where to find the runtime library
@@ -531,6 +562,26 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 	// Generate an eh_frame header, which allows runtime access to the exception information.
 	// This is required for C++ to throw exceptions through our generated functions.
 	prog.args.push_back("--eh-frame-hdr");
+
+	switch (type) {
+	case OutputType::OT_EXEC: {
+		// Link it to the standalone programme stub
+		prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub");
+		break;
+	}
+	case OutputType::OT_LIB_SHARED: {
+		prog.args.push_back("-shared");
+		break;
+	}
+	case OutputType::OT_LIB_STATIC: {
+		fprintf(stderr, "Linking static libraries are not yet supported.\n");
+		exit(1);
+		break;
+	}
+	default:
+		fprintf(stderr, "invalid linker output type %d\n", (int)type);
+		abort();
+	}
 
 	prog.withEnv = true;
 	prog.Run();
