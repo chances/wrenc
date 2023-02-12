@@ -74,6 +74,8 @@ class ObjFibre : public Obj {
 	[[noreturn]] // Has to be on a different line to avoid confusing the binding generator
 	WREN_METHOD() static void Abort(std::string errorMessage);
 
+	WREN_METHOD(getter) static ObjFibre* Current();
+
 	WREN_METHOD() Value Call();
 	WREN_METHOD() Value Call(Value argument);
 

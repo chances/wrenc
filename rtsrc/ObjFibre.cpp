@@ -104,13 +104,19 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 ObjFibre *ObjFibre::New(ObjFn *func) {
 	// If we're just starting up (and thus the fibre call stack is empty), then place the
 	// main thread fibre on it. There has to be something there to be able to switch properly.
-	if (currentFibre == nullptr) {
-		currentFibre = GetMainThreadFibre();
-	}
+	// Current() does this, so just use it.
+	Current();
 
 	ObjFibre *fibre = SlabObjectAllocator::GetInstance()->AllocateNative<ObjFibre>();
 	fibre->m_function = func;
 	return fibre;
+}
+
+ObjFibre *ObjFibre::Current() {
+	if (currentFibre == nullptr) {
+		currentFibre = GetMainThreadFibre();
+	}
+	return currentFibre;
 }
 
 void ObjFibre::CheckStack() {
