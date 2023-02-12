@@ -50,7 +50,6 @@ test/core/number/from_string_too_large.wren
 test/core/number/from_string.wren
 test/core/number/greater_than_equal_operand_not_num.wren
 test/core/number/greater_than_operand_not_num.wren
-test/core/number/is_infinity.wren
 test/core/number/largest.wren
 test/core/number/less_than_equal_operand_not_num.wren
 test/core/number/less_than_operand_not_num.wren
