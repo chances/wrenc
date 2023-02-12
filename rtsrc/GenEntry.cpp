@@ -18,7 +18,6 @@
 #include "ObjNull.h"
 #include "ObjNum.h"
 #include "ObjRange.h"
-#include "ObjSequence.h"
 #include "ObjString.h"
 #include "ObjSystem.h"
 #include "RtModule.h"
@@ -311,7 +310,6 @@ Value wren_get_core_class_value(const char *name) {
 	GET_CLASS("Range", ObjRange::Class()->ToValue());
 	GET_CLASS("Null", ObjNull::Class()->ToValue());
 	GET_CLASS("Map", ObjMap::Class()->ToValue());
-	GET_CLASS("Sequence", ObjSequence::Class()->ToValue());
 
 #undef GET_CLASS
 

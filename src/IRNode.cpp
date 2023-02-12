@@ -60,7 +60,6 @@ static std::unordered_map<std::string, int> buildSysVarNames(bool cppOnly) {
 	    "Num",
 	    "Object",
 	    "Range",
-	    "Sequence",
 	    "String",
 	    "System",
 	};
@@ -69,6 +68,7 @@ static std::unordered_map<std::string, int> buildSysVarNames(bool cppOnly) {
 	// in the core module. Unlike the above, they don't have a part
 	// of them written in C++.
 	std::vector<const char *> softNames = {
+	    "Sequence",
 	    "MapSequence",
 	    "SkipSequence",
 	    "TakeSequence",
