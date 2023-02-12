@@ -31,6 +31,11 @@
 static std::optional<WrenConfiguration> currentConfiguration;
 static ModuleNameTransformer moduleNameTransformer = nullptr;
 
+// Since it's not really possible to have multiple independent
+// VMs, trying to store this inside the VM and keep track of
+// it across function calls and fibres would be a huge pain.
+static void *vmUserData = nullptr;
+
 using api_interface::ForeignClassInterface;
 
 // WrenVM instances are only used for FFI-type stuff, so they're
@@ -472,8 +477,8 @@ int wrenGetVersionNumber() { return WREN_VERSION_NUMBER; }
 
 void wrenAbortFiber(WrenVM *vm, int slot) { ObjFibre::Abort(vm->stack.at(slot)); }
 
-void *wrenGetUserData(WrenVM *vm) { TODO; }
-void wrenSetUserData(WrenVM *vm, void *userData) { TODO; }
+void *wrenGetUserData(WrenVM *vm) { return vmUserData; }
+void wrenSetUserData(WrenVM *vm, void *userData) { vmUserData = userData; }
 
 void wrenGetVariable(WrenVM *vm, const char *modName, const char *name, int slot) {
 	RtModule *mod = lookupModule(modName);
@@ -496,6 +501,7 @@ WrenVM *wrenNewVM(WrenConfiguration *configuration) {
 	// can only be one VM.
 	// We'll return a sort-of dummy VM for the user to call functions etc.
 	currentConfiguration = *configuration;
+	vmUserData = configuration->userData;
 	return new WrenVM;
 }
 
