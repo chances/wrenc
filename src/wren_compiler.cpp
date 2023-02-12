@@ -3300,10 +3300,12 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 		parentTypeExpr = nullptr;
 	}
 
-	// Stop users here if they're trying to extend a core type
+	// Stop users here if they're trying to extend a core C++ type
 	// Unsurprisingly, we make an exception for wren_core
 	ExprSystemVar *systemParent = dynamic_cast<ExprSystemVar *>(parentTypeExpr);
-	if (systemParent && systemParent->name != "Object" && !compiler->parser->compilingInternal) {
+	if (systemParent && ExprSystemVar::CPP_SYSTEM_VAR_NAMES.contains(systemParent->name) &&
+	    systemParent->name != "Object" && !compiler->parser->compilingInternal) {
+
 		error(compiler, "Class %s cannot extend from system type %s", className.c_str(), systemParent->name.c_str());
 	}
 
