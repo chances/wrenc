@@ -20,10 +20,10 @@ ObjClass *ObjRange::Class() {
 
 ObjRange::ObjRange(double from, double to, bool inclusive) : Obj(Class()), from(from), to(to), inclusive(inclusive) {}
 
-int ObjRange::From() const { return from; }
-int ObjRange::To() const { return to; }
-int ObjRange::Min() const { return std::min(from, to); }
-int ObjRange::Max() const { return std::max(from, to); }
+double ObjRange::From() const { return from; }
+double ObjRange::To() const { return to; }
+double ObjRange::Min() const { return std::min(from, to); }
+double ObjRange::Max() const { return std::max(from, to); }
 bool ObjRange::IsInclusive() const { return inclusive; }
 
 Value ObjRange::Iterate(Value prev) const {

@@ -18,10 +18,10 @@ class ObjRange : public Obj {
 	double to = 0;
 	bool inclusive = false;
 
-	WREN_METHOD(getter) int From() const;
-	WREN_METHOD(getter) int To() const;
-	WREN_METHOD(getter) int Min() const;
-	WREN_METHOD(getter) int Max() const;
+	WREN_METHOD(getter) double From() const;
+	WREN_METHOD(getter) double To() const;
+	WREN_METHOD(getter) double Min() const;
+	WREN_METHOD(getter) double Max() const;
 	WREN_METHOD(getter) bool IsInclusive() const;
 	WREN_METHOD() Value Iterate(Value prev) const;
 	WREN_METHOD() double IteratorValue(double value) const;
