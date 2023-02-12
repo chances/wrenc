@@ -46,7 +46,7 @@ struct ObjFibre::ResumeFibreArgs {
 };
 
 struct ObjFibre::FibreAbortException {
-	std::string message;
+	Value message;
 };
 
 int ObjFibre::stackSize = 0;
@@ -188,9 +188,9 @@ Value ObjFibre::Try() { return Try(NULL_VAL); }
 Value ObjFibre::Try(Value argument) {
 	Value result = CallImpl(argument, true, false);
 
-	// Exceptions return a string
+	// Exceptions return their error value
 	if (m_exception) {
-		return encode_object(ObjString::New(m_exception->message));
+		return m_exception->message;
 	}
 
 	return result;
@@ -217,7 +217,7 @@ Value ObjFibre::Transfer(Value argument) {
 	return result;
 }
 
-Value ObjFibre::TransferError(std::string message) {
+Value ObjFibre::TransferError(Value message) {
 	switch (m_state) {
 	case State::NOT_STARTED:
 	case State::SUSPENDED:
@@ -249,7 +249,7 @@ Value ObjFibre::TransferError(std::string message) {
 
 	// Switch to it's parent
 	if (m_parent == nullptr) {
-		WrenRuntime::Instance().LastFibreExited(message);
+		WrenRuntime::Instance().LastFibreExited(Obj::ToString(message));
 	}
 	m_parent->ResumeSuspended(NULL_VAL, true);
 
@@ -430,7 +430,7 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 	if (next == nullptr) {
 		std::optional<std::string> errorMessage;
 		if (args.newFibre->m_exception)
-			errorMessage = args.newFibre->m_exception->message;
+			errorMessage = Obj::ToString(args.newFibre->m_exception->message);
 		WrenRuntime::Instance().LastFibreExited(errorMessage);
 	}
 	next->ResumeSuspended(result, true);
@@ -439,7 +439,11 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 	abort();
 }
 
-void ObjFibre::Abort(std::string message) {
+void ObjFibre::Abort(Value message) {
+	// A null message is a no-op.
+	if (message == NULL_VAL)
+		return;
+
 	throw FibreAbortException{
 	    .message = message,
 	};
@@ -450,7 +454,7 @@ std::optional<std::string> ObjFibre::RunAndCatchAbort(const std::function<void()
 		func();
 		return std::nullopt;
 	} catch (const FibreAbortException &ex) {
-		return ex.message;
+		return Obj::ToString(ex.message);
 	}
 }
 
@@ -462,7 +466,7 @@ Value ObjFibre::IsDone() {
 Value ObjFibre::Error() {
 	if (!m_exception)
 		return NULL_VAL;
-	return encode_object(ObjString::New(m_exception->message));
+	return m_exception->message;
 }
 
 bool ObjFibre::IsSuspended() const { return m_state == State::SUSPENDED || m_state == State::WAITING; }

@@ -4,6 +4,7 @@
 
 #include "Errors.h"
 #include "ObjFibre.h"
+#include "ObjString.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -20,7 +21,11 @@ using namespace errors;
 	va_end(args);
 
 	// TODO print a stack trace
-	ObjFibre::Abort(buffer);
+	ObjFibre::Abort(encode_object(ObjString::New(buffer)));
+
+	// Abort should only return if we pass null to it, but keep
+	// the compilers happy.
+	abort();
 }
 
 double errors::validateNum(Value arg, const char *argName) {

@@ -71,8 +71,7 @@ class ObjFibre : public Obj {
 	WREN_METHOD() static Value Yield();
 	WREN_METHOD() static Value Yield(Value argument);
 
-	[[noreturn]] // Has to be on a different line to avoid confusing the binding generator
-	WREN_METHOD() static void Abort(std::string errorMessage);
+	WREN_METHOD() static void Abort(Value errorMessage);
 
 	WREN_METHOD(getter) static ObjFibre* Current();
 
@@ -85,7 +84,7 @@ class ObjFibre : public Obj {
 	WREN_METHOD() Value Transfer();
 	WREN_METHOD() Value Transfer(Value argument);
 
-	WREN_METHOD() Value TransferError(std::string message);
+	WREN_METHOD() Value TransferError(Value message);
 
 	WREN_METHOD(getter) Value IsDone();
 	WREN_METHOD(getter) Value Error();

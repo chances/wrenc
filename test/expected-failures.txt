@@ -8,10 +8,7 @@
 #   test/language
 #   test/core
 
-test/core/fiber/abort_not_string.wren
-test/core/fiber/abort_null.wren
 test/core/fiber/call_root.wren
-test/core/fiber/transfer_error_not_string.wren
 test/core/function/arity.wren
 test/core/function/call_extra_arguments.wren
 test/core/function/call_missing_arguments.wren
