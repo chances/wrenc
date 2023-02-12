@@ -81,10 +81,10 @@ class ObjFn : public Obj {
 	// there's a non-zero number of upvalues (if there's no upvalues, there's no need to waste a register).
 	std::vector<Value *> upvaluePointers;
 
-  private:
 	// Implemented in bindings.gen.cpp
 	// If upvaluePack is nullptr, then it won't be passed as an argument
-	static Value FunctionDispatch(void *fnPtr, void *upvaluePack, int arity, const std::initializer_list<Value> &args);
+	// This is only public for the Wren API - think hard about whether it's really necessary before using it!
+	static Value FunctionDispatch(void *fnPtr, void *upvaluePack, int arity, const Value *args);
 };
 
 /// Stores information about a closure, allocated on module load.

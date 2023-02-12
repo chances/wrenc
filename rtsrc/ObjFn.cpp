@@ -71,7 +71,7 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 		upvalueData = upvaluePointers.data();
 	}
 
-	Value result = FunctionDispatch(spec->funcPtr, upvalueData, spec->arity, values);
+	Value result = FunctionDispatch(spec->funcPtr, upvalueData, spec->arity, values.begin());
 
 	return result;
 }
