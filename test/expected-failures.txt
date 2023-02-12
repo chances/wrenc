@@ -31,7 +31,6 @@ test/core/number/mod.wren
 test/core/number/truncate.wren
 test/core/number/type.wren
 test/core/object/is.wren
-test/core/object/nonclass_on_right.wren
 test/core/object/same.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren

@@ -18,7 +18,7 @@ class ObjNumClass : public ObjNativeClass {
 
 	static ObjNumClass *Instance();
 
-	WREN_METHOD() bool Is(double receiver, ObjClass *cls);
+	WREN_METHOD() bool Is(double receiver, ARG("Right operand") ObjClass *cls);
 	WREN_METHOD(getter) std::string ToString(double receiver);
 
 	WREN_METHOD(getter) static double Infinity();

@@ -24,6 +24,6 @@ class ObjNull : public Obj {
 	WREN_METHOD() bool OperatorEqualTo(Value other);
 	WREN_METHOD() bool OperatorNotEqual(Value other);
 	WREN_METHOD(getter) bool OperatorBoolNegate();
-	WREN_METHOD() bool Is(ObjClass *cls);
+	WREN_METHOD() bool Is(ARG("Right operand") ObjClass *cls);
 	WREN_METHOD(getter) ObjClass *Type();
 };
