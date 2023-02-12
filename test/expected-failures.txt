@@ -21,12 +21,8 @@ test/core/fiber/transfer_error.wren
 test/core/fiber/transfer_indirect_reenter.wren
 test/core/fiber/transfer_return_call_value.wren
 test/core/fiber/transfer_return_transfer_value.wren
-test/core/fiber/transfer_to_done.wren
-test/core/fiber/transfer_to_error.wren
 test/core/fiber/transfer_with_value_direct_reenter.wren
 test/core/fiber/transfer_with_value_indirect_reenter.wren
-test/core/fiber/transfer_with_value_to_done.wren
-test/core/fiber/transfer_with_value_to_error.wren
 test/core/fiber/yield_from_main.wren
 test/core/fiber/yield_return_transfer_value.wren
 test/core/fiber/yield_with_no_caller.wren

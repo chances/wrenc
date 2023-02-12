@@ -210,15 +210,21 @@ Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {
 	case State::WAITING:
 		errors::wrenAbort("Fiber has already been called.");
 	case State::FINISHED:
-		if (isTry)
+		if (isTransfer) {
+			errors::wrenAbort("Cannot transfer to a finished fiber.");
+		} else if (isTry) {
 			errors::wrenAbort("Cannot try a finished fiber.");
-		else
+		} else {
 			errors::wrenAbort("Cannot call a finished fiber.");
+		}
 	case State::FAILED:
-		if (isTry)
+		if (isTransfer) {
+			errors::wrenAbort("Cannot transfer to an aborted fiber.");
+		} else if (isTry) {
 			errors::wrenAbort("Cannot try an aborted fiber.");
-		else
+		} else {
 			errors::wrenAbort("Cannot call an aborted fiber.");
+		}
 	}
 	assert(0 && "Invalid fibre state");
 }
