@@ -26,11 +26,7 @@ bool ObjNumClass::InheritsMethods() { return false; }
 // Clang-tidy will think all these functions can be made static, which we don't want
 // NOLINTBEGIN(readability-convert-member-functions-to-static)
 
-bool ObjNumClass::Is(double receiver, ObjClass *cls) {
-	// All numbers are pretending to be an instance of Num, and we're that instance.
-	// Thus a simple pointer check will do.
-	return cls == this;
-}
+bool ObjNumClass::Is(double receiver, ObjClass *cls) { return Extends(cls); }
 
 std::string ObjNumClass::ToString(double receiver) {
 	// Copied and modified from wren_value.c:wrenNumToString
