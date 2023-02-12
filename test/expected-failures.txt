@@ -22,8 +22,6 @@ test/core/function/call_missing_arguments.wren
 test/core/function/new_wrong_arg_type.wren
 test/core/function/to_string.wren
 test/core/list/join_separator_not_string.wren
-test/core/list/multiply_negative.wren
-test/core/list/multiply_not_int.wren
 test/core/list/multiply.wren
 test/core/list/plus_not_iterable.wren
 test/core/list/plus.wren
@@ -96,12 +94,6 @@ test/core/range/inclusive_range_wrong_rhs_type.wren
 test/core/range/iterate.wren
 test/core/range/iterator_value.wren
 test/core/range/join_separator_not_string.wren
-test/core/sequence/skip_negative.wren
-test/core/sequence/skip_not_int.wren
-test/core/sequence/skip.wren
-test/core/sequence/take_negative.wren
-test/core/sequence/take_not_int.wren
-test/core/sequence/take.wren
 test/core/string_byte_sequence/iterator_value.wren
 test/core/string_byte_sequence/subscript.wren
 test/core/string_code_point_sequence/count.wren
@@ -120,8 +112,6 @@ test/core/string/from_code_point_too_small.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren
-test/core/string/multiply_negative.wren
-test/core/string/multiply_not_int.wren
 test/core/string/multiply.wren
 test/core/string/replace.wren
 test/core/string/split.wren

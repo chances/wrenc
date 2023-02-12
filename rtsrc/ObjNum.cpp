@@ -168,6 +168,8 @@ double ObjNumClass::Fraction(double receiver) {
 }
 double ObjNumClass::Exp(double receiver) { return exp(receiver); }
 
+bool ObjNumClass::IsInteger(double receiver) { return (int)receiver == receiver; }
+
 // Misc non-getter number functions
 double ObjNumClass::Pow(double receiver, double power) { return pow(receiver, power); }
 double ObjNumClass::Clamp(double receiver, double minValue, double maxValue) {

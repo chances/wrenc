@@ -71,6 +71,8 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD(getter) double Fraction(double receiver);
 	WREN_METHOD(getter) double Exp(double receiver);
 
+	WREN_METHOD(getter) bool IsInteger(double receiver);
+
 	// Misc non-getter number functions
 	WREN_METHOD() double Pow(double receiver, ARG("Power value") double power);
 	WREN_METHOD() double Clamp(double receiver, ARG("Min value") double min, ARG("Max value") double max);
