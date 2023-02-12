@@ -99,10 +99,6 @@ test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/join_separator_not_string.wren
 test/core/string/multiply.wren
-test/core/string/replace.wren
-test/core/string/split.wren
-test/core/string/subscript_not_int.wren
-test/core/string/subscript_not_num.wren
 test/core/string/subscript_range_from_not_int.wren
 test/core/string/subscript_range_from_too_large.wren
 test/core/string/subscript_range_from_too_small.wren
@@ -111,8 +107,4 @@ test/core/string/subscript_range_to_exclusive_too_small.wren
 test/core/string/subscript_range_to_not_int.wren
 test/core/string/subscript_range_to_too_large.wren
 test/core/string/subscript_range_to_too_small.wren
-test/core/string/subscript_range.wren
 test/core/string/to_string.wren
-test/core/string/trim_end.wren
-test/core/string/trim_start.wren
-test/core/string/trim.wren

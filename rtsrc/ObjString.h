@@ -30,7 +30,7 @@ class ObjString : public Obj {
 	// Maybe we should implement Count for performance? Otherwise wren_core does it.
 	WREN_METHOD(getter) int ByteCount_();
 	WREN_METHOD() std::string OperatorPlus(std::string other);
-	WREN_METHOD() std::string OperatorSubscript(int index);
+	WREN_METHOD() std::string OperatorSubscript(Value indexOrRange);
 	WREN_METHOD() int CodePointAt_(int index);
 	WREN_METHOD() int ByteAt_(int index);
 
@@ -49,10 +49,10 @@ class ObjString : public Obj {
   private:
 	Value IterateImpl(Value previous, bool unicode) const;
 
-	void ValidateIndex(int index, const char *argName) const;
+	void ValidateIndex(int index, const char *argName, bool exclusive = false) const;
 
 	// Handles both ValidateIndex and wrap-arounds from negative indexes
-	int PrepareIndex(int index, const char *argName) const;
+	int PrepareIndex(int index, const char *argName, bool exclusive = false) const;
 
 	// Find the byte length of the UTF-8 codepoint at the given index
 	int GetUTF8Length(int index) const;

@@ -5,7 +5,10 @@
 #include "ObjString.h"
 #include "Errors.h"
 #include "ObjBool.h"
+#include "ObjRange.h"
 #include "SlabObjectAllocator.h"
+
+#include <algorithm>
 
 class ObjStringClass : public ObjNativeClass {
   public:
@@ -54,8 +57,90 @@ int ObjString::ByteCount_() { return m_value.size(); }
 
 std::string ObjString::OperatorPlus(std::string other) { return m_value + other; }
 
-std::string ObjString::OperatorSubscript(int index) {
-	index = PrepareIndex(index, "Subscript");
+std::string ObjString::OperatorSubscript(Value indexOrRange) {
+	// Range support
+	if (is_object(indexOrRange)) {
+		ObjRange *range = dynamic_cast<ObjRange *>(get_object_value(indexOrRange));
+
+		if (!range) {
+			errors::wrenAbort("Subscript must be a number or a range.");
+		}
+
+		int start = (int)range->From();
+		int end = (int)range->To();
+
+		if (start < 0)
+			start += m_value.size();
+		if (end < 0)
+			end += m_value.size();
+
+		bool isEmptyRange = !range->IsInclusive() && start == end;
+
+		// Make end inclusive. Note that if the range is 'backwards' (where
+		// end<start), then if you count backwards and stop earlier or later
+		// it'll be the opposite of if you're counting forwards, hence the
+		// need to treat these two cases differently.
+		if (!range->IsInclusive()) {
+			if (start <= end)
+				end--;
+			else
+				end++;
+		}
+
+		// It's legal to ask for a zero-length string at the end of any string.
+		// Handle it here so we don't have to modify our bounds-checking for it.
+		if (start == m_value.size() && end == m_value.size() - 1)
+			return "";
+
+		// Handle the range going backwards - if so, we'll later reverse the result.
+		// We have to be careful not to make it impossible to express empty ranges here, though.
+		bool reversed = start > end && !isEmptyRange;
+		if (reversed) {
+			std::swap(start, end);
+		}
+
+		// Our range is currently inclusive, since that makes it easier when we're
+		// dealing with reversing the string. Now we've decided which value is
+		// the end, increment it to make the range exclusive.
+		end++;
+
+		ValidateIndex(start, "a");
+		ValidateIndex(end, "b", true);
+
+		// If our start index lands in the middle of a codepoint, move it forwards until it's not.
+		// This avoids returning cut-up codepoints.
+		while (start < end) {
+			if ((m_value[start] & 0xc0) != 0x80)
+				break;
+			start++;
+		}
+
+		// If we end in the middle of a codepoint, seek to the end of it.
+		while (end < m_value.size()) {
+			if ((m_value[end] & 0xc0) != 0x80)
+				break;
+			end++;
+		}
+
+		int num = end - start;
+
+		std::string slice = m_value.substr(start, num);
+
+		// Reverse the contents if necessary
+		if (reversed) {
+			std::reverse(slice.begin(), slice.end());
+		}
+
+		return slice;
+	}
+
+	double num = get_number_value(indexOrRange);
+	int index = (int)num;
+	if (index != num) {
+		errors::wrenAbort("Subscript must be an integer.");
+	}
+
+	index = PrepareIndex(index, "Subscript", false);
 
 	// Return the unicode codepoint, not the single byte!
 	int length = GetUTF8Length(index);
@@ -181,22 +266,28 @@ Value ObjString::IterateByte_(Value previous) { return IterateImpl(previous, fal
 std::string ObjString::IteratorValue(int iterator) {
 	// Note the values from iterateByte_ are only used in wren_core by StringByteSequence, and they're
 	// passed into byteAt_ - so IteratorValue doesn't have to care about them.
-	return OperatorSubscript(iterator);
+	return OperatorSubscript(encode_number(iterator));
 }
 
-void ObjString::ValidateIndex(int index, const char *argName) const {
-	if (index < 0 || index >= (int)m_value.size()) {
+void ObjString::ValidateIndex(int index, const char *argName, bool exclusive) const {
+	// If exclusive=true then this value is used to indicate the end of a
+	// range, and is allowed to be equal to the size.
+	int upperLimit = (int)m_value.size();
+	if (exclusive)
+		upperLimit++;
+
+	if (index < 0 || index >= upperLimit) {
 		errors::wrenAbort("%s out of bounds.", argName);
 	}
 }
 
-int ObjString::PrepareIndex(int index, const char *argName) const {
+int ObjString::PrepareIndex(int index, const char *argName, bool exclusive) const {
 	// Negative indices count backwards
 	if (index < 0) {
 		index += m_value.size();
 	}
 
-	ValidateIndex(index, argName);
+	ValidateIndex(index, argName, exclusive);
 	return index;
 }
 
