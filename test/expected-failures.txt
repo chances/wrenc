@@ -15,7 +15,6 @@ test/core/fiber/new_wrong_arg_type.wren
 test/core/fiber/new_wrong_arity.wren
 test/core/fiber/transfer_direct_reenter.wren
 test/core/fiber/transfer_error_not_string.wren
-test/core/fiber/transfer_error.wren
 test/core/fiber/transfer_with_value_direct_reenter.wren
 test/core/fiber/yield_from_main.wren
 test/core/fiber/yield_with_no_caller.wren

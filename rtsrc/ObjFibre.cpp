@@ -197,9 +197,51 @@ Value ObjFibre::Transfer(Value argument) {
 	// as yielding, so it can later be transferred back to.
 	Value result = CallImpl(argument, false, true);
 
-	// TODO exception handling
+	// We shouldn't have any problems with errors here, as
+	// TransferError handles that itself (to avoid also dealing
+	// with the case of transferError-ing a non-started fibre).
 
 	return result;
+}
+
+Value ObjFibre::TransferError(std::string message) {
+	switch (m_state) {
+	case State::NOT_STARTED:
+	case State::SUSPENDED:
+		break;
+	case State::RUNNING:
+	case State::WAITING:
+		errors::wrenAbort("Fiber has already been called.");
+	case State::FINISHED:
+		errors::wrenAbort("Cannot transfer to a finished fiber.");
+	case State::FAILED:
+		errors::wrenAbort("Cannot transfer to an aborted fiber.");
+	}
+
+	// Here, we simulate the behaviour of resuming the fibre and immediately
+	// sending an abort. This is faster and (more importantly) easier than
+	// triggering an abort once we resume the other fibre.
+	currentFibre = this;
+
+	// Mark the fibre as failed.
+	m_exception = std::make_unique<FibreAbortException>();
+	m_exception->message = message;
+	m_state = State::FAILED;
+
+	// Clean up this fibre, it won't be used again.
+	// (Note that DeleteStack will be called by HandleResume once
+	//  we're running on a different stack.)
+	m_resumeAddress = nullptr;
+	m_suspendedContext = nullptr;
+
+	// Switch to it's parent
+	if (m_parent == nullptr) {
+		WrenRuntime::Instance().LastFibreExited(message);
+	}
+	m_parent->ResumeSuspended(NULL_VAL, true);
+
+	fprintf(stderr, "Resumed thread that should be destroyed (via transferError)\n");
+	abort();
 }
 
 Value ObjFibre::CallImpl(Value argument, bool isTry, bool isTransfer) {

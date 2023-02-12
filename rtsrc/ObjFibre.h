@@ -85,6 +85,8 @@ class ObjFibre : public Obj {
 	WREN_METHOD() Value Transfer();
 	WREN_METHOD() Value Transfer(Value argument);
 
+	WREN_METHOD() Value TransferError(std::string message);
+
 	WREN_METHOD(getter) Value IsDone();
 	WREN_METHOD(getter) Value Error();
 
