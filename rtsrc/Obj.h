@@ -68,6 +68,7 @@ class Obj {
 	/// Tests whether this object equals another. Used by the default == and != implementations.
 	virtual bool EqualTo(Obj *other);
 
+	WREN_METHOD() static bool Same(Value a, Value b);
 	// By default, compare identity
 	WREN_METHOD() bool OperatorEqualTo(Value other);
 	WREN_METHOD() bool OperatorNotEqual(Value other);

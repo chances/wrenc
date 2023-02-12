@@ -7,6 +7,7 @@
 #include "GCTracingScanner.h"
 #include "ObjClass.h"
 #include "ObjNum.h"
+#include "ObjRange.h"
 #include "ObjString.h"
 
 #include <cstddef>
@@ -55,6 +56,32 @@ std::string Obj::ToString(Value value) {
 	if (is_object(value))
 		return get_object_value(value)->ConvertToString();
 	return ObjNumClass::Instance()->ToString(get_number_value(value));
+}
+
+bool Obj::Same(Value a, Value b) {
+	if (is_value_float(a)) {
+		return a == b;
+	}
+
+	Obj *objA = get_object_value(a);
+	Obj *objB = get_object_value(b);
+
+	if (objA == nullptr || objB == nullptr)
+		return objA == objB;
+
+	if (objA->type != objB->type)
+		return false;
+
+	if (ObjString *str = dynamic_cast<ObjString *>(objA)) {
+		return str->EqualTo(objB);
+	}
+	if (ObjRange *range = dynamic_cast<ObjRange *>(objA)) {
+		return range->EqualTo(objB);
+	}
+
+	// Booleans are singletons, so comparing them by identity like
+	// everything else is fine.
+	return objA == objB;
 }
 
 // By default, compare by identity

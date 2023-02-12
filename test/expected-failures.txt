@@ -30,7 +30,6 @@ test/core/number/mod_operand_not_num.wren
 test/core/number/mod.wren
 test/core/number/truncate.wren
 test/core/number/type.wren
-test/core/object/same.wren
 test/core/string/iterator_value_iterator_too_large.wren
 test/core/string/iterator_value_iterator_too_small.wren
 test/core/string/to_string.wren
