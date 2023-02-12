@@ -13,9 +13,9 @@
 #include "StackMapDescription.h"
 #include "WrenRuntime.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <libunwind.h>
-#include <algorithm>
 #include <stdint.h>
 
 using SMD = StackMapDescription;
@@ -108,10 +108,12 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 	MarkThreadRoots(&uc);
 
 	// Mark all the threads on the thread callstack as reachable, as they can
-	// be resumed by yielding.
-	for (ObjFibre *fibre : ObjFibre::fibreCallStack) {
-		// This will call MarkThreadRoots.
-		fibre->MarkGCValues(&m_markOps);
+	// be resumed by yielding. For this, we only have to mark the current fibre,
+	// as it marks it's parent and so on up the chain.
+	// If currentFibre is null, that indicates we've never used fibres.
+	// (note that these will call MarkThreadRoots).
+	if (ObjFibre::currentFibre != nullptr) {
+		ObjFibre::currentFibre->MarkGCValues(&m_markOps);
 	}
 }
 

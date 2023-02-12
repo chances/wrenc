@@ -98,11 +98,11 @@ class ObjFibre : public Obj {
 	void DeleteStack();
 
 	/// If this is a brand-new fibre (NOT_STARTED), then create it's stack and jump to it.
-	Value StartAndSwitchTo(ObjFibre *previous, Value argument);
+	Value StartAndSwitchTo(Value argument);
 
 	/// If this is a fibre waiting to continue (SUSPENDED), then jump back to it's stack
 	/// and continue running it.
-	Value ResumeSuspended(ObjFibre *previous, Value argument, bool terminate);
+	Value ResumeSuspended(Value argument, bool terminate);
 
 	/// Handle a fibre being resumed. Used by both StartAndSwitchTo and ResumeSuspended,
 	/// as both only resume running again when ResumeSuspended is called from another
@@ -114,7 +114,7 @@ class ObjFibre : public Obj {
 	WREN_MSVC_CALLCONV static void RunOnNewStack(void *oldStack, StartFibreArgs *args);
 
 	static int stackSize;
-	static std::vector<ObjFibre *> fibreCallStack;
+	static ObjFibre *currentFibre;
 
 	ObjFn *m_function = nullptr;
 	void *m_stack = nullptr;
@@ -123,6 +123,10 @@ class ObjFibre : public Obj {
 
 	/// If the fibre is suspended, this is the stack address to switch back to
 	void *m_resumeAddress = nullptr;
+
+	/// If this fibre is running or waiting, this is the fibre it will return
+	/// control to when it exits or calls yield.
+	ObjFibre *m_parent = nullptr;
 
 	/// If the fibre failed, this is the exception that caused it.
 	std::unique_ptr<FibreAbortException> m_exception;

@@ -49,7 +49,7 @@ struct ObjFibre::FibreAbortException {
 };
 
 int ObjFibre::stackSize = 0;
-std::vector<ObjFibre *> ObjFibre::fibreCallStack;
+ObjFibre *ObjFibre::currentFibre = nullptr;
 
 class ObjFibreClass : public ObjNativeClass {
   public:
@@ -84,6 +84,7 @@ ObjFibre *ObjFibre::GetMainThreadFibre() {
 
 void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 	ops->ReportObject(ops, m_function);
+	ops->ReportObject(ops, m_parent);
 
 	// If we're not suspended, we don't need to walk the stack:
 	// * Running: stack is scanned by the GC automatically.
@@ -102,8 +103,8 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 ObjFibre *ObjFibre::New(ObjFn *func) {
 	// If we're just starting up (and thus the fibre call stack is empty), then place the
 	// main thread fibre on it. There has to be something there to be able to switch properly.
-	if (fibreCallStack.empty()) {
-		fibreCallStack.push_back(GetMainThreadFibre());
+	if (currentFibre == nullptr) {
+		currentFibre = GetMainThreadFibre();
 	}
 
 	ObjFibre *fibre = SlabObjectAllocator::GetInstance()->AllocateNative<ObjFibre>();
@@ -183,16 +184,13 @@ Value ObjFibre::Try(Value argument) {
 }
 
 Value ObjFibre::CallImpl(Value argument, bool isTry) {
-	ObjFibre *previous = fibreCallStack.back();
-
 	switch (m_state) {
 	case State::NOT_STARTED:
-		fibreCallStack.push_back(this);
-		return StartAndSwitchTo(previous, argument);
+		return StartAndSwitchTo(argument);
 	case State::SUSPENDED:
-		fibreCallStack.push_back(this);
-		previous->m_state = State::WAITING;
-		return ResumeSuspended(previous, argument, false);
+		currentFibre->m_state = State::WAITING;
+		m_parent = currentFibre;
+		return ResumeSuspended(argument, false);
 	case State::RUNNING:
 	case State::WAITING:
 		errors::wrenAbort("Fiber has already been called.");
@@ -213,16 +211,13 @@ Value ObjFibre::CallImpl(Value argument, bool isTry) {
 Value ObjFibre::Yield() { return Yield(NULL_VAL); }
 
 Value ObjFibre::Yield(Value argument) {
-	ObjFibre *oldFibre = fibreCallStack.back();
-	fibreCallStack.pop_back();
-	ObjFibre *newFibre = fibreCallStack.back();
-
+	ObjFibre *oldFibre = currentFibre;
 	oldFibre->m_state = State::SUSPENDED;
 
-	return newFibre->ResumeSuspended(oldFibre, argument, false);
+	return oldFibre->m_parent->ResumeSuspended(argument, false);
 }
 
-Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
+Value ObjFibre::StartAndSwitchTo(Value argument) {
 	if (m_state != State::NOT_STARTED) {
 		fprintf(stderr, "Cannot call ObjFibre::StartAndSwitchTo on fibre in state %d\n", (int)m_state);
 		abort();
@@ -233,10 +228,11 @@ Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
 	StartFibreArgs args = {
 	    .argument = argument,
 	    .newFibre = this,
-	    .oldFibre = previous,
+	    .oldFibre = currentFibre,
 	};
 
-	previous->m_state = State::WAITING;
+	m_parent = currentFibre;
+	currentFibre->m_state = State::WAITING;
 	m_state = State::RUNNING;
 
 	// Save the current context, so our stack can be unwound by the GC. It's
@@ -245,17 +241,18 @@ Value ObjFibre::StartAndSwitchTo(ObjFibre *previous, Value argument) {
 	// TODO deduplicate with ResumeSuspended.
 	unw_context_t context;
 	unw_getcontext(&context);
-	previous->m_suspendedContext = &context;
+	currentFibre->m_suspendedContext = &context;
 
 	// Find the top of the stack - that's what we pass to the assembly, since we work downwards that's a lot
 	// more useful.
 	void *topOfStack = (void *)((uint64_t)m_stack + stackSize);
 
+	currentFibre = this;
 	ResumeFibreArgs *result = (ResumeFibreArgs *)fibreAsm_invokeOnNewStack(topOfStack, (void *)RunOnNewStack, &args);
 	return HandleResumed(result);
 }
 
-Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool terminate) {
+Value ObjFibre::ResumeSuspended(Value argument, bool terminate) {
 	if (!IsSuspended()) {
 		fprintf(stderr, "Cannot call ObjFibre::ResumeSuspended on fibre in state %d\n", (int)m_state);
 		abort();
@@ -264,7 +261,7 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	ResumeFibreArgs args = {
 	    .oldStackPtr = nullptr,
 	    .argument = argument,
-	    .oldFibre = previous,
+	    .oldFibre = currentFibre,
 	    .isTerminating = terminate,
 	};
 	m_state = State::RUNNING;
@@ -276,13 +273,14 @@ Value ObjFibre::ResumeSuspended(ObjFibre *previous, Value argument, bool termina
 	// cleared by ResumeSuspended before switchToExisting returns.
 	unw_context_t context;
 	unw_getcontext(&context);
-	previous->m_suspendedContext = &context;
+	currentFibre->m_suspendedContext = &context;
 
 	// Clear out our old suspended pointers, since we're about to start running
 	// they're going to be invalid.
 	m_resumeAddress = nullptr;
 	m_suspendedContext = nullptr;
 
+	currentFibre = this;
 	ResumeFibreArgs *result = (ResumeFibreArgs *)fibreAsm_switchToExisting(resumeStackAddr, &args);
 	return HandleResumed(result);
 }
@@ -291,6 +289,9 @@ Value ObjFibre::HandleResumed(ObjFibre::ResumeFibreArgs *result) {
 	// We've now come back from some arbitrary fibre, store away it's return address.
 	ObjFibre *fibre = result->oldFibre;
 	fibre->m_resumeAddress = result->oldStackPtr;
+
+	// There's no need to set currentFibre, as the ResumeSuspend call that resumed
+	// the current fibre already did that for us.
 
 	// Grab the argument now, since we might free the stack this struct lives on
 	Value arg = result->argument;
@@ -325,10 +326,13 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 		result = NULL_VAL;
 	}
 
-	assert(fibreCallStack.back() == args.newFibre);
-	fibreCallStack.pop_back();
-	ObjFibre *next = fibreCallStack.back();
-	next->ResumeSuspended(args.newFibre, result, true);
+	assert(currentFibre == args.newFibre);
+	ObjFibre *next = args.newFibre->m_parent;
+	if (next == nullptr) {
+		fprintf(stderr, "The last fibre finished on the non-main thread!\n");
+		abort();
+	}
+	next->ResumeSuspended(result, true);
 
 	fprintf(stderr, "Resumed thread that should be destroyed!\n");
 	abort();
