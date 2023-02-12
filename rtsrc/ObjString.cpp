@@ -66,65 +66,9 @@ std::string ObjString::OperatorSubscript(Value indexOrRange) {
 			errors::wrenAbort("Subscript must be a number or a range.");
 		}
 
-		int start = (int)range->From();
-		int end = (int)range->To();
-
-		if (start != range->From())
-			errors::wrenAbort("Range start must be an integer.");
-		if (end != range->To())
-			errors::wrenAbort("Range end must be an integer.");
-
-		if (start < 0)
-			start += m_value.size();
-
-		// It's legal to ask for a zero-length string at the end of any string.
-		// Handle it here so we don't have to modify our bounds-checking for it.
-		// Note that we have to do this before fixing up the end-range value, as
-		// for some reason only -1 is allowed for non-inclusive ranges.
-		// See wren_primitive.c calculateRange for Wren's implementation of this.
-		if (start == m_value.size() && end == m_value.size() && !range->IsInclusive())
-			return "";
-		if (start == m_value.size() && end == -1 && range->IsInclusive())
-			return "";
-
-		if (end < 0)
-			end += m_value.size();
-
-		bool isEmptyRange = !range->IsInclusive() && start == end;
-
-		// Make end inclusive. Note that if the range is 'backwards' (where
-		// end<start), then if you count backwards and stop earlier or later
-		// it'll be the opposite of if you're counting forwards, hence the
-		// need to treat these two cases differently.
-		if (!range->IsInclusive()) {
-			if (start <= end)
-				end--;
-			else
-				end++;
-		}
-
-		// Handle the range going backwards - if so, we'll later reverse the result.
-		// We have to be careful not to make it impossible to express empty ranges here, though.
-		bool reversed = start > end && !isEmptyRange;
-		if (reversed) {
-			std::swap(start, end);
-		}
-
-		// Our range is currently inclusive, since that makes it easier when we're
-		// dealing with reversing the string. Now we've decided which value is
-		// the end, increment it to make the range exclusive.
-		end++;
-
-		// Perform the range check. Annoyingly, since we reverse the start/end earlier
-		// we also have to reverse the error names here, so the error is attributed to
-		// the correct side of the range.
-		const char *startName = "Range start";
-		const char *endName = "Range end";
-		if (reversed) {
-			std::swap(startName, endName);
-		}
-		ValidateIndex(start, startName);
-		ValidateIndex(end, endName, true);
+		int start, end;
+		bool reversed;
+		range->ToSubscriptUtil(m_value.length(), start, end, reversed);
 
 		// If our start index lands in the middle of a codepoint, move it forwards until it's not.
 		// This avoids returning cut-up codepoints.

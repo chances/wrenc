@@ -14,6 +14,9 @@ class ObjRange : public Obj {
 
 	void MarkGCValues(GCMarkOps *ops) override;
 
+	// Utility function for List and String, as they support range subscripts
+	void ToSubscriptUtil(int length, int &outStart, int &outEnd, bool &outReverse) const;
+
 	double from = 0;
 	double to = 0;
 	bool inclusive = false;
