@@ -64,6 +64,9 @@ class ObjFn : public Obj {
 	// Variadic functions aren't a Wren thing, but with some creative code generation in gen_bindings we can get them
 	WREN_METHOD(variadic) Value Call(const std::initializer_list<Value> &values);
 
+	WREN_METHOD(getter) int Arity() const;
+	WREN_METHOD(getter) std::string ToString() const;
+
 	static ObjClass *Class();
 
 	void MarkGCValues(GCMarkOps *ops) override;

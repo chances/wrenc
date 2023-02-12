@@ -75,6 +75,10 @@ Value ObjFn::Call(const std::initializer_list<Value> &values) {
 	return result;
 }
 
+int ObjFn::Arity() const { return spec->arity; }
+
+std::string ObjFn::ToString() const { return "<fn>"; }
+
 void ObjFn::MarkGCValues(GCMarkOps *ops) {
 	// Be careful not to scan the storage block pointers
 	for (int i = 0; i < (int)spec->upvalueOffsets.size(); i++) {
