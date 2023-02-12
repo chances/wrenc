@@ -169,6 +169,7 @@ double ObjNumClass::Fraction(double receiver) {
 double ObjNumClass::Exp(double receiver) { return exp(receiver); }
 
 bool ObjNumClass::IsInteger(double receiver) { return (int)receiver == receiver; }
+bool ObjNumClass::IsNan(double receiver) { return isnan(receiver); }
 
 // Misc non-getter number functions
 double ObjNumClass::Pow(double receiver, double power) { return pow(receiver, power); }

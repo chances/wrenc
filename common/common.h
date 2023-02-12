@@ -15,8 +15,8 @@ class Obj;
 /// there isn't ABI compatibility for another reason anyway.
 #define GC_WORD_OFFSET 8
 
-#define NAN_MASK 0x7ff8000000000000 // Includes the mantissa MSB to make it a quiet NaN
-#define CONTENT_MASK 0x0007ffffffffffff
+#define NAN_MASK 0x7ffc000000000000 // Includes the mantissa MSB to make it a quiet NaN
+#define CONTENT_MASK 0x0003ffffffffffff
 #define SIGN_MASK 0x8000000000000000
 
 // Use NaN-tagged values
@@ -67,6 +67,12 @@ class Obj;
 // That's more than enough room for a 32-bit address. Even 64-bit machines
 // only actually use 48 bits for addresses, so we've got plenty. We just stuff
 // the address right into the mantissa.
+//
+// We also set the 2nd-highest mantissa bit to distinguish the null pointer
+// value from mathematical NaN values:
+//
+//              v--Second Highest mantissa bit
+// -[NaN      ]11--------------------------------------------------
 //
 // Ta-da, double precision numbers and pointers,
 // all stuffed into a single 64-bit sequence. Even better, we don't have to

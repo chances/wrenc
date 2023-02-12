@@ -72,6 +72,7 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD(getter) double Exp(double receiver);
 
 	WREN_METHOD(getter) bool IsInteger(double receiver);
+	WREN_METHOD(getter) bool IsNan(double receiver);
 
 	// Misc non-getter number functions
 	WREN_METHOD() double Pow(double receiver, ARG("Power value") double power);
