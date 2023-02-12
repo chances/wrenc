@@ -3263,6 +3263,11 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		ExprAllocateInstanceMemory *allocExpr = compiler->New<ExprAllocateInstanceMemory>();
 		allocExpr->target = classNode;
 
+		if (classNode->info->isForeign) {
+			// Foreign classes get all the parameters passed to the native allocation method.
+			allocExpr->foreignParameters = args;
+		}
+
 		block->Add(compiler->New<StmtAssign>(objLocal, allocExpr));
 
 		// Now run the initialiser

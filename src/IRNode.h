@@ -480,6 +480,9 @@ class ExprAllocateInstanceMemory : public IRExpr {
 	void Accept(IRVisitor *visitor) override;
 
 	IRClass *target = nullptr;
+
+	/// If this is a foreign class, these are the parameters to pass to the native initialiser.
+	std::vector<LocalVariable *> foreignParameters;
 };
 
 /// Get a built-in variable, for example the Object class.

@@ -41,6 +41,7 @@ EXPORT Value wren_init_string_literal(void *getGlobalsFunc, const char *literal,
 EXPORT void wren_register_signatures_table(const char *signatures);
 EXPORT Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock, Value parentClassValue);
 EXPORT Value wren_alloc_obj(Value classVar);
+EXPORT Value wren_alloc_foreign_obj(Value classVar, Value *arguments, int count);
 EXPORT int wren_class_get_field_offset(Value classVar);
 EXPORT ClosureSpec *wren_register_closure(void *specData);
 EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead);
@@ -215,14 +216,24 @@ Value wren_alloc_obj(Value classVar) {
 	}
 
 	// We have to allocate managed objects specially, to account for their variable-sized field area.
+	ObjManaged *obj = WrenRuntime::Instance().GetObjectAllocator()->AllocateManaged(cls);
+
+	return encode_object(obj);
+}
+
+Value wren_alloc_foreign_obj(Value classVar, Value *args, int arity) {
+	if (!is_object(classVar)) {
+		errors::wrenAbort("Cannot call wren_alloc_foreign_object with number argument");
+	}
+
+	ObjManagedClass *cls = dynamic_cast<ObjManagedClass *>(get_object_value(classVar));
+	if (!cls) {
+		errors::wrenAbort("Cannot call wren_alloc_foreign_object with null or non-ObjManagedClass type");
+	}
+
 	// Foreign objects are allocated even-more-specially, as the API lets the client decide the size
 	// at allocation time.
-	ObjManaged *obj;
-	if (cls->foreignClass) {
-		obj = cls->foreignClass->Allocate(cls);
-	} else {
-		obj = WrenRuntime::Instance().GetObjectAllocator()->AllocateManaged(cls);
-	}
+	ObjManaged *obj = cls->foreignClass->Allocate(cls, args, arity);
 
 	return encode_object(obj);
 }

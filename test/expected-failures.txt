@@ -25,7 +25,6 @@ test/core/map/value_iterate_iterator_not_num.wren
 test/core/map/value_iterate.wren
 test/core/string/to_string.wren
 
-test/api/reset_stack_after_foreign_construct.wren
 test/api/user_data.wren
 test/api/foreign_class.wren
 test/api/resolution.wren

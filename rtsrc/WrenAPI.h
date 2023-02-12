@@ -14,7 +14,7 @@ namespace api_interface {
 
 class ForeignClassInterface {
   public:
-	ObjManaged *Allocate(ObjManagedClass *cls);
+	ObjManaged *Allocate(ObjManagedClass *cls, Value *args, int arity);
 	void Finalise(ObjManaged *obj);
 
 	static std::unique_ptr<ForeignClassInterface> Lookup(RtModule *mod, const std::string &className);

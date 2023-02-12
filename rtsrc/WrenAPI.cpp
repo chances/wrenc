@@ -146,9 +146,12 @@ std::unique_ptr<ForeignClassInterface> ForeignClassInterface::Lookup(RtModule *m
 	return convert();
 }
 
-ObjManaged *ForeignClassInterface::Allocate(ObjManagedClass *cls) {
+ObjManaged *ForeignClassInterface::Allocate(ObjManagedClass *cls, Value *args, int arity) {
 	WrenVM vm;
 	vm.stack.push_back(encode_object(cls));
+
+	// Put all the constructor arguments on the stack, as the allocator may use them.
+	vm.stack.insert(vm.stack.begin() + 1, args, args + arity);
 
 	WrenForeignMethodFn allocFn = (WrenForeignMethodFn)m_allocate;
 	allocFn(&vm);

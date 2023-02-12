@@ -220,6 +220,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::FunctionCallee m_getUpvaluePack;
 	llvm::FunctionCallee m_getNextClosure;
 	llvm::FunctionCallee m_allocObject;
+	llvm::FunctionCallee m_allocObjectForeign;
 	llvm::FunctionCallee m_initClass;
 	llvm::FunctionCallee m_getClassFieldOffset;
 	llvm::FunctionCallee m_registerSignatureTable;
@@ -320,6 +321,10 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 
 	llvm::FunctionType *allocObjectType = llvm::FunctionType::get(m_valueType, {m_valueType}, false);
 	m_allocObject = m_module.getOrInsertFunction("wren_alloc_obj", allocObjectType);
+
+	llvm::FunctionType *allocObjectForeignType =
+	    llvm::FunctionType::get(m_valueType, {m_valueType, m_pointerType, m_int32Type}, false);
+	m_allocObjectForeign = m_module.getOrInsertFunction("wren_alloc_foreign_obj", allocObjectForeignType);
 
 	llvm::FunctionType *initClassType =
 	    llvm::FunctionType::get(m_valueType, {m_pointerType, m_pointerType, m_pointerType, m_valueType}, false);
@@ -1733,8 +1738,28 @@ ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, Ex
 	ClassData *cd = node->target->GetBackendData<ClassData>();
 
 	llvm::Value *value = m_builder.CreateLoad(m_valueType, cd->object, "cls_" + name);
-	llvm::Value *newObj = m_builder.CreateCall(m_allocObject, {value}, "new_obj_" + name);
 
+	// If this is a foreign class, we have to pass an array of constructor arguments in
+	IRClass *cls = ctx->currentWrenFunc->enclosingClass;
+	if (!cls->info->isForeign) {
+		// Deal with the easy, non-foreign case
+		llvm::Value *newObj = m_builder.CreateCall(m_allocObject, {value}, "new_obj_" + name);
+		return {newObj};
+	}
+
+	llvm::Value *array =
+	    m_builder.CreateAlloca(m_valueType, CInt::get(m_int32Type, node->foreignParameters.size()), "arg_array");
+
+	int arity = node->foreignParameters.size();
+	for (int i = 0; i < arity; i++) {
+		llvm::Value *arrayItemPtr = m_builder.CreateGEP(m_valueType, array, {CInt::get(m_int32Type, i)}, "slot");
+		llvm::Value *localPtr = GetLocalPointer(ctx, node->foreignParameters.at(i));
+		llvm::Value *localValue = m_builder.CreateLoad(m_valueType, localPtr, "arg_value");
+		m_builder.CreateStore(localValue, arrayItemPtr);
+	}
+
+	llvm::Value *newObj =
+	    m_builder.CreateCall(m_allocObjectForeign, {value, array, CInt::get(m_int32Type, arity)}, "new_obj_" + name);
 	return {newObj};
 }
 ExprRes LLVMBackendImpl::VisitExprSystemVar(VisitorContext *ctx, ExprSystemVar *node) {
