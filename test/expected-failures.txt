@@ -30,3 +30,14 @@ test/api/call_wren_call_root.wren
 # These two can't be used without modification as they call wrenInterpret.
 test/api/resolution.wren
 test/api/new_vm.wren
+
+# We don't implement the meta suite
+test/meta/eval_compile_error.wren
+test/meta/get_module_variables_not_string.wren
+test/meta/eval_existing_scoped_variable.wren
+test/meta/get_module_variables.wren
+test/meta/eval_not_string.wren
+test/meta/get_module_variables_unknown_module.wren
+
+test/limit/variable_name_too_long.wren
+test/limit/loop_too_far.wren

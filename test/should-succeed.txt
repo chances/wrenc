@@ -5,3 +5,7 @@
 
 test/language/variable/too_many_locals.wren
 test/language/variable/too_many_locals_nested.wren
+
+test/limit/too_many_inherited_fields.wren
+test/limit/jump_too_far.wren
+test/limit/too_many_constants.wren
