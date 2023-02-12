@@ -3296,6 +3296,11 @@ static IRNode *classDefinition(Compiler *compiler, bool isForeign, std::unique_p
 	consume(compiler, TOKEN_NAME, "Expect class name.");
 	std::string className = compiler->parser->previous.contents;
 
+	// Limit it's length to match Wren
+	if (className.size() > MAX_VARIABLE_NAME) {
+		error(compiler, "Class name cannot be longer than %d characters.", MAX_VARIABLE_NAME);
+	}
+
 	// Load the superclass (if there is one).
 	IRExpr *parentTypeExpr;
 	if (match(compiler, TOKEN_IS)) {

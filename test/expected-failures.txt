@@ -39,5 +39,7 @@ test/meta/get_module_variables.wren
 test/meta/eval_not_string.wren
 test/meta/get_module_variables_unknown_module.wren
 
-test/limit/variable_name_too_long.wren
+# Not quite sure how to handle this one - it's an infinite
+# loop that's expected to fail. It compiles fine though, and
+# just times out.
 test/limit/loop_too_far.wren
