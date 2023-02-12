@@ -9,6 +9,7 @@
 #include "ObjList.h"
 #include "ObjMap.h"
 #include "ObjString.h"
+#include "WrenAPI.h"
 #include "WrenRuntime.h"
 #include "common/ClassDescription.h"
 
@@ -22,6 +23,11 @@ ObjManaged::~ObjManaged() = default;
 
 void ObjManaged::MarkGCValues(GCMarkOps *ops) {
 	ObjManagedClass *cls = (ObjManagedClass *)type;
+
+	// Foreign classes have their own stuff where the fields would
+	// normally go, but totalFieldCount is always zero so it
+	// doesn't matter as we're not actually reporting anything.
+
 	ops->ReportValues(ops, fields, cls->totalFieldCount);
 }
 
@@ -73,6 +79,10 @@ ObjManagedClass::ObjManagedClass(const std::string &name, std::unique_ptr<ClassD
 		// the memory is all used by native code.
 		if (managedParent && managedParent->totalFieldCount != 0) {
 			errors::wrenAbort("Foreign class '%s' may not inherit from a class with fields.", name.c_str());
+		}
+
+		if (totalFieldCount != 0) {
+			errors::wrenAbort("Foreign class '%s' may not contain fields.", name.c_str());
 		}
 	}
 

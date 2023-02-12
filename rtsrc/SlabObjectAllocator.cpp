@@ -110,7 +110,7 @@ SlabObjectAllocator *SlabObjectAllocator::GetInstance() { return WrenRuntime::In
 
 ObjManaged *SlabObjectAllocator::AllocateManaged(ObjManagedClass *cls) {
 	static_assert(alignof(ObjManaged) == 8);
-	void *mem = AllocateRaw(cls, cls->size);
+	void *mem = AllocateRaw(cls->size);
 	return new (mem) ObjManaged(cls); // Initialise with placement-new
 }
 
@@ -174,7 +174,7 @@ SlabObjectAllocator::SizeCategory *SlabObjectAllocator::GetOrCreateBestCategory(
 	return ptr;
 }
 
-void *SlabObjectAllocator::AllocateRaw(ObjClass *cls, int requestedSize) {
+void *SlabObjectAllocator::AllocateRaw(int requestedSize) {
 	SizeCategory *category = GetOrCreateBestCategory(requestedSize);
 	assert(category->size >= requestedSize && "found category too small for requested allocation");
 

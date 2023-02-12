@@ -185,6 +185,10 @@ Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock
 		errors::wrenAbort("Couldn't find declaring module %p for class '%s'", getGlobalsFunc, name);
 	}
 
+	if (cls->spec->isForeignClass) {
+		cls->foreignClass = api_interface::ForeignClassInterface::Lookup(cls->declaringModule, cls->name);
+	}
+
 	for (const ClassDescription::MethodDecl &method : cls->spec->methods) {
 		if (method.isForeign) {
 			void *userFunc = api_interface::lookupForeignMethod(cls->declaringModule, cls->name, method);
@@ -210,8 +214,15 @@ Value wren_alloc_obj(Value classVar) {
 		errors::wrenAbort("Cannot call wren_alloc_object with null or non-ObjManagedClass type");
 	}
 
-	// We have to allocate managed objects specially, to account for their variable-sized field area
-	ObjManaged *obj = WrenRuntime::Instance().GetObjectAllocator()->AllocateManaged(cls);
+	// We have to allocate managed objects specially, to account for their variable-sized field area.
+	// Foreign objects are allocated even-more-specially, as the API lets the client decide the size
+	// at allocation time.
+	ObjManaged *obj;
+	if (cls->foreignClass) {
+		obj = cls->foreignClass->Allocate(cls);
+	} else {
+		obj = WrenRuntime::Instance().GetObjectAllocator()->AllocateManaged(cls);
+	}
 
 	return encode_object(obj);
 }

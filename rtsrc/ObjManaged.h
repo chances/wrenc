@@ -14,6 +14,10 @@ class ClassDescription; // From ClassDescription.h
 class AttributePack;
 class RtModule;
 
+namespace api_interface {
+class ForeignClassInterface;
+}
+
 /// Represents an object defined in Wren
 class ObjManaged : public Obj {
   public:
@@ -53,6 +57,9 @@ class ObjManagedClass : public ObjClass {
 
 	/// The module in which this class was declared.
 	RtModule *declaringModule;
+
+	/// If this is a foreign class, this contains the init/fini functions for it.
+	std::unique_ptr<api_interface::ForeignClassInterface> foreignClass;
 
 	/// The mapping between the pointers of the foreign stub methods (the compiler
 	/// generates them, they call into the runtime) and the user's bound functions.

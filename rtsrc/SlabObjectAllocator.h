@@ -28,7 +28,7 @@ class SlabObjectAllocator {
 
 	ObjManaged *AllocateManaged(ObjManagedClass *cls);
 	template <typename T, typename... Args> T *AllocateNative(Args &&...args) {
-		void *mem = AllocateRaw(T::Class(), sizeof(T));
+		void *mem = AllocateRaw(sizeof(T));
 		T *obj = new (mem) T(std::forward<Args>(args)...);
 
 		// Check that T extends Obj
@@ -37,6 +37,10 @@ class SlabObjectAllocator {
 
 		return obj;
 	}
+
+	/// Allocate a block of zeroed memory of a given size. This should almost never
+	/// be used, it's only public for foreign class initialisation.
+	void *AllocateRaw(int requestedSize);
 
 	/// Deallocate all objects that have a GC word other than the one specified. This should
 	/// really only be called from the GC.
@@ -120,8 +124,6 @@ class SlabObjectAllocator {
 	// Get a pointer to the 'best' size category to contain an item of the given size. This may
 	// create a new category.
 	SizeCategory *GetOrCreateBestCategory(int size);
-
-	void *AllocateRaw(ObjClass *cls, int size);
 
 	Slab *CreateSlab(SizeCategory *size);
 
