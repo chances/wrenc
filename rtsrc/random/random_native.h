@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "WrenAPIPublic.h"
+#include "pub_include/wren.h"
 
 #include <string>
 

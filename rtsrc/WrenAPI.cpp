@@ -7,7 +7,7 @@
 #include "common/common.h"
 #define WREN_API DLL_EXPORT
 
-#include "WrenAPIPublic.h"
+#include "pub_include/wren.h"
 
 #include "WrenAPI.h"
 

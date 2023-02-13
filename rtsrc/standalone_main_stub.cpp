@@ -6,9 +6,9 @@
 // Created by znix on 21/07/22.
 //
 
-#include "WrenAPIPublic.h"
 #include "WrenRuntime.h"
 #include "common/common.h"
+#include "pub_include/wren.h"
 
 #include <stdio.h>
 #include <stdlib.h>

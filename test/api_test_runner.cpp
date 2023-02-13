@@ -2,8 +2,8 @@
 // Created by znix on 12/02/23.
 //
 
-#include "../rtsrc/WrenAPIPublic.h"
 #include "../rtsrc/WrenRuntime.h"
+#include "pub_include/wren.h"
 
 extern "C" {
 #define wren_h // Avoid importing the Wren API twice

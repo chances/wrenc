@@ -1,6 +1,10 @@
 //
 // The public API exposed by both regular Wren and this runtime.
-// This header is largely copied from Wren's wren.h header.
+// This header is largely copied from Wren's wren.h header, to the
+// extent that (and this is a stability guarantee) it's fine to
+// compile against Wren's header and link to the wrenc runtime
+// library. This header provides some extra functions required for
+// initialisation, however.
 //
 // Created by znix on 11/02/23.
 //
