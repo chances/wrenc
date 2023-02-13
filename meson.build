@@ -29,6 +29,19 @@ configure_file(
     configuration : conf_data,
 )
 
+# On Windows we don't have getopt, so use a library for that
+if build_machine.system() == 'windows'
+	getopt_lib = static_library('ya_getopt',
+		'lib/ya_getopt/ya_getopt.c',
+	)
+	getopt_dep = [declare_dependency(
+		link_with: [getopt_lib],
+		include_directories: ['lib/ya_getopt'],
+	)]
+else
+	getopt_dep = []
+endif
+
 # Common library shared by both the runtime and compiler
 common_lib = static_library('common-lib',
   'common/common.cpp',
@@ -102,7 +115,8 @@ wrenc = executable('wrencc',
   dependencies: [
     fmt,
     common,
-    meson.get_compiler('cpp').find_library('dl')
+    meson.get_compiler('cpp').find_library('dl'),
+    getopt_dep,
   ],
   cpp_args: [
     '-fPIC', # Required for Qt on my system
