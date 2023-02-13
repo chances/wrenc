@@ -31,6 +31,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
 static void runLinker(const std::string &outputPath, const std::vector<std::string> &objectFiles, OutputType type);
 static void staticLink(const std::string &outputFile, const std::vector<std::string> &objectFiles);
+static int printSysPath(const std::string &name);
 
 static std::string compilerInstallDir;
 
@@ -50,6 +51,10 @@ static SelectedBackend globalSelectedBackend = BACKEND_AUTO;
 typedef IBackend *(*createBackendFunc_t)();
 static createBackendFunc_t createLLVMBackend = nullptr;
 
+enum LongOnlyOpts {
+	PRINT_SYS_PATH = 1,
+};
+
 static option options[] = {
     {"output", required_argument, 0, 'o'},
     {"compile-only", no_argument, 0, 'c'},
@@ -61,6 +66,7 @@ static option options[] = {
     {"disable-gc", no_argument, &globalDisableGC, true},
     {"verbose", no_argument, &globalVerbose, true},
     {"output-type", required_argument, 0, 't'},
+    {"print-sys-path", required_argument, 0, PRINT_SYS_PATH},
 
     // Don't put the LLVM backend behind an ifdef flag, if the user issues it
     // we'll give them a more descriptive warning about LLVM being disabled.
@@ -151,6 +157,11 @@ int main(int argc, char **argv) {
 			}
 			break;
 		}
+		case PRINT_SYS_PATH: {
+			// As a special case, just execute this immediately, since it's
+			// not going to be part of a complex command line.
+			return printSysPath(optarg);
+		}
 		case '?':
 			// Error message already printed by getopt
 			fmt::print(stderr, "For a list of options, run {} --help\n", argv[0]);
@@ -191,6 +202,9 @@ int main(int argc, char **argv) {
 #ifdef USE_LLVM
 		optHelp.emplace_back("", "--backend-llvm", "Use the LLVM backend");
 #endif
+
+		optHelp.emplace_back("", "--print-sys-path=name",
+		    "Print the name of an important wrenc component. Try 'help' for a list.");
 
 		optHelp.emplace_back("", "inputs...", "The Wren source files to compile, or object files to link");
 
@@ -387,6 +401,39 @@ int main(int argc, char **argv) {
 		}
 		runLinker(outputFile, objectFiles, outputType);
 	}
+}
+
+int printSysPath(const std::string &name) {
+	// This sub-command prints out the paths to various components, like
+	// the headers directory or runtime library. It's principally intended
+	// to be used in buildscripts, to discover this information from just
+	// the compiler.
+
+	if (name == "help") {
+		fmt::print("List of available paths:\n");
+		fmt::print("\theader-dir\n");
+		fmt::print("\trtlib-dir\n");
+		fmt::print("\trtlib-name\n");
+		return 0;
+	}
+
+	// TODO use the correct paths when installed
+
+	if (name == "header-dir") {
+		fmt::print("{}/../pub_include\n", compilerInstallDir);
+		return 0;
+	}
+	if (name == "rtlib-dir") {
+		fmt::print("{}\n", compilerInstallDir);
+		return 0;
+	}
+	if (name == "rtlib-name") {
+		fmt::print("libwren-rtlib.so\n");
+		return 0;
+	}
+
+	fmt::print(stderr, "Invalid system-path component name '{}'\n", name);
+	return 1;
 }
 
 static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
