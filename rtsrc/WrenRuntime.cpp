@@ -37,6 +37,10 @@ void *WrenRuntime::AllocateMem(int size, int alignment) {
 }
 
 void WrenRuntime::Initialise() {
+	// Already initialised?
+	if (Instance().m_coreModule)
+		return;
+
 	// Create the core module before calling the root func, as we need the module
 	// to create string literals.
 	Instance().m_coreModule = std::make_unique<RtModule>(wren_core_get_globals());

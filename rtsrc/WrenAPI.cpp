@@ -535,6 +535,8 @@ bool wrenHasModule(WrenVM *vm, const char *modName) {
 }
 
 WrenVM *wrenNewVM(WrenConfiguration *configuration) {
+	WrenRuntime::Initialise();
+
 	// Due to our use of global variables in generated code, there really
 	// can only be one VM.
 	// We'll return a sort-of dummy VM for the user to call functions etc.
@@ -550,3 +552,23 @@ void wrenInitConfiguration(WrenConfiguration *configuration) { *configuration = 
 WrenInterpretResult wrenInterpret(WrenVM *vm, const char *modName, const char *source) { TODO; }
 
 void wrencSetNullSafeWriteFn(WrencWriteFnNullSafe writeFn) { WrenRuntime::Instance().SetWriteHandler(writeFn); }
+
+bool wrencInitModule(void *moduleGetGlobals) {
+	WrenRuntime::Initialise();
+
+	try {
+		WrenRuntime::Instance().GetOrInitModule(moduleGetGlobals);
+		return true;
+	} catch (const ObjFibre::FibreAbortException &ex) {
+		std::string error = Obj::ToString(ex.message);
+
+		if (currentConfiguration) {
+			WrenErrorFn errorFn = currentConfiguration->errorFn;
+			if (errorFn) {
+				errorFn(nullptr, WREN_ERROR_RUNTIME, "<in module init>", -1, error.c_str());
+			}
+		}
+
+		return false;
+	}
+}

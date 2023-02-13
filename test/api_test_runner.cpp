@@ -2,7 +2,6 @@
 // Created by znix on 12/02/23.
 //
 
-#include "../rtsrc/WrenRuntime.h"
 #include "pub_include/wren.h"
 
 extern "C" {
@@ -76,8 +75,6 @@ static void reportError(WrenVM *vm, WrenErrorType type, const char *module, int 
 static void writeImpl(const char *message, int length) { printf("%s", message); }
 
 int main(int argc, char **argv) {
-	WrenRuntime::Initialise();
-
 	// Set the write handler here rather than through WrenConfiguration, so
 	// it doesn't get changed if someone calls wrenNewVM.
 	wrencSetNullSafeWriteFn(writeImpl);
@@ -115,7 +112,10 @@ int main(int argc, char **argv) {
 	wrencSetModuleNameTransformer(nameTransformer);
 
 	// Initialise and run the main module
-	WrenRuntime::Instance().GetOrInitModuleCaught(getGlobalsFunc);
+	bool success = wrencInitModule(getGlobalsFunc);
+	if (!success) {
+		return 1;
+	}
 
 	// Run the API tests
 	int exitCode = APITest_Run(vm, testModule);

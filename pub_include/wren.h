@@ -563,6 +563,31 @@ WREN_API void wrencSetModuleNameTransformer(WrencModuleNameTransformer transform
 // This overrides WrenConfiguration.writeFn.
 WREN_API void wrencSetNullSafeWriteFn(WrencWriteFnNullSafe writeFn);
 
+// Register and initialise (if this hasn't already been done) a module with
+// the runtime. This must be done before a module is made available to
+// wrenGetVariable etc.
+// When a Wren module runs an import statement, that module is initialised
+// in a similar way and also made available to wrenGetVariable.
+//
+// This function accepts the pointer to the get-globals function exported
+// by the compiled Wren modules. To use it, declare (but don't define) a
+// function with the name <my_module_name>_get_globals, and pass that
+// as the [moduleGetGlobals] argument. The signature of that method doesn't
+// matter.
+//
+// For example, to initialise a module named 'main':
+//
+//   extern "C" {
+//   void main_get_globals();
+//   }
+//   void setup() {
+//       wrencInitModule(main_get_globals);
+//   }
+//
+// This function returns true if it was successful, or false if an error
+// occurred. If an error occurs, the details are printed to errorFn, if set.
+WREN_API bool wrencInitModule(void *moduleGetGlobals);
+
 #ifdef __cplusplus
 }
 #endif
