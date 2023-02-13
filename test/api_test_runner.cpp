@@ -75,14 +75,14 @@ static void reportError(WrenVM *vm, WrenErrorType type, const char *module, int 
 	}
 }
 
-int main(int argc, char **argv) {
-	// Disable stdout buffering. Our System.write uses the platform write
-	// call directly, rather than printf. Thus the messages may end up
-	// out of order between wren and native output if buffering is enabled.
-	setvbuf(stdout, nullptr, _IONBF, 0);
-	setvbuf(stderr, nullptr, _IONBF, 0);
+static void writeImpl(const char *message, int length) { printf("%s", message); }
 
+int main(int argc, char **argv) {
 	WrenRuntime::Initialise();
+
+	// Set the write handler here rather than through WrenConfiguration, so
+	// it doesn't get changed if someone calls wrenNewVM.
+	WrenRuntime::Instance().SetWriteHandler(writeImpl);
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage: %s <test shared library> <test path>\n", argv[1]);

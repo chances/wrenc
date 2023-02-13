@@ -140,6 +140,15 @@ void api_interface::markGCRoots(GCMarkOps *ops) {
 	}
 }
 
+void api_interface::systemPrintImpl(const std::string &message) {
+	if (!currentConfiguration)
+		return;
+	WrenWriteFn write = currentConfiguration->writeFn;
+	if (write) {
+		write(nullptr, message.c_str());
+	}
+}
+
 std::unique_ptr<ForeignClassInterface> ForeignClassInterface::Lookup(RtModule *mod, const std::string &className) {
 	WrenForeignClassMethods fcm;
 

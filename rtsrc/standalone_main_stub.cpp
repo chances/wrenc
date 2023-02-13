@@ -6,6 +6,7 @@
 // Created by znix on 21/07/22.
 //
 
+#include "WrenAPIPublic.h"
 #include "WrenRuntime.h"
 #include "common/common.h"
 
@@ -28,8 +29,17 @@ static void lastFibreExitHandler(const char *errorMessage) {
 	exit(0);
 }
 
+static void writeImpl(const char *message, int length) {
+	// Don't use the length which then prevents us from writing nulls, this
+	// mimics the Wren test runner.
+	// TODO figure out a nicer solution.
+	printf("%s", message);
+}
+
 int main(int argc, char **argv) {
 	WrenRuntime::Initialise();
+
+	WrenRuntime::Instance().SetWriteHandler(writeImpl);
 
 	// Set a noop handler for the last fibre exiting. Since there isn't an application
 	// embedding Wren here, we don't care if we end on a useless stack.

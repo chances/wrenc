@@ -8,9 +8,9 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
-#include <string>
 
 class RtModule;
 class GCTracingScanner;
@@ -19,6 +19,7 @@ class SlabObjectAllocator;
 class WrenRuntime {
   public:
 	typedef void (*FibreExitHandler)(const char *errorMessage);
+	typedef void (*WriteHandler)(const char *message, int length);
 
 	DLL_EXPORT static WrenRuntime &Instance();
 
@@ -59,18 +60,24 @@ class WrenRuntime {
 	/// Sets the handler that defines what happens when the last fibre exits on a non-main stack.
 	DLL_EXPORT void SetLastFibreExitHandler(FibreExitHandler handler);
 
+	/// Sets the print function, this overrides the writeFn from WrenConfiguration.
+	DLL_EXPORT void SetWriteHandler(WriteHandler handler);
+
+	WriteHandler GetCurrentWriteHandler();
+
   private:
 	WrenRuntime();
 	~WrenRuntime();
 
 	std::unique_ptr<RtModule> m_coreModule;
 	std::unordered_map<void *, std::unique_ptr<RtModule>> m_userModules;
-	std::unordered_map<std::string, RtModule*> m_modulesByName;
+	std::unordered_map<std::string, RtModule *> m_modulesByName;
 
 	std::unique_ptr<SlabObjectAllocator> m_objectAllocator;
 	std::unique_ptr<GCTracingScanner> m_gcScanner;
 
 	FibreExitHandler m_fibreExitHandler = nullptr;
+	WriteHandler m_writeHandler = nullptr;
 
 	// The GC needs special access to all the loaded modules
 	friend GCTracingScanner;

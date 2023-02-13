@@ -4,7 +4,7 @@
 
 #include "ObjSystem.h"
 #include "CoreClasses.h"
-#include "Errors.h"
+#include "WrenAPI.h"
 #include "WrenRuntime.h"
 
 class ObjSystemClass : public ObjNativeClass {
@@ -23,9 +23,11 @@ ObjClass *ObjSystem::Class() {
 }
 
 void ObjSystem::WriteString_(std::string value) {
-	int result = write(1 /* stdout */, value.c_str(), value.size());
-	if (result != value.size()) {
-		errors::wrenAbort("Could not complete write string syscall");
+	WrenRuntime::WriteHandler handler = WrenRuntime::Instance().GetCurrentWriteHandler();
+	if (handler) {
+		handler(value.c_str(), value.length());
+	} else {
+		api_interface::systemPrintImpl(value);
 	}
 }
 

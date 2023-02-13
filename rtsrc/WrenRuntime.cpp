@@ -171,3 +171,7 @@ void WrenRuntime::LastFibreExited(std::optional<std::string> message) {
 	fprintf(stderr, "Last fibre exit handler returned!\n");
 	abort();
 }
+
+void WrenRuntime::SetWriteHandler(WrenRuntime::WriteHandler handler) { m_writeHandler = handler; }
+
+WrenRuntime::WriteHandler WrenRuntime::GetCurrentWriteHandler() { return m_writeHandler; }

@@ -7,6 +7,8 @@
 #include "RtModule.h"
 #include "common/ClassDescription.h"
 
+#include <string>
+
 class ObjManaged;
 class ObjManagedClass;
 struct GCMarkOps;
@@ -32,5 +34,7 @@ void *lookupForeignMethod(RtModule *mod, const std::string &className, const Cla
 Value dispatchForeignCall(void *funcPtr, Value *args, int argsLen);
 
 void markGCRoots(GCMarkOps *ops);
+
+void systemPrintImpl(const std::string &message);
 
 } // namespace api_interface
