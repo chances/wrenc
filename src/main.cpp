@@ -257,10 +257,20 @@ int main(int argc, char **argv) {
 	}
 
 	if (globalSelectedBackend == BACKEND_AUTO) {
+		// Default to LLVM
+#ifdef USE_LLVM
+		globalSelectedBackend = BACKEND_LLVM;
+#else
 		globalSelectedBackend = BACKEND_QBE;
+#endif
+
+		// Let the user select QBE or LLVM explicitly
 		const char *envUseLLVM = getenv("USE_LLVM");
 		if (envUseLLVM && envUseLLVM == std::string("1")) {
 			globalSelectedBackend = BACKEND_LLVM;
+		} else if (envUseLLVM) {
+			// Something other than '1' was set
+			globalSelectedBackend = BACKEND_QBE;
 		}
 	}
 
