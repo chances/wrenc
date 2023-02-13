@@ -29,7 +29,8 @@ static int runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
     const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts);
 static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
-static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles, OutputType type);
+static void runLinker(const std::string &outputPath, const std::vector<std::string> &objectFiles, OutputType type);
+static void staticLink(const std::string &outputFile, const std::vector<std::string> &objectFiles);
 
 static std::string compilerInstallDir;
 
@@ -145,7 +146,7 @@ int main(int argc, char **argv) {
 			} else if (arg == "shared") {
 				outputType = OutputType::OT_LIB_SHARED;
 			} else {
-				fmt::print(stderr, "Invalid output type '{}', see --help\n", argv[0]);
+				fmt::print(stderr, "Invalid output type '{}', see --help\n", arg);
 				optError = true;
 			}
 			break;
@@ -550,11 +551,16 @@ static void runAssembler(const std::vector<int> &assemblyFDs, const std::string 
 	prog.Run();
 }
 
-static void runLinker(const std::string &executableFile, const std::vector<std::string> &objectFiles, OutputType type) {
+static void runLinker(const std::string &outputPath, const std::vector<std::string> &objectFiles, OutputType type) {
+	// Static linking doesn't use the linker, since it's just a bunch of object files
+	if (type == OutputType::OT_LIB_STATIC) {
+		return staticLink(outputPath, objectFiles);
+	}
+
 	RunProgramme prog;
 	prog.args.push_back("ld.gold"); // Using lld would be even better, but it can't find -lc by itself
 	prog.args.push_back("-o");
-	prog.args.push_back(executableFile);
+	prog.args.push_back(outputPath);
 
 	// Link it to the runtime library
 	prog.args.push_back(compilerInstallDir + "/libwren-rtlib.so");
@@ -583,15 +589,31 @@ static void runLinker(const std::string &executableFile, const std::vector<std::
 		prog.args.push_back("-shared");
 		break;
 	}
-	case OutputType::OT_LIB_STATIC: {
-		fprintf(stderr, "Linking static libraries are not yet supported.\n");
-		exit(1);
-		break;
-	}
 	default:
 		fprintf(stderr, "invalid linker output type %d\n", (int)type);
 		abort();
 	}
+
+	prog.withEnv = true;
+	prog.Run();
+}
+
+static void staticLink(const std::string &outputFile, const std::vector<std::string> &objectFiles) {
+	// If the output file already exists, get rid of it since AR won't wipe the archive
+	remove(outputFile.c_str());
+
+	// Run AR to build the static archive and add an index
+	RunProgramme prog;
+	prog.args.push_back("ar");
+
+	// q=quick append, we're not going to overwrite anything since this is a new archive
+	// c=create, don't warn that we're making a new archive
+	// s=index, equivalent of running ranlib
+	prog.args.push_back("qcs");
+
+	// Output file goes first, followed by the inputs
+	prog.args.push_back(outputFile);
+	prog.args.insert(prog.args.end(), objectFiles.begin(), objectFiles.end());
 
 	prog.withEnv = true;
 	prog.Run();
