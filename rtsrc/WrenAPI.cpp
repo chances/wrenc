@@ -47,6 +47,8 @@ static void *vmUserData = nullptr;
 
 using api_interface::ForeignClassInterface;
 
+static void writeError(const char *format, ...) __attribute__((format(printf, 1, 2)));
+
 // WrenVM instances are only used for FFI-type stuff, so they're
 // basically just a stack.
 struct WrenVM {
@@ -56,22 +58,32 @@ struct WrenVM {
 	~WrenVM() { currentVMs.erase(this); }
 
 	template <typename T> T *GetSlotAsObject(int slot, const char *typeName, const char *msg) {
-		if (slot < 0)
-			errors::wrenAbort("%s: invalid negative slot index %d", msg, slot);
-		if (slot >= (int)stack.size())
-			errors::wrenAbort("%s: too large slot index %d (max %d)", msg, slot, (int)stack.size());
+		if (slot < 0) {
+			writeError("%s: invalid negative slot index %d", msg, slot);
+			return nullptr;
+		}
+		if (slot >= (int)stack.size()) {
+			writeError("%s: too large slot index %d (max %d)", msg, slot, (int)stack.size());
+			return nullptr;
+		}
 
 		Value value = stack.at(slot);
-		if (!is_object(value))
-			errors::wrenAbort("%s: expected object at slot %d, found number", msg, slot);
+		if (!is_object(value)) {
+			writeError("%s: expected object at slot %d, found number", msg, slot);
+			return nullptr;
+		}
 
 		Obj *baseObj = get_object_value(value);
-		if (baseObj == nullptr)
+		if (baseObj == nullptr) {
+			writeError("%s: expected object at slot %d, found null", msg, slot);
 			return nullptr;
+		}
 
 		T *obj = dynamic_cast<T *>(baseObj);
-		if (obj == nullptr)
-			errors::wrenAbort("%s: expected object of type '%s', got '%s'", msg, typeName, baseObj->type->name.c_str());
+		if (obj == nullptr) {
+			writeError("%s: expected object of type '%s', got '%s'", msg, typeName, baseObj->type->name.c_str());
+			return nullptr;
+		}
 
 		return obj;
 	}
@@ -216,6 +228,27 @@ void ForeignClassInterface::Finalise(ObjManaged *obj) {
 	}
 }
 
+void writeError(const char *format, ...) {
+	char buffer[256];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(buffer, sizeof(buffer), format, args);
+	va_end(args);
+
+	WrenErrorFn errorFn = nullptr;
+	if (currentConfiguration) {
+		errorFn = currentConfiguration->errorFn;
+	}
+
+	if (errorFn) {
+		errorFn(nullptr, WREN_ERROR_RUNTIME, "<api>", -1, buffer);
+	} else {
+		// Even if the application doesn't set an error handler, print
+		// it anyway since this could otherwise be a very nasty foot-gun.
+		fprintf(stderr, "Error in Wren API: %s\n", buffer);
+	}
+}
+
 void wrencSetModuleNameTransformer(WrencModuleNameTransformer transformer) { moduleNameTransformer = transformer; }
 
 static std::string transformModuleName(const char *name) {
@@ -246,38 +279,52 @@ static RtModule *lookupModule(const char *name) {
 		abort();                                                                                                       \
 	} while (1)
 
+#define GET_OBJ(var, type, errorValue, slot)                                                                           \
+	type *var;                                                                                                         \
+	do {                                                                                                               \
+		var = vm->GetSlotAsObject<type>(slot, #type, __func__);                                                        \
+		if (!var) {                                                                                                    \
+			/* An error has already been printed by GetSlotAsObject */                                                 \
+			return errorValue;                                                                                         \
+		}                                                                                                              \
+	} while (0)
+
 // Get slot functions
 
 bool wrenGetSlotBool(WrenVM *vm, int slot) {
-	ObjBool *obj = vm->GetSlotAsObject<ObjBool>(slot, "Bool", "GetSlotBool");
+	GET_OBJ(obj, ObjBool, false, slot);
 	return obj->AsBool();
 }
 
 const char *wrenGetSlotBytes(WrenVM *vm, int slot, int *length) {
-	ObjString *obj = vm->GetSlotAsObject<ObjString>(slot, "String", "GetSlotBytes");
+	*length = 0; // Zero the length in case of error
+	GET_OBJ(obj, ObjString, nullptr, slot);
 	*length = obj->m_value.length();
 	return obj->m_value.c_str();
 }
 
 double wrenGetSlotDouble(WrenVM *vm, int slot) {
 	Value value = vm->stack.at(slot);
-	if (!is_value_float(value))
-		errors::wrenAbort("Cannot call GetSlotDouble on slot %d that contains an object", slot);
+	if (!is_value_float(value)) {
+		writeError("Cannot call GetSlotDouble on slot %d that contains an object", slot);
+		return 0;
+	}
 
 	return get_number_value(value);
 }
 
 void *wrenGetSlotForeign(WrenVM *vm, int slot) {
-	ObjManaged *obj = vm->GetSlotAsObject<ObjManaged>(slot, "ObjManaged", "GetSlotForeign");
+	GET_OBJ(obj, ObjManaged, nullptr, slot);
 	ObjManagedClass *cls = (ObjManagedClass *)obj->type;
 	if (!cls->foreignClass) {
-		errors::wrenAbort("Cannot get foreign class data from non-foreign class '%s'", cls->name.c_str());
+		writeError("Cannot get foreign class data from non-foreign class '%s'", cls->name.c_str());
+		return nullptr;
 	}
 	return obj->fields;
 }
 
 const char *wrenGetSlotString(WrenVM *vm, int slot) {
-	ObjString *obj = vm->GetSlotAsObject<ObjString>(slot, "String", "GetSlotString");
+	GET_OBJ(obj, ObjString, nullptr, slot);
 	return obj->m_value.c_str();
 }
 
@@ -293,7 +340,7 @@ void wrenSetSlotBytes(WrenVM *vm, int slot, const char *bytes, size_t length) {
 void wrenSetSlotDouble(WrenVM *vm, int slot, double value) { vm->stack.at(slot) = encode_number(value); }
 
 void *wrenSetSlotNewForeign(WrenVM *vm, int slot, int classSlot, size_t size) {
-	ObjManagedClass *cls = vm->GetSlotAsObject<ObjManagedClass>(classSlot, "ObjManagedClass", "SetSlotNewForeign");
+	GET_OBJ(cls, ObjManagedClass, nullptr, classSlot);
 
 	// Create the object of the specified size
 	static_assert(alignof(ObjManaged) == 8);
@@ -362,23 +409,23 @@ WrenType wrenGetSlotType(WrenVM *vm, int slot) {
 void wrenSetSlotNewList(WrenVM *vm, int slot) { vm->stack.at(slot) = encode_object(ObjList::New()); }
 
 int wrenGetListCount(WrenVM *vm, int slot) {
-	ObjList *list = vm->GetSlotAsObject<ObjList>(slot, "List", "GetListCount");
+	GET_OBJ(list, ObjList, -1, slot);
 	return list->Count();
 }
 
 void wrenGetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) {
-	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "GetListElement");
+	GET_OBJ(list, ObjList, , listSlot);
 	// Use OperatorSubscript for the negative index handling
 	vm->stack.at(elementSlot) = list->OperatorSubscript(encode_number(index));
 }
 
 void wrenSetListElement(WrenVM *vm, int listSlot, int index, int elementSlot) {
-	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "SetListElement");
+	GET_OBJ(list, ObjList, , listSlot);
 	list->OperatorSubscriptSet(index, vm->stack.at(elementSlot));
 }
 
 void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) {
-	ObjList *list = vm->GetSlotAsObject<ObjList>(listSlot, "List", "InsertInList");
+	GET_OBJ(list, ObjList, , listSlot);
 	list->Insert(index, vm->stack.at(elementSlot));
 }
 
@@ -387,32 +434,32 @@ void wrenInsertInList(WrenVM *vm, int listSlot, int index, int elementSlot) {
 void wrenSetSlotNewMap(WrenVM *vm, int slot) { vm->stack.at(slot) = encode_object(ObjMap::New()); }
 
 int wrenGetMapCount(WrenVM *vm, int slot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(slot, "Map", "GetMapCount");
+	GET_OBJ(map, ObjMap, -1, slot);
 	return map->Count();
 }
 
 bool wrenGetMapContainsKey(WrenVM *vm, int mapSlot, int keySlot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapContainsKey");
+	GET_OBJ(map, ObjMap, false, mapSlot);
 	Value key = vm->stack.at(keySlot);
 	return map->ContainsKey(key);
 }
 
 void wrenGetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "GetMapValue");
+	GET_OBJ(map, ObjMap, , mapSlot);
 	Value key = vm->stack.at(keySlot);
 	Value result = map->OperatorSubscript(key);
 	vm->stack.at(valueSlot) = result;
 }
 
 void wrenSetMapValue(WrenVM *vm, int mapSlot, int keySlot, int valueSlot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "SetMapValue");
+	GET_OBJ(map, ObjMap, , mapSlot);
 	Value key = vm->stack.at(keySlot);
 	Value value = vm->stack.at(valueSlot);
 	map->OperatorSubscriptSet(key, value);
 }
 
 void wrenRemoveMapValue(WrenVM *vm, int mapSlot, int keySlot, int removedValueSlot) {
-	ObjMap *map = vm->GetSlotAsObject<ObjMap>(mapSlot, "Map", "RemoveMapValue");
+	GET_OBJ(map, ObjMap, , mapSlot);
 	Value key = vm->stack.at(keySlot);
 	Value oldValue = map->Remove(key);
 	vm->stack.at(removedValueSlot) = oldValue;
@@ -459,7 +506,8 @@ WrenHandle *wrenMakeCallHandle(WrenVM *vm, const char *signatureCStr) {
 }
 WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) {
 	if ((int)vm->stack.size() < method->arity) {
-		errors::wrenAbort("MakeCallHandle: Insufficient stack slots for arity %d", method->arity - 1);
+		writeError("MakeCallHandle: Insufficient stack slots for arity %d", method->arity - 1);
+		return WREN_RESULT_RUNTIME_ERROR;
 	}
 
 	// Sadly the receiver type can change between MakeCallHandle and Call, so we have
@@ -475,8 +523,8 @@ WrenInterpretResult wrenCall(WrenVM *vm, WrenHandle *method) {
 	FunctionTable::Entry *func = type->LookupMethod(method->signature);
 
 	if (!func) {
-		errors::wrenAbort("MakeCallHandle: %s does not implement '%s'.", type->name.c_str(),
-		    method->signatureStr.c_str());
+		writeError("MakeCallHandle: %s does not implement '%s'.", type->name.c_str(), method->signatureStr.c_str());
+		return WREN_RESULT_RUNTIME_ERROR;
 	}
 
 	WrenInterpretResult error;
