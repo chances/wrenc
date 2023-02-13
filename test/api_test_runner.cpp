@@ -15,8 +15,6 @@ extern "C" {
 #include <string>
 #include <vector>
 
-typedef Value (*wren_main_func_t)();
-
 static const char *testModule = nullptr;
 
 static char *nameTransformer(const char *originalName) {
@@ -82,7 +80,7 @@ int main(int argc, char **argv) {
 
 	// Set the write handler here rather than through WrenConfiguration, so
 	// it doesn't get changed if someone calls wrenNewVM.
-	WrenRuntime::Instance().SetWriteHandler(writeImpl);
+	wrencSetNullSafeWriteFn(writeImpl);
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage: %s <test shared library> <test path>\n", argv[1]);

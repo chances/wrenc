@@ -8,7 +8,6 @@
 
 #include "WrenRuntime.h"
 #include "common/common.h"
-#include "pub_include/wren.h"
 
 #include <stdio.h>
 #include <stdlib.h>

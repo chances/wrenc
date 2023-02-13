@@ -30,7 +30,7 @@
 #include <vector>
 
 static std::optional<WrenConfiguration> currentConfiguration;
-static ModuleNameTransformer moduleNameTransformer = nullptr;
+static WrencModuleNameTransformer moduleNameTransformer = nullptr;
 
 // Keep a list of all the active handles, so they can be marked
 // as GC roots.
@@ -216,7 +216,7 @@ void ForeignClassInterface::Finalise(ObjManaged *obj) {
 	}
 }
 
-void wrencSetModuleNameTransformer(ModuleNameTransformer transformer) { moduleNameTransformer = transformer; }
+void wrencSetModuleNameTransformer(WrencModuleNameTransformer transformer) { moduleNameTransformer = transformer; }
 
 static std::string transformModuleName(const char *name) {
 	if (!moduleNameTransformer)
@@ -548,3 +548,5 @@ void wrenFreeVM(WrenVM *vm) { delete vm; }
 void wrenInitConfiguration(WrenConfiguration *configuration) { *configuration = {}; }
 
 WrenInterpretResult wrenInterpret(WrenVM *vm, const char *modName, const char *source) { TODO; }
+
+void wrencSetNullSafeWriteFn(WrencWriteFnNullSafe writeFn) { WrenRuntime::Instance().SetWriteHandler(writeFn); }

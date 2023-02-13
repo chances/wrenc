@@ -549,12 +549,19 @@ WREN_API void wrenSetUserData(WrenVM *vm, void *userData);
 // --- WRENC SPECIFIC ---
 // ----------------------
 
-typedef char *(*ModuleNameTransformer)(const char *name);
+typedef char *(*WrencModuleNameTransformer)(const char *name);
+typedef void (*WrencWriteFnNullSafe)(const char *data, int length);
 
 // Whenever a module is accessed by name, this function will be run to
 // modify it. This was added for the API test suite, and probably shouldn't
 // be used in other applications.
-WREN_API void wrencSetModuleNameTransformer(ModuleNameTransformer transformer);
+WREN_API void wrencSetModuleNameTransformer(WrencModuleNameTransformer transformer);
+
+// Set the write function to be used. This is similar to setting
+// WrenConfiguration.writeFn, but it can handle nulls in the output
+// since it takes a length parameter.
+// This overrides WrenConfiguration.writeFn.
+WREN_API void wrencSetNullSafeWriteFn(WrencWriteFnNullSafe writeFn);
 
 #ifdef __cplusplus
 }
