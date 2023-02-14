@@ -97,8 +97,10 @@ bool WrenGCMetadataPrinter::emitStackMaps(llvm::StackMaps &maps, llvm::AsmPrinte
 	llvm::MCContext &outContext = printer.OutStreamer->getContext();
 	llvm::MCStreamer &os = *printer.OutStreamer;
 
-	// TODO use the data section on platforms that don't support relro (Windows/OSX)
+	// Use the data section on platforms that don't support relro (Windows/OSX)
 	llvm::MCSection *stackMapSection = outContext.getObjectFileInfo()->getDataRelROSection();
+	if (!stackMapSection)
+		stackMapSection = outContext.getObjectFileInfo()->getDataSection();
 	os.switchSection(stackMapSection);
 
 	// Start aligned to the eight-byte boundary, so we can safely read 64-bit values on all architectures
