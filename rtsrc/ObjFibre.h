@@ -17,7 +17,11 @@ class RtModule;
 
 // Whenever we're interacting with assembly we'll use the Microsoft calling convention, to avoid
 // writing bits of the assembly twice.
+#ifdef _WIN32
+#define WREN_MSVC_CALLCONV
+#else
 #define WREN_MSVC_CALLCONV __attribute__((ms_abi))
+#endif
 
 /**
  * A fibre is a thread of execution in Wren. Fibres can't execute concurrently, but they can be interwoven to

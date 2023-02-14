@@ -25,6 +25,8 @@
     pop rbp
 %endmacro
 
+section .text
+
 ; Transfer to a new stack, and invoke a function on it.
 ; ResumeFibreArgs* fibreAsm_invokeOnNewStack(rcx void* newStack, rdx void* func, r8 void* arg)
 ; Where func is: void (*func)(void *arg, void *oldStack)
