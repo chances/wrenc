@@ -33,7 +33,7 @@ struct CompilationResult {
 
 class IBackend {
   public:
-	virtual ~IBackend();
+	DLL_EXPORT virtual ~IBackend();
 
 	virtual CompilationResult Generate(Module *mod, const CompilationOptions *options) = 0;
 

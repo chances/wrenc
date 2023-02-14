@@ -29,23 +29,23 @@ class LocalVariable : public VarDecl {
 	// when this variable came into scope.
 	StmtBeginUpvalues *beginUpvalues = nullptr;
 
-	std::string Name() const override;
-	ScopeType Scope() const override;
-	void Accept(IRVisitor *visitor) override;
+	DLL_EXPORT std::string Name() const override;
+	DLL_EXPORT ScopeType Scope() const override;
+	DLL_EXPORT void Accept(IRVisitor *visitor) override;
 };
 
 /// Reference a variable from the enclosing function.
 class UpvalueVariable : public VarDecl {
   public:
-	UpvalueVariable(VarDecl *parent, IRFn *fn) : parent(parent), containingFunction(fn) {}
+	DLL_EXPORT UpvalueVariable(VarDecl *parent, IRFn *fn) : parent(parent), containingFunction(fn) {}
 
-	std::string Name() const override;
-	ScopeType Scope() const override;
-	void Accept(IRVisitor *visitor) override;
+	DLL_EXPORT std::string Name() const override;
+	DLL_EXPORT ScopeType Scope() const override;
+	DLL_EXPORT void Accept(IRVisitor *visitor) override;
 
 	/// Upvalues can have either another upvalue or a local as their parent. This walks the parent
 	/// chain until we find the local variable at the end of it.
-	LocalVariable *GetFinalTarget() const;
+	DLL_EXPORT LocalVariable *GetFinalTarget() const;
 
 	/// The variable this upvalue references. Must either be a local variable or another upvalue import.
 	VarDecl *parent = nullptr;

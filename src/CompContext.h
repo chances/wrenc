@@ -5,6 +5,7 @@
 #pragma once
 
 #include "ArenaAllocator.h"
+#include "common/common.h"
 
 #include <memory>
 #include <string>
@@ -38,24 +39,24 @@ enum SignatureType {
 
 class Signature {
   public:
-	~Signature();
+	DLL_EXPORT ~Signature();
 
 	std::string name;
 	SignatureType type = SIG_METHOD;
 	int arity = 0;
 
-	std::string ToString() const; // In wren_compiler.cpp
+	DLL_EXPORT std::string ToString() const; // In wren_compiler.cpp
 
 	/// Convert a string representation of a signature into the appropriate object. This doesn't handle error
 	/// cases well, and is mostly for parsing hardcoded signatures from inside the compiler.
-	static Signature Parse(const std::string &stringSignature);
+	DLL_EXPORT static Signature Parse(const std::string &stringSignature);
 };
 
 // Compilation context
 class CompContext {
   public:
-	CompContext();
-	~CompContext();
+	DLL_EXPORT CompContext();
+	DLL_EXPORT ~CompContext();
 
 	/// The allocator to be used for compiling everything in this context
 	ArenaAllocator alloc;
@@ -66,8 +67,8 @@ class CompContext {
 	std::unordered_map<std::string, std::unique_ptr<Signature>> signatures;
 
 	/// Get a signature by name, or nullptr if it doesn't already exist
-	Signature *GetSignature(const std::string &sigString);
+	DLL_EXPORT Signature *GetSignature(const std::string &sigString);
 
 	/// Given a signature, find the single object used to represent it
-	Signature *GetSignature(const Signature &sig);
+	DLL_EXPORT Signature *GetSignature(const Signature &sig);
 };

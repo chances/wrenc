@@ -5,6 +5,7 @@
 #pragma once
 
 #include "SymbolTable.h"
+#include "common/common.h"
 
 #include <map>
 
@@ -12,7 +13,7 @@ class AttributePack;
 
 class MethodInfo {
   public:
-	~MethodInfo();
+	DLL_EXPORT ~MethodInfo();
 
 	Signature *signature = nullptr;
 	bool isForeign = false;
@@ -25,16 +26,16 @@ class MethodInfo {
 // Bookkeeping information for compiling a class definition.
 class ClassInfo {
   public:
-	~ClassInfo();
+	DLL_EXPORT ~ClassInfo();
 
 	// Returns whether this shares a name with a 'system class' defined in the core module.
 	// In this case, it should be blocked with only the rare exception of when we're compiling the
 	// special wren_core module.
-	bool IsSystemClass() const;
+	DLL_EXPORT bool IsSystemClass() const;
 
 	// If true, this is a special type of system class that has a custom C++ implementation.
 	// This is for use by the backends only.
-	bool IsCppSystemClass() const;
+	DLL_EXPORT bool IsCppSystemClass() const;
 
 	// The name of the class.
 	std::string name;

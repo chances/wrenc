@@ -5,6 +5,7 @@
 #pragma once
 
 #include "CcValue.h"
+#include "common/common.h"
 
 #include <memory>
 #include <optional>
@@ -35,7 +36,7 @@ class StmtBeginUpvalues;
 // An interface of random stuff for backends to use
 class BackendNodeData {
   public:
-	virtual ~BackendNodeData();
+	DLL_EXPORT virtual ~BackendNodeData();
 };
 
 class VarDecl {
@@ -52,7 +53,7 @@ class VarDecl {
 		SCOPE_MODULE
 	};
 
-	virtual ~VarDecl();
+	DLL_EXPORT virtual ~VarDecl();
 	virtual std::string Name() const = 0;
 	virtual ScopeType Scope() const = 0;
 

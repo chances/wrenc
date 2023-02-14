@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "common/common.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <utility>
@@ -14,8 +16,8 @@
 
 class ArenaAllocator {
   public:
-	ArenaAllocator();
-	~ArenaAllocator();
+	DLL_EXPORT ArenaAllocator();
+	DLL_EXPORT ~ArenaAllocator();
 
 	// Obviously not copyable
 	ArenaAllocator(const ArenaAllocator &) = delete;
@@ -26,7 +28,7 @@ class ArenaAllocator {
 		return new (mem) T(std::forward<Args>(args)...);
 	}
 
-	inline void *AllocateMem(size_t size, int alignment) {
+	DLL_EXPORT inline void *AllocateMem(size_t size, int alignment) {
 		int overhang = m_currentPageOffset % alignment;
 		int wastage = 0;
 		if (overhang) {
@@ -50,7 +52,7 @@ class ArenaAllocator {
 
   private:
 	// Alignment is NOT handled in here.
-	void *AllocateSlowPath(int size);
+	DLL_EXPORT void *AllocateSlowPath(int size);
 
 	struct MappedBlock {
 		void *addr;

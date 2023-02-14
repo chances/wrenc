@@ -15,30 +15,30 @@ class ClassInfo;
 
 class Module {
   public:
-	Module(std::string name);
-	~Module();
+	DLL_EXPORT Module(std::string name);
+	DLL_EXPORT ~Module();
 
-	const std::string &Name() const { return m_name; }
+	DLL_EXPORT const std::string &Name() const { return m_name; }
 
-	IRGlobalDecl *AddVariable(const std::string &name);
+	DLL_EXPORT IRGlobalDecl *AddVariable(const std::string &name);
 
-	IRGlobalDecl *FindVariable(const std::string &name);
+	DLL_EXPORT IRGlobalDecl *FindVariable(const std::string &name);
 
-	std::vector<IRGlobalDecl *> GetGlobalVariables();
+	DLL_EXPORT std::vector<IRGlobalDecl *> GetGlobalVariables();
 
 	/// Get all the functions in the module. The main function (that runs when the module is imported) is the
 	/// first function in this list.
-	const std::vector<IRFn *> &GetFunctions() const;
+	DLL_EXPORT const std::vector<IRFn *> &GetFunctions() const;
 
-	std::vector<IRFn *> GetClosures() const;
+	DLL_EXPORT std::vector<IRFn *> GetClosures() const;
 
 	/// Get the module's initialisation function. Same as GetFunctions.at(0);
-	const IRFn *GetMainFunction() const;
+	DLL_EXPORT const IRFn *GetMainFunction() const;
 
-	const std::vector<IRClass *> &GetClasses() const;
+	DLL_EXPORT const std::vector<IRClass *> &GetClasses() const;
 
 	/// Add a top-level node.
-	void AddNode(IRNode *node);
+	DLL_EXPORT void AddNode(IRNode *node);
 
 	std::optional<std::string> sourceFilePath;
 

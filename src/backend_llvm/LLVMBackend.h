@@ -24,6 +24,8 @@ class LLVMBackend : public IBackend {
 };
 
 // Non-name-mangled function for dynamic loading
-extern "C" LLVMBackend *create_llvm_backend(); // NOLINT(readability-identifier-naming)
+extern "C" {
+DLL_EXPORT LLVMBackend *create_llvm_backend(); // NOLINT(readability-identifier-naming)
+}
 
 #endif
