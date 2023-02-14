@@ -97,6 +97,10 @@ static std::unordered_map<std::string, int> buildSysVarNames(bool cppOnly) {
 const std::unordered_map<std::string, int> ExprSystemVar::SYSTEM_VAR_NAMES = buildSysVarNames(false);
 const std::unordered_map<std::string, int> ExprSystemVar::CPP_SYSTEM_VAR_NAMES = buildSysVarNames(true);
 
+const std::unordered_map<std::string, int> &ExprSystemVar::GetSystemVarNames(bool cpp) {
+	return cpp ? CPP_SYSTEM_VAR_NAMES : SYSTEM_VAR_NAMES;
+}
+
 IRVisitor::~IRVisitor() {}
 
 // Top-level-node accept functions

@@ -498,6 +498,11 @@ class ExprSystemVar : public IRExpr {
 	// The variable names and their IDs
 	static const std::unordered_map<std::string, int> SYSTEM_VAR_NAMES;
 	static const std::unordered_map<std::string, int> CPP_SYSTEM_VAR_NAMES;
+
+	// A function to get the variable name arrays. To avoid linking to a variable
+	// from the LLVM library on Windows, this wrapper returns one of the two
+	// above variables.
+	DLL_EXPORT static const std::unordered_map<std::string, int> &GetSystemVarNames(bool cpp);
 };
 
 /// Get an ObjClass object declared in the current module by name

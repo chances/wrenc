@@ -385,7 +385,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	SetupDebugInfo(mod);
 
 	// Create all the system variables with the correct linkage
-	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
+	for (const auto &entry : ExprSystemVar::GetSystemVarNames(false)) {
 		std::string name = "wren_sys_var_" + entry.first;
 		m_systemVars[entry.first] = new llvm::GlobalVariable(m_module, m_valueType, false,
 		    llvm::GlobalVariable::InternalLinkage, m_nullValue, name);
@@ -861,7 +861,7 @@ void LLVMBackendImpl::GenerateInitialiser(Module *mod) {
 
 	// Remove any unused system variables, for ease of reading the LLVM IR
 	// Make an exception for Obj, since it's used below for the class declaration stuff
-	for (const auto &entry : ExprSystemVar::SYSTEM_VAR_NAMES) {
+	for (const auto &entry : ExprSystemVar::GetSystemVarNames(false)) {
 		llvm::GlobalVariable *var = m_systemVars.at(entry.first);
 		if (m_usedSystemVars.contains(var) || entry.first == "Object")
 			continue;
