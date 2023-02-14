@@ -467,16 +467,19 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 	for (IRFn *fn : mod.GetFunctions())
 		printer.Process(fn);
 	std::unique_ptr<std::stringstream> dbg = printer.Extract();
-	// fmt::print("AST/IR:\n{}\n", dbg->str());
-	std::ofstream irOutput;
-	irOutput.exceptions(std::ios::badbit | std::ios::failbit);
-	std::string wrencIrFile = "/tmp/wren_wrenc_ir.txt";
-	try {
-		irOutput.open(wrencIrFile);
-		irOutput << dbg->str() << std::endl;
-	} catch (const std::fstream::failure &ex) {
-		fmt::print(stderr, "Failed to write wren IR: {}\n", ex.what());
-		exit(1);
+
+	const char *dumpIrEnv = getenv("WRENC_DUMP_IR");
+	if (dumpIrEnv && strcmp(dumpIrEnv, "1") == 0) {
+		std::ofstream irOutput;
+		irOutput.exceptions(std::ios::badbit | std::ios::failbit);
+		std::string wrencIrFile = "/tmp/wren_wrenc_ir.txt";
+		try {
+			irOutput.open(wrencIrFile);
+			irOutput << dbg->str() << std::endl;
+		} catch (const std::fstream::failure &ex) {
+			fmt::print(stderr, "Failed to write wren IR: {}\n", ex.what());
+			exit(1);
+		}
 	}
 
 	std::unique_ptr<IBackend> backend;
