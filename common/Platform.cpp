@@ -11,6 +11,7 @@ namespace mm = mem_management;
 #ifdef _WIN32
 
 #include <Windows.h>
+#include <assert.h>
 
 int mm::getPageSize() {
 	SYSTEM_INFO info = {};
@@ -19,8 +20,28 @@ int mm::getPageSize() {
 }
 
 void *mm::allocateMemory(int size) {
-	void *mem = VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_READWRITE);
+	void *mem = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	return mem;
+}
+
+bool mem_management::allocateMemoryAtAddress(void *addr, int size, bool &outCollided) {
+	outCollided = false;
+
+	// Testing to make sure ERROR_INVALID_ADDRESS works
+	VirtualAlloc(addr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+	void *mem = VirtualAlloc(addr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+	if (mem == nullptr) {
+		if (GetLastError() == ERROR_INVALID_ADDRESS) {
+			outCollided = true;
+			abort(); // TESTING
+		}
+		return false;
+	}
+	assert(mem == addr);
+
+	return true;
 }
 
 bool mm::deallocateMemory(void *addr, int size) { return VirtualFree(addr, 0, MEM_RELEASE) != 0; }
@@ -37,7 +58,6 @@ std::unique_ptr<DyLib> DyLib::Load(const std::string &filename) {
 		fprintf(stderr, "Failed to load shared library '%s': %s\n", filename.c_str(), buf);
 		exit(1);
 	}
-	// TODO
 
 	DyLib *lib = new DyLib;
 	lib->handle = (void *)module;
