@@ -14,8 +14,13 @@ if build_machine.system() != 'windows'
   subdir('lib/qbe-1.0')
 endif
 
+# If we're on Windows, LLVM can't be built as a shared library
+# FIXME It can, but not with MSVC.
+static_llvm = build_machine.system() == 'windows'
+
 llvm = dependency('llvm',
   required: get_option('use_llvm'),
+  static: static_llvm,
   modules: [
     'core',
     'passes',
@@ -75,9 +80,16 @@ rtlib_main_stub = executable('wren-rtlib-stub',
   link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
 )
 
+# If we're building LLVM statically, we have to link plugin code statically to avoid
+# ending up with two copies of LLVM.
+llvm_plugin_type = 'shared_library'
+if static_llvm
+  llvm_plugin_type = 'static_library'
+endif
+
 # Functionality that will be used by LLVM when processing this IR. This is provided as a separate library so you
 # can manually run LLVM passes (loading this with -load plugin.dll) for testing purposes.
-llvm_plugin = shared_library('wren_llvm_plugin',
+llvm_plugin = build_target('wren_llvm_plugin',
   'src/backend_llvm/WrenGCStrategy.cpp',
   'src/backend_llvm/WrenGCMetadataPrinter.cpp',
 
@@ -92,6 +104,7 @@ llvm_plugin = shared_library('wren_llvm_plugin',
     # since LLVM is usually compiled without RTTI this causes a link error.
     '-fno-rtti',
   ],
+  target_type: llvm_plugin_type,
 )
 
 wrenc = executable('wrencc',
