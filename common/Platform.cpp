@@ -6,12 +6,14 @@
 
 #include "Platform.h"
 
+#include <assert.h>
+#include <vector>
+
 namespace mm = mem_management;
 
 #ifdef _WIN32
 
 #include <Windows.h>
-#include <assert.h>
 
 int mm::getPageSize() {
 	SYSTEM_INFO info = {};
@@ -81,9 +83,22 @@ std::string plat_util::resolveFilename(const std::string &filename) {
 	return result;
 }
 
+std::string plat_util::getExeName() {
+	std::vector<char> buf;
+	buf.resize(MAX_PATH + 1);
+
+	if (GetModuleFileNameA(nullptr, buf.data(), buf.size() - 1) == 0) {
+		// TODO error message
+		fprintf(stderr, "Failed to read executable path!\n");
+		exit(1);
+	}
+
+	std::string result = buf.data();
+	return result;
+}
+
 #else
 
-#include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -147,6 +162,19 @@ std::string plat_util::resolveFilename(const std::string &filename) {
 	}
 	std::string result = resolvedC;
 	free(resolvedC);
+	return result;
+}
+
+std::string plat_util::getExeName() {
+	std::vector<char> buf;
+	buf.resize(1024);
+
+	if (readlink("/proc/self/exe", buf.data(), buf.size() - 1) == -1) {
+		fprintf(stderr, "Failed to read executable path: %d %s\n", errno, strerror(errno));
+		exit(1);
+	}
+
+	std::string result = buf.data();
 	return result;
 }
 

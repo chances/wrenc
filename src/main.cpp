@@ -4,19 +4,24 @@
 #include "IRPrinter.h"
 #include "RunProgramme.h"
 #include "Utils.h"
-#include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
 #include "common/Platform.h"
 #include "passes/BasicBlockPass.h"
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
+#include "wrencc_config.h"
 
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <fstream>
-#include <getopt.h>
 #include <signal.h>
 #include <sstream>
+
+#if _WIN32
+#include <ya_getopt.h>
+#else
+#include <dlfcn.h>
+#include <getopt.h>
+#endif
 
 static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
@@ -82,22 +87,17 @@ static option options[] = {
 };
 
 int main(int argc, char **argv) {
+#ifndef _WIN32
 	// Ignore SIGPIPE that might be caused if QBE or the assembler (run as child processes) crash - we can handle
 	// the error and generate a proper error message, so turn this off.
 	signal(SIGPIPE, SIG_IGN);
+#endif
 
 	// Find the directory of our executable, as we'll need libraries from the same directory later.
 	{
-		std::vector<char> buf;
-		buf.resize(1024);
-		if (readlink("/proc/self/exe", buf.data(), buf.size()) == -1) {
-			fmt::print("Failed to read executable path: {} {}\n", errno, strerror(errno));
-			exit(1);
-		}
-
 		// Chop off the executable name, leaving just the path
-		compilerInstallDir = std::string(buf.data(), buf.size());
-		size_t strokePos = compilerInstallDir.find_last_of('/');
+		compilerInstallDir = plat_util::getExeName();
+		size_t strokePos = compilerInstallDir.find_last_of(plat_util::PATH_SEPARATOR);
 		compilerInstallDir.erase(strokePos);
 	}
 

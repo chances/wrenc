@@ -27,6 +27,16 @@ namespace plat_util {
 // Find the absolute version of a filename
 std::string resolveFilename(const std::string &filename);
 
+std::string getExeName();
+
+constexpr char PATH_SEPARATOR =
+#ifdef _WIN32
+    '\\'
+#else
+    '/'
+#endif
+    ;
+
 } // namespace plat_util
 
 /// Represents a dynamic-link library.
