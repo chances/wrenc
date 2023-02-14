@@ -9,7 +9,10 @@ fmt = declare_dependency(
   include_directories: ['lib/fmt-8.1.1/include'],
 )
 
-subdir('lib/qbe-1.0')
+if build_machine.system() != 'windows'
+  # Don't bother getting QBE building on Windows
+  subdir('lib/qbe-1.0')
+endif
 
 llvm = dependency('llvm',
   required: get_option('use_llvm'),
