@@ -139,6 +139,15 @@ wrenc = executable('wrencc',
   export_dynamic: true, # Export the symbols so the LLVM backend can access them
 )
 
+# On Windows, we have to link the LLVM backend to the frontend binary, since it uses
+# symbols from it. This does mean that running Ninja without arguments will relink
+# llvm_backend.dll if the frontend has changed, but running 'ninja wrencc.exe' if you
+# know the exports haven't changed is good enough for development.
+llvm_backend_link_with = []
+if build_machine.system() == 'windows'
+  llvm_backend_link_with += [wrenc]
+endif
+
 # Build the LLVM driver as it's own shared library that gets loaded into the compiler
 # at runtime. This is mostly for debugging: GDB doesn't have to load all the LLVM
 # symbols when the compiler starts, so it should speed up debugging the frontend components
@@ -150,6 +159,7 @@ llvm_backend = shared_module('llvm_backend',
   name_prefix: '', # Don't prepend a 'lib' prefix on Linux, this isn't really a library
   link_with: [
     llvm_plugin,
+    llvm_backend_link_with,
   ],
   include_directories: [
     'src',
