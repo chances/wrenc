@@ -43,6 +43,7 @@
 #include "Errors.h"
 #include "ObjManaged.h"
 #include "WrenRuntime.h"
+#include "common/Platform.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -50,6 +51,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+namespace mm = mem_management;
 
 // The size of slabs on this system. This is derived from the system page size, so we only want to
 // calculate it once. It has to be a global variable since we use it to find the slab pointer, before
@@ -101,7 +104,7 @@ static int roundToAlignment(int value) {
 SlabObjectAllocator::SlabObjectAllocator() {
 	// Use 16k slabs, or as near as we can - it's a pretty arbitrary amount, and it doesn't matter that much.
 	while (globalSlabSize < 16 * 1024) {
-		globalSlabSize += getpagesize();
+		globalSlabSize += mm::getPageSize();
 	}
 }
 SlabObjectAllocator::~SlabObjectAllocator() {}

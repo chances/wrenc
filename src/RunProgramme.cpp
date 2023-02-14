@@ -2,6 +2,8 @@
 // Created by znix on 23/07/22.
 //
 
+#define WIN32_LEAN_AND_MEAN
+
 #include "RunProgramme.h"
 
 #include <fmt/format.h>

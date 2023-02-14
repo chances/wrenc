@@ -49,6 +49,7 @@ common_lib = static_library('common-lib',
   'common/ClassDescription.cpp',
   'common/StackMapDescription.cpp',
   'common/HashUtil.cpp',
+  'common/Platform.cpp',
   include_directories: ['common'],
   override_options: ['cpp_std=c++20'],
 )

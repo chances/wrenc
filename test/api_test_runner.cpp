@@ -4,12 +4,13 @@
 
 #include "pub_include/wren.h"
 
+#include "common/Platform.h"
+
 extern "C" {
 #define wren_h // Avoid importing the Wren API twice
 #include "api_tests.h"
 }
 
-#include <dlfcn.h>
 #include <stdio.h>
 #include <string>
 #include <vector>
@@ -86,16 +87,16 @@ int main(int argc, char **argv) {
 
 	testModule = argv[2];
 
-	void *handle = dlopen(argv[1], RTLD_NOW);
-	if (!handle) {
-		fprintf(stderr, "Failed to load test library: %s\n", dlerror());
+	std::unique_ptr<DyLib> library = DyLib::Load(argv[1]);
+	if (!library) {
+		fprintf(stderr, "Failed to load test library!\n");
 		return 1;
 	}
 
 	// The module under test is always named 'test', hence the symbol name.
-	void *getGlobalsFunc = dlsym(handle, "test_get_globals");
+	void *getGlobalsFunc = library->Lookup("test_get_globals");
 	if (!getGlobalsFunc) {
-		fprintf(stderr, "Failed to resolve the get-globals symbol: %s\n", dlerror());
+		fprintf(stderr, "Failed to resolve the get-globals symbol!\n");
 		return 1;
 	}
 
@@ -122,10 +123,8 @@ int main(int argc, char **argv) {
 
 	wrenFreeVM(vm);
 
-	if (dlclose(handle)) {
-		fprintf(stderr, "Failed to close test library: %s\n", dlerror());
-		return 1;
-	}
+	// The library will be closed automatically, and if there's
+	// an error message it will cause the test to fail.
 
 	return exitCode;
 }
