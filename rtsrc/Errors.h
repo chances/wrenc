@@ -8,7 +8,7 @@
 
 namespace errors {
 
-[[noreturn]] void wrenAbort(const char *format, ...) __attribute__((format(printf, 1, 2)));
+[[noreturn]] void wrenAbort(const char *format, ...) MARK_PRINTF_FORMAT(1, 2);
 
 double validateNum(Value arg, const char *argName);
 int validateIntValue(double value, const char *argName);

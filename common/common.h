@@ -136,5 +136,10 @@ inline Value encode_object(Obj *obj) {
 #define NULL_VAL NAN_MASK
 
 // Set up the symbols to export stuff from a shared library
-// TODO Windows DLL support
+#ifdef _MSC_VER
+#define DLL_EXPORT __declspec(dllexport)
+#define MARK_PRINTF_FORMAT(fmt, first)
+#else
 #define DLL_EXPORT __attribute__((visibility("default")))
+#define MARK_PRINTF_FORMAT(fmt, first) __attribute__((format(printf, fmt, first)))
+#endif

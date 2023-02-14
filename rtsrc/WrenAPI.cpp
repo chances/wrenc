@@ -47,7 +47,7 @@ static void *vmUserData = nullptr;
 
 using api_interface::ForeignClassInterface;
 
-static void writeError(const char *format, ...) __attribute__((format(printf, 1, 2)));
+static void writeError(const char *format, ...) MARK_PRINTF_FORMAT(1, 2);
 
 // WrenVM instances are only used for FFI-type stuff, so they're
 // basically just a stack.
