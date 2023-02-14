@@ -130,7 +130,7 @@ wrenc = executable('wrencc',
   dependencies: [
     fmt,
     common,
-    meson.get_compiler('cpp').find_library('dl'),
+    meson.get_compiler('cpp').find_library('dl', required: false),
     getopt_dep,
   ],
   include_directories: [
