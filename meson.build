@@ -133,9 +133,6 @@ wrenc = executable('wrencc',
     meson.get_compiler('cpp').find_library('dl'),
     getopt_dep,
   ],
-  cpp_args: [
-    '-fPIC', # Required for Qt on my system
-  ],
   include_directories: [
     'src',
   ],
@@ -161,9 +158,6 @@ llvm_backend = shared_module('llvm_backend',
     fmt,
     common,
     llvm,
-  ],
-  cpp_args: [
-    '-fPIC',
   ],
 )
 
