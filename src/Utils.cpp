@@ -2,11 +2,20 @@
 // Created by znix on 20/12/22.
 //
 
+#define WIN32_LEAN_AND_MEAN
+
 #include "Utils.h"
 
-#include <unistd.h>
-#include <vector>
 #include <random>
+#include <vector>
+
+#include <stdio.h>
+
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static std::vector<std::string> tempFiles;
 
@@ -30,7 +39,23 @@ static void setupAtExit() {
 std::string utils::buildTempFilename(std::string nameTemplate) {
 	setupAtExit();
 
-	std::string filename = "/tmp/" + nameTemplate;
+	std::string tempDir;
+#ifdef _WIN32
+	{
+		char tmpBuffer[MAX_PATH + 2];
+		ZeroMemory(tmpBuffer, sizeof(tmpBuffer));
+		DWORD result = GetTempPathA(sizeof(tmpBuffer), tmpBuffer);
+		if (result == 0) {
+			fprintf(stderr, "Failed to get temporary file path (for name template '%s')\n", nameTemplate.c_str());
+			abort();
+		}
+		tempDir = tmpBuffer;
+	}
+#else
+	tempDir = "/tmp";
+#endif
+
+	std::string filename = tempDir + "/" + nameTemplate;
 
 	// Use a proper seeded RNG
 	static std::default_random_engine generator;
