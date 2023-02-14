@@ -52,12 +52,8 @@ std::unique_ptr<DyLib> DyLib::Load(const std::string &filename) {
 	// TODO unicode
 	HMODULE module = LoadLibraryA(filename.c_str());
 	if (!module) {
-		char buf[64];
-		ZeroMemory(buf, sizeof(buf));
-		DWORD errId = GetLastError();
-		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_HMODULE,
-		    nullptr, errId, 0, buf, sizeof(buf), nullptr);
-		fprintf(stderr, "Failed to load shared library '%s': %s\n", filename.c_str(), buf);
+		std::string error = plat_util::getLastWindowsError();
+		fprintf(stderr, "Failed to load shared library '%s': %s\n", filename.c_str(), error.c_str());
 		exit(1);
 	}
 
@@ -96,6 +92,22 @@ std::string plat_util::getExeName() {
 	std::string result = buf.data();
 	return result;
 }
+
+std::string plat_util::getWindowsError(int error) {
+	std::vector<char> message;
+	message.resize(256);
+	FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, message.data(),
+	    message.size() - 1, nullptr);
+	std::string result = message.data();
+
+	// Trim off any trailing whitespace, notably a newline it might contain
+	while (!result.empty() && isspace(result.back()))
+		result.pop_back();
+
+	return result;
+}
+
+std::string plat_util::getLastWindowsError() { return getWindowsError(GetLastError()); }
 
 #else
 

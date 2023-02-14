@@ -37,6 +37,11 @@ constexpr char PATH_SEPARATOR =
 #endif
     ;
 
+#ifdef _WIN32
+std::string getWindowsError(int error);
+std::string getLastWindowsError();
+#endif
+
 } // namespace plat_util
 
 /// Represents a dynamic-link library.

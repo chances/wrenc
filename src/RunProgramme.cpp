@@ -5,20 +5,23 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include "RunProgramme.h"
+#include "Platform.h"
 
 #include <fmt/format.h>
 #include <set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 
-static int execSubProgramme(void *voidArgs);
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <sys/wait.h>
+#endif
 
 struct ExecData {
 	const std::vector<std::string> *args = nullptr;
 	int stdinPipe = -1;
-	int stdoutPipe = -1;
 	bool useEnv;
 };
 
@@ -26,6 +29,55 @@ bool RunProgramme::printCommands = false;
 
 RunProgramme::RunProgramme() {}
 RunProgramme::~RunProgramme() {}
+
+#ifdef _WIN32
+
+void RunProgramme::Run() {
+	if (printCommands)
+		PrintCommand();
+
+	// We could redirect stdin with STARTF_USESTDHANDLES, but I can't be bothered.
+	if (!input.empty()) {
+		fmt::print(stderr, "Windows RunProgramme doesn't yet support stdin.\n");
+		abort();
+	}
+
+	STARTUPINFOA startupInfo = {};
+	PROCESS_INFORMATION procInfo = {};
+
+	startupInfo.cb = sizeof(startupInfo);
+
+	bool success = CreateProcessA(args.at(0).c_str(), nullptr, nullptr, nullptr, false, 0, nullptr, nullptr,
+	    &startupInfo, &procInfo);
+	if (!success) {
+		std::string error = plat_util::getLastWindowsError();
+		fmt::print(stderr, "Failed to create process '{}': {}\n", args.at(0), error);
+		exit(1);
+	}
+
+	// Wait for the process to exit
+	WaitForSingleObject(procInfo.hProcess, INFINITE);
+
+	DWORD exitCode;
+	if (!GetExitCodeProcess(procInfo.hProcess, &exitCode)) {
+		std::string error = plat_util::getLastWindowsError();
+		fmt::print(stderr, "Failed to read process error: {}\n", error);
+		abort();
+	}
+
+	if (exitCode != 0) {
+		fmt::print(stderr, "Programme {} failed with exit code {}\n", args.at(0), exitCode);
+		exit(1);
+	}
+
+	// Clean up
+	CloseHandle(procInfo.hProcess);
+	CloseHandle(procInfo.hThread);
+}
+
+#else
+
+static int execSubProgramme(void *voidArgs);
 
 void RunProgramme::Run() {
 	if (printCommands)
@@ -92,6 +144,38 @@ void RunProgramme::Run() {
 	}
 }
 
+static int execSubProgramme(void *voidArgs) {
+	const ExecData *data = (const ExecData *)voidArgs;
+
+	// Use the piped data as our stdin
+	if (dup2(data->stdinPipe, 0) == -1) {
+		fmt::print("Failed to redirect stdin in child process: {} {}", errno, strerror(errno));
+		return 1;
+	}
+
+	// Close all the files except stdin, stdout and stderr (FDs 0,1,2 respectively).
+	// (well technically this doesn't guarantee 'all', but it's close enough)
+	for (int i = 3; i < 1000; i++) {
+		close(i);
+	}
+
+	// Prepare a null-terminated arguments array of null-terminated strings
+	std::vector<char *> rawArgs;
+	if (data->useEnv) {
+		rawArgs.push_back(strdup("/usr/bin/env"));
+	}
+	for (const std::string &str : *data->args) {
+		rawArgs.push_back(strdup(str.c_str())); // Strdup since the string needs to be mutable.
+	}
+	rawArgs.push_back(0); // Mark the end of the array
+
+	execv(rawArgs.front(), rawArgs.data());
+	fmt::print("Failed to spawn new process '{}': {} {}", data->args->at(0), errno, strerror(errno));
+	return 1;
+}
+
+#endif
+
 void RunProgramme::PrintCommand() {
 	std::string result;
 
@@ -124,34 +208,4 @@ void RunProgramme::PrintCommand() {
 	}
 
 	fmt::print("Running command: {}\n", result);
-}
-
-static int execSubProgramme(void *voidArgs) {
-	const ExecData *data = (const ExecData *)voidArgs;
-
-	// Use the piped data as our stdin
-	if (dup2(data->stdinPipe, 0) == -1) {
-		fmt::print("Failed to redirect stdin in child process: {} {}", errno, strerror(errno));
-		return 1;
-	}
-
-	// Close all the files except stdin, stdout and stderr (FDs 0,1,2 respectively).
-	// (well technically this doesn't guarantee 'all', but it's close enough)
-	for (int i = 3; i < 1000; i++) {
-		close(i);
-	}
-
-	// Prepare a null-terminated arguments array of null-terminated strings
-	std::vector<char *> rawArgs;
-	if (data->useEnv) {
-		rawArgs.push_back(strdup("/usr/bin/env"));
-	}
-	for (const std::string &str : *data->args) {
-		rawArgs.push_back(strdup(str.c_str())); // Strdup since the string needs to be mutable.
-	}
-	rawArgs.push_back(0); // Mark the end of the array
-
-	execv(rawArgs.front(), rawArgs.data());
-	fmt::print("Failed to spawn new process '{}': {} {}", data->args->at(0), errno, strerror(errno));
-	return 1;
 }
