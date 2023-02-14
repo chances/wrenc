@@ -1,4 +1,4 @@
-project('wrencc', 'cpp', 'c', 'nasm')
+project('wrencc', 'cpp', 'c', 'nasm', default_options: ['cpp_std=c++20'])
 
 fmt_lib = static_library('fmt',
   'lib/fmt-8.1.1/src/format.cc',
@@ -51,7 +51,6 @@ common_lib = static_library('common-lib',
   'common/HashUtil.cpp',
   'common/Platform.cpp',
   include_directories: ['common'],
-  override_options: ['cpp_std=c++20'],
 )
 common = declare_dependency(
   link_with: [common_lib],
@@ -90,7 +89,6 @@ llvm_plugin = shared_library('wren_llvm_plugin',
     # since LLVM is usually compiled without RTTI this causes a link error.
     '-fno-rtti',
   ],
-  override_options: ['cpp_std=c++20'],
 )
 
 wrenc = executable('wrencc',
@@ -125,7 +123,6 @@ wrenc = executable('wrencc',
   include_directories: [
     'src',
   ],
-  override_options: ['cpp_std=c++20'],
   export_dynamic: true, # Export the symbols so the LLVM backend can access them
 )
 
@@ -152,7 +149,6 @@ llvm_backend = shared_module('llvm_backend',
   cpp_args: [
     '-fPIC',
   ],
-  override_options: ['cpp_std=c++20'],
 )
 
 # Compile and build the random and meta libraries, which will be linked into rtlib.
@@ -166,7 +162,6 @@ rtlib_random = static_library('rtlib_random',
   'rtsrc/random/random_native.cpp',
   rtlib_random_wren,
   include_directories: ['rtsrc', 'rtsrc/random'],
-  override_options: ['cpp_std=c++20'],
 )
 
 # Compile the Wren part of the main runtime library
@@ -240,7 +235,6 @@ rtlib_lib = shared_library('wren-rtlib',
   rtlib_wren_core,
   rtlib_bindings,
   include_directories: ['rtsrc'],
-  override_options: ['cpp_std=c++20'],
   link_with: [rtlib_random],
   link_args: [
     # Force the linker to include the random globals function, otherwise it would be removed.

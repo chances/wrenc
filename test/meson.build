@@ -31,8 +31,7 @@ executable('api-test-runner',
     rtlib_lib,
   ],
   dependencies: [
-	common,
+    common,
   ],
-  override_options: ['cpp_std=c++20'],
 )
 
