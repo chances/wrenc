@@ -228,6 +228,11 @@ rtlib_bindings = custom_target(
   command : [prog_python, '@INPUT@', '--output', '@OUTPUT@', binding_options],
 )
 
+rtlib_deps = []
+if build_machine.system() != 'windows'
+  rtlib_deps += dependency('libunwind')
+endif
+
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/GenEntry.cpp',
   'rtsrc/Errors.cpp',
@@ -262,7 +267,7 @@ rtlib_lib = shared_library('wren-rtlib',
   ],
   dependencies: [
     common,
-    dependency('libunwind'),
+    rtlib_deps,
   ],
 
   # Hide symbols. This is not only good practice, but without it we'd have to have all of wren_core's
