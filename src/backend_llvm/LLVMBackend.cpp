@@ -581,7 +581,10 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 	}
 
 	// Replace all usages of our bitcast function with a real function, now we're done with the RS4GC pass.
-	for (llvm::User *user : m_dummyPtrBitcast.getCallee()->users()) {
+	// Copy out the user list and iterate over that, as it will change since we're removing usages.
+	auto userRange = m_dummyPtrBitcast.getCallee()->users();
+	std::vector<llvm::User *> users(userRange.begin(), userRange.end());
+	for (llvm::User *user : users) {
 		llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(user);
 		if (!call) {
 			fmt::print(stderr, "dummy bitcast used by non-call user: {}\n", user->getName());
@@ -658,7 +661,7 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 
 	if (ec) {
 		std::string msg = ec.message();
-		fprintf(stderr, "Could not open file: %s", msg.c_str());
+		fprintf(stderr, "Could not open LLVM object output file '%s' : %s\n", filename.c_str(), msg.c_str());
 		exit(1);
 	}
 
