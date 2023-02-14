@@ -88,9 +88,8 @@ void IRCleanup::VisitBlock(StmtBlock *node, bool recurse) {
 		StmtBlock *nested = dynamic_cast<StmtBlock *>(stmt);
 		if (nested) {
 			// Replace the node with it's contents
-			auto position = node->statements.begin() + i;
-			node->statements.erase(position);
-			node->statements.insert(position, nested->statements.begin(), nested->statements.end());
+			node->statements.erase(node->statements.begin() + i);
+			node->statements.insert(node->statements.begin() + i, nested->statements.begin(), nested->statements.end());
 
 			// The current index now contains a new node, so process it again
 			i--;
