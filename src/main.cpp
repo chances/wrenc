@@ -39,6 +39,7 @@ static void runAssembler(const std::vector<std::string> &assemblyFiles, const st
 static void runLinker(const std::string &outputPath, const std::vector<std::string> &objectFiles, OutputType type);
 static void staticLink(const std::string &outputFile, const std::vector<std::string> &objectFiles);
 static int printSysPath(const std::string &name);
+static void loadLLVMBackend();
 
 static std::string compilerInstallDir;
 
@@ -484,18 +485,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 		// Dynamically load the LLVM backend - this is so the frontend can be easily debugged
 		// without waiting for GDB to load all of LLVM's symbols.
 		if (!createLLVMBackend) {
-			std::string llvmBackendFilename = compilerInstallDir + "/llvm_backend.so";
-			void *handle = dlopen(llvmBackendFilename.c_str(), RTLD_NOW);
-			if (!handle) {
-				fmt::print(stderr, "Failed to load LLVM backend: {}\n", dlerror());
-				exit(1);
-			}
-			typedef IBackend *(*createFunc_t)();
-			createLLVMBackend = (createFunc_t)dlsym(handle, "create_llvm_backend");
-			if (!createLLVMBackend) {
-				fmt::print(stderr, "Could not find backend creation function in the LLVM backend module\n");
-				exit(1);
-			}
+			loadLLVMBackend();
 		}
 		backend = std::unique_ptr<IBackend>(createLLVMBackend());
 #else
@@ -647,4 +637,31 @@ static void staticLink(const std::string &outputFile, const std::vector<std::str
 
 	prog.withEnv = true;
 	prog.Run();
+}
+
+void loadLLVMBackend() {
+	std::string backendName;
+#ifdef _WIN32
+	backendName = "llvm_backend.dll";
+#else
+	backendName = "llvm_backend.so";
+#endif
+
+	std::string backendPath = compilerInstallDir + "/" + backendName;
+
+	// Leak the library reference, we'll need it for basically the entire time the
+	// compiler is running, and there's basically no reason to unload it.
+	DyLib *lib = DyLib::Load(backendPath).release();
+	if (!lib) {
+		// A more descriptive error will already have been printed
+		fmt::print(stderr, "Failed to load LLVM backend!\n");
+		exit(1);
+	}
+
+	typedef IBackend *(*createFunc_t)();
+	createLLVMBackend = (createFunc_t)lib->Lookup("create_llvm_backend");
+	if (!createLLVMBackend) {
+		fmt::print(stderr, "Could not find backend creation function in the LLVM backend module\n");
+		exit(1);
+	}
 }
