@@ -2,6 +2,9 @@
 // Created by znix on 24/07/22.
 //
 
+// Use this to get M_PI on Windows
+#define _USE_MATH_DEFINES
+
 #include "ObjNum.h"
 
 #include "Errors.h"
@@ -85,7 +88,7 @@ double ObjNumClass::OperatorPlus(double receiver, double other) { return receive
 double ObjNumClass::OperatorMinus(double receiver, double other) { return receiver - other; }
 double ObjNumClass::OperatorMultiply(double receiver, double other) { return receiver * other; }
 double ObjNumClass::OperatorDivide(double receiver, double other) { return receiver / other; }
-double ObjNumClass::OperatorModulo(double receiver, double other) { return fmodf64(receiver, other); }
+double ObjNumClass::OperatorModulo(double receiver, double other) { return fmod(receiver, other); }
 
 // All of these cast without warning - see DEF_NUM_BITWISE in Wren
 double ObjNumClass::OperatorAnd(double receiver, double other) {
