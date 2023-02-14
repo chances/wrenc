@@ -6,6 +6,7 @@
 #include "Utils.h"
 #include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
+#include "common/Platform.h"
 #include "passes/BasicBlockPass.h"
 #include "passes/IRCleanup.h"
 #include "wren_compiler.h"
@@ -443,15 +444,9 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 	CompContext ctx;
 	Module mod(moduleName);
 
-	// Use the absolute path to the source file, so it works wherever it's run (on the same system, at least).
+	// Use the absolute path to the source file, so debugging works wherever it's run (on the same system, at least).
 	if (sourceFileName) {
-		char *resolvedC = realpath(sourceFileName.value().c_str(), nullptr);
-		if (!resolvedC) {
-			fmt::print(stderr, "Failed to resolve source file name - error {} {}!\n", errno, strerror(errno));
-			exit(1);
-		}
-		mod.sourceFilePath = resolvedC;
-		free(resolvedC);
+		mod.sourceFilePath = plat_util::resolveFilename(sourceFileName.value());
 	}
 
 	IRFn *rootFn = wrenCompile(&ctx, &mod, source.c_str(), false, globalBuildCoreLib);

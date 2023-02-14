@@ -20,6 +20,13 @@ bool deallocateMemory(void *addr, int size);
 
 } // namespace mem_management
 
+namespace plat_util {
+
+// Find the absolute version of a filename
+std::string resolveFilename(const std::string &filename);
+
+} // namespace plat_util
+
 /// Represents a dynamic-link library.
 class DyLib {
   public:

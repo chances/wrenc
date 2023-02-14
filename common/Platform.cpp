@@ -49,6 +49,18 @@ void *DyLib::Lookup(const std::string &name) {
 	return (void *)GetProcAddress(module, name.c_str());
 }
 
+std::string plat_util::resolveFilename(const std::string &filename) {
+	int length = 1024;
+	char *fullPath = (char *)malloc(length);
+	if (!GetFullPathNameA(filename.c_str(), length, fullPath, nullptr)) {
+		fprintf(stderr, "Failed to resolve file name '%s'.\n", filename.c_str());
+		abort();
+	}
+	std::string result = fullPath;
+	free(fullPath);
+	return result;
+}
+
 #else
 
 #include <dlfcn.h>
@@ -88,5 +100,17 @@ std::unique_ptr<DyLib> DyLib::Load(const std::string &filename) {
 }
 
 void *DyLib::Lookup(const std::string &name) { return dlsym(handle, name.c_str()); }
+
+std::string plat_util::resolveFilename(const std::string &filename) {
+	char *resolvedC = realpath(filename.c_str(), nullptr);
+	if (!resolvedC) {
+		fprintf(stderr, "Failed to resolve source file name '%s' - error %d %s!\n", filename.c_str(), errno,
+		    strerror(errno));
+		abort();
+	}
+	std::string result = resolvedC;
+	free(resolvedC);
+	return result;
+}
 
 #endif
