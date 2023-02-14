@@ -27,7 +27,6 @@ struct CompilationResult {
 
 	bool successful = false;
 	std::vector<uint8_t> data;
-	int fd = -1;
 	std::string tempFilename;
 	Format format = OBJECT;
 };

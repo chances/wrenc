@@ -3,6 +3,7 @@
 #include "IRNode.h"
 #include "IRPrinter.h"
 #include "RunProgramme.h"
+#include "Utils.h"
 #include "backend_llvm/LLVMBackend.h"
 #include "backend_qbe/QbeBackend.h"
 #include "passes/BasicBlockPass.h"
@@ -25,10 +26,10 @@ enum class OutputType {
 };
 
 std::string filenameForFd(int fd);
-static int runQbe(std::string qbeIr);
+static std::string runQbe(std::string qbeIr);
 static CompilationResult runCompiler(const std::istream &input, const std::string &moduleName,
     const std::optional<std::string> &sourceFileName, bool main, const CompilationOptions *opts);
-static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename);
+static void runAssembler(const std::vector<std::string> &assemblyFiles, const std::string &outputFilename);
 static void runLinker(const std::string &outputPath, const std::vector<std::string> &objectFiles, OutputType type);
 static void staticLink(const std::string &outputFile, const std::vector<std::string> &objectFiles);
 static int printSysPath(const std::string &name);
@@ -289,7 +290,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	std::vector<int> assemblyFiles;
+	std::vector<std::string> assemblyFiles;
 	bool hitError = false;
 	for (size_t sourceFileId = 0; sourceFileId < sourceFiles.size(); sourceFileId++) {
 		const std::string &sourceFile = sourceFiles.at(sourceFileId);
@@ -319,18 +320,10 @@ int main(int argc, char **argv) {
 				objectFiles.push_back(result.tempFilename);
 				break;
 			case CompilationResult::ASSEMBLY:
-				if (result.fd != -1) {
-					assemblyFiles.push_back(result.fd);
-				} else if (!result.tempFilename.empty()) {
-					int fd = open(result.tempFilename.c_str(), O_RDONLY);
-					if (fd == -1) {
-						fmt::print(stderr, "Cannot open temporary file {}: {} {}\n", sourceFile, errno,
-						    strerror(errno));
-						exit(1);
-					}
-					assemblyFiles.push_back(fd);
+				if (!result.tempFilename.empty()) {
+					assemblyFiles.push_back(result.tempFilename);
 				} else {
-					fmt::print(stderr, "Cannot process non-FD assembly compilation result for {}\n", sourceFile);
+					fmt::print(stderr, "Cannot process non-filename assembly compilation result for {}\n", sourceFile);
 					exit(1);
 				}
 				break;
@@ -356,10 +349,10 @@ int main(int argc, char **argv) {
 		output.exceptions(std::ios::badbit | std::ios::failbit);
 		try {
 			output.open(outputFile);
-			for (int assemblyFd : assemblyFiles) {
+			for (const std::string &assemblyFile : assemblyFiles) {
 				std::ifstream input;
 				input.exceptions(std::ios::badbit | std::ios::failbit);
-				input.open(filenameForFd(assemblyFd));
+				input.open(assemblyFile);
 				output << input.rdbuf();
 			}
 		} catch (const std::fstream::failure &ex) {
@@ -533,7 +526,7 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 	if (result.format != CompilationResult::QBE_IR)
 		return result;
 
-	if (result.fd != -1) {
+	if (result.data.empty()) {
 		fmt::print(stderr, "Cannot compile non-array QBE IR\n");
 		exit(1);
 	}
@@ -552,23 +545,20 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 		exit(1);
 	}
 
-	int assemblyFileFd = runQbe(qbeIr);
+	std::string tempFilename = runQbe(qbeIr);
 	return CompilationResult{
 	    .successful = true,
-	    .fd = assemblyFileFd,
+	    .tempFilename = tempFilename,
 	    .format = CompilationResult::ASSEMBLY,
 	};
 }
 
 std::string filenameForFd(int fd) { return fmt::format("/dev/fd/{}", fd); }
 
-static int runQbe(std::string qbeIr) {
+static std::string runQbe(std::string qbeIr) {
 	// Create a temporary file to store the output
-	// This creates an unnamed, anonymous file that's deleted when the programme exists
-	int tmpFd = open("/tmp", O_TMPFILE | O_EXCL | O_WRONLY, 0600);
-	if (tmpFd == -1) {
-		fmt::print(stderr, "Cannot crate temporary QBE assembly file");
-	}
+	// This creates a file that's deleted when the programme exists.
+	std::string outputFilename = utils::buildTempFilename("qbe-output-!!!!!!!!.S");
 
 	// Find the path to QBE, relative to this executable
 	std::string qbePath = compilerInstallDir + "/" + QBE_PATH;
@@ -577,22 +567,20 @@ static int runQbe(std::string qbeIr) {
 	RunProgramme prog;
 	prog.args.push_back(qbePath);
 	prog.args.push_back("-o");
-	prog.args.push_back(filenameForFd(tmpFd));
-	prog.preservedFDs.push_back(tmpFd);
+	prog.args.push_back(outputFilename);
 	prog.input = std::move(qbeIr);
 	prog.Run();
 
-	return tmpFd;
+	return outputFilename;
 }
 
-static void runAssembler(const std::vector<int> &assemblyFDs, const std::string &outputFilename) {
+static void runAssembler(const std::vector<std::string> &assemblyFiles, const std::string &outputFilename) {
 	RunProgramme prog;
 	prog.args.push_back("as");
 	prog.args.push_back("-o");
 	prog.args.push_back(outputFilename);
-	for (int fd : assemblyFDs) {
-		prog.args.push_back(filenameForFd(fd));
-		prog.preservedFDs.push_back(fd);
+	for (const std::string &filename : assemblyFiles) {
+		prog.args.push_back(filename);
 	}
 	prog.withEnv = true;
 	prog.Run();
