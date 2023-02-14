@@ -49,8 +49,6 @@
 #include <inttypes.h>
 #include <random>
 #include <string.h>
-#include <sys/mman.h>
-#include <unistd.h>
 
 namespace mm = mem_management;
 
@@ -249,19 +247,22 @@ SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::
 		m_nextSlabAddr = (void *)random64;
 	}
 
-	void *mem = mmap(m_nextSlabAddr, globalSlabSize, PROT_READ | PROT_WRITE,
-	    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-	if (mem == MAP_FAILED) {
-		if (errno == EEXIST) {
+	bool collided;
+	bool success = mm::allocateMemoryAtAddress(m_nextSlabAddr, globalSlabSize, collided);
+	if (!success) {
+		if (collided) {
 			// We ran into something! Try a different random address.
 			m_nextSlabAddr = nullptr;
 			return CreateSlab(size);
 		}
 
-		errors::wrenAbort("Failed to allocate new slab (object size %d, slab size %d)", size->size, globalSlabSize);
+		// Don't use a normal wren abort, that would involve allocating memory for a string
+		fprintf(stderr, "Wren Runtime: Failed to allocate new slab (address %p, object size %d, slab size %d)\n",
+		    m_nextSlabAddr, size->size, globalSlabSize);
+		abort();
 	}
-	assert(mem == m_nextSlabAddr);
 
+	void *mem = m_nextSlabAddr;
 	m_nextSlabAddr = (void *)((uint64_t)m_nextSlabAddr + globalSlabSize);
 
 	Slab *slab = (Slab *)((uint64_t)mem + globalSlabSize - sizeof(Slab));

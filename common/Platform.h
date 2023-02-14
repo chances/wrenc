@@ -16,6 +16,8 @@ int getPageSize();
 
 void *allocateMemory(int size);
 
+bool allocateMemoryAtAddress(void *addr, int size, bool &outCollided);
+
 bool deallocateMemory(void *addr, int size);
 
 } // namespace mem_management

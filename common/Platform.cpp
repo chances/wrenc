@@ -63,6 +63,7 @@ std::string plat_util::resolveFilename(const std::string &filename) {
 
 #else
 
+#include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -86,6 +87,22 @@ void *mm::allocateMemory(int size) {
 }
 
 bool mm::deallocateMemory(void *addr, int size) { return munmap(addr, size) == 0; }
+
+bool mem_management::allocateMemoryAtAddress(void *addr, int size, bool &outCollided) {
+	outCollided = false;
+
+	void *mem = mmap(addr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+
+	if (mem == MAP_FAILED) {
+		if (errno == EEXIST) {
+			outCollided = true;
+		}
+		return false;
+	}
+	assert(mem == addr);
+
+	return true;
+}
 
 std::unique_ptr<DyLib> DyLib::Load(const std::string &filename) {
 	void *handle = dlopen(filename.c_str(), RTLD_NOW);
