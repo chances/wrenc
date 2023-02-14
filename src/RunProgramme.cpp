@@ -17,7 +17,6 @@ static int execSubProgramme(void *voidArgs);
 
 struct ExecData {
 	const std::vector<std::string> *args = nullptr;
-	const std::vector<int> *preservedFDs = nullptr;
 	int stdinPipe = -1;
 	int stdoutPipe = -1;
 	bool useEnv;
@@ -40,7 +39,6 @@ void RunProgramme::Run() {
 
 	ExecData data = {
 	    .args = &args,
-	    .preservedFDs = &preservedFDs,
 	    .stdinPipe = stdinPipePair[0], // The pipe's read end
 	    .useEnv = withEnv,
 	};
@@ -137,17 +135,10 @@ static int execSubProgramme(void *voidArgs) {
 		return 1;
 	}
 
-	// Build a set of the FDs to keep around
-	std::set<int> toKeep;
-	for (int fd : *data->preservedFDs) {
-		toKeep.insert(fd);
-	}
-
-	// Close all the files except stdin, stdout and stderr (FDs 0,1,2 respectively), and those we were told not to
+	// Close all the files except stdin, stdout and stderr (FDs 0,1,2 respectively).
 	// (well technically this doesn't guarantee 'all', but it's close enough)
 	for (int i = 3; i < 1000; i++) {
-		if (!toKeep.contains(i))
-			close(i);
+		close(i);
 	}
 
 	// Prepare a null-terminated arguments array of null-terminated strings

@@ -17,10 +17,6 @@ class RunProgramme {
 
 	std::vector<std::string> args;
 
-	/// A list of file descriptors to leave open and accessible from the child process.
-	/// The intent is to use them with /dev/fd/x and open(O_TMPFILE).
-	std::vector<int> preservedFDs;
-
 	/// The data that should be sent to the process over stdin.
 	std::string input;
 
