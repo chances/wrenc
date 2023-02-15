@@ -14,10 +14,16 @@
 #include "ObjString.h"
 #include "SlabObjectAllocator.h"
 #include "WrenRuntime.h"
+#include "common/Platform.h"
 
-#include <libunwind.h>
 #include <string.h>
+
+#ifndef _WIN32
+#include <libunwind.h>
 #include <sys/mman.h>
+#endif
+
+namespace mm = mem_management;
 
 // From the assembly functions
 // Both of these actually return ResumeFibreArgs, since both only 'return' when switchToExisting
@@ -124,6 +130,10 @@ ObjFibre *ObjFibre::Current() {
 	return currentFibre;
 }
 
+// FIXME Windows port
+#ifdef _WIN32
+void ObjFibre::CheckStack() { abort(); }
+#else
 void ObjFibre::CheckStack() {
 	if (m_stack)
 		return;
@@ -151,6 +161,7 @@ void ObjFibre::CheckStack() {
 	// TODO remove write permissions on the last page to catch overruns if there's something else mapped there, which
 	//  is something I've observed during testing.
 }
+#endif
 
 void ObjFibre::DeleteStack() {
 	if (m_state == State::RUNNING) {
@@ -161,8 +172,13 @@ void ObjFibre::DeleteStack() {
 	if (m_stack == nullptr)
 		return;
 
-	if (munmap(m_stack, stackSize)) {
+	if (!mm::deallocateMemory(m_stack, stackSize)) {
+#ifdef _WIN32
+		std::string error = plat_util::getLastWindowsError();
+		fprintf(stderr, "ObjFibre: Failed to unmap stack of fibre: %s\n", error.c_str());
+#else
 		fprintf(stderr, "ObjFibre: Failed to unmap stack of fibre: %d %s\n", errno, strerror(errno));
+#endif
 		abort();
 	}
 
@@ -344,9 +360,12 @@ Value ObjFibre::StartAndSwitchTo(Value argument) {
 	// safe to put out a pointer to something on the stack, since it'll be
 	// cleared by ResumeSuspended before switchToExisting returns.
 	// TODO deduplicate with ResumeSuspended.
+	// FIXME Windows port
+#ifndef _WIN32
 	unw_context_t context;
 	unw_getcontext(&context);
 	currentFibre->m_suspendedContext = &context;
+#endif
 
 	// Find the top of the stack - that's what we pass to the assembly, since we work downwards that's a lot
 	// more useful.
@@ -376,9 +395,12 @@ Value ObjFibre::ResumeSuspended(Value argument, bool terminate) {
 	// Save the current context, so our stack can be unwound by the GC. It's
 	// safe to put out a pointer to something on the stack, since it'll be
 	// cleared by ResumeSuspended before switchToExisting returns.
+	// FIXME Windows port
+#ifndef _WIN32
 	unw_context_t context;
 	unw_getcontext(&context);
 	currentFibre->m_suspendedContext = &context;
+#endif
 
 	// Clear out our old suspended pointers, since we're about to start running
 	// they're going to be invalid.
