@@ -104,6 +104,8 @@ int main(int argc, char **argv) {
 	const char *outputFile = nullptr;
 	std::vector<const char *> objectFiles;
 
+	bool hitInvalidArg = false;
+
 	while (true) {
 		int arg = getopt(argc, argv, "e:o:hv");
 
@@ -133,12 +135,20 @@ int main(int argc, char **argv) {
 			printf("\t-e exe    Set the path to the input EXE file\n");
 			return 0;
 		}
+		case '?': {
+			// getopt already printed an error, finish parsing the arguments then exit.
+			hitInvalidArg = true;
+			break;
+		}
 		default:
 			// Invalid options are handled by getopt.
 			fmt::print(stderr, "Found unhandled argument {}.\n", arg);
 			abort();
 		}
 	}
+
+	if (hitInvalidArg)
+		return 1;
 
 	for (int i = optind; i < argc; i++) {
 		objectFiles.push_back(argv[i]);
