@@ -6,13 +6,18 @@
 // Created by znix on 21/07/22.
 //
 
+#ifdef _WIN32
+#define GEN_ENTRY_ABI __declspec(dllimport)
+#endif
+
+#include "GenEntry_ABI.h"
 #include "WrenRuntime.h"
 #include "common/common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef Value (*wren_main_func_t)();
+typedef void *(*wren_main_func_t)();
 
 #ifdef _WIN32
 
@@ -20,6 +25,30 @@ typedef Value (*wren_main_func_t)();
 // link-editor, to point to the real module start.
 extern "C" {
 DLL_EXPORT wren_main_func_t wrenStandaloneMainModule = nullptr;
+};
+
+// Force the compiler to import all the symbols the generated Wren
+// modules need, as tinylink can't generate imports itself - it can
+// merely use the addresses of those we've already caused.
+void *linkerFuncPtrs[] = {
+    (void *)wren_virtual_method_lookup,
+    (void *)wren_super_method_lookup,
+    (void *)wren_init_string_literal,
+    (void *)wren_register_signatures_table,
+    (void *)wren_init_class,
+    (void *)wren_alloc_obj,
+    (void *)wren_alloc_foreign_obj,
+    (void *)wren_class_get_field_offset,
+    (void *)wren_register_closure,
+    (void *)wren_create_closure,
+    (void *)wren_get_closure_upvalue_pack,
+    (void *)wren_alloc_upvalue_storage,
+    (void *)wren_unref_upvalue_storage,
+    (void *)wren_get_bool_value,
+    (void *)wren_get_core_class_value,
+    (void *)wren_import_module,
+    (void *)wren_get_module_global,
+    (void *)wren_call_foreign_method,
 };
 
 #else
@@ -48,11 +77,6 @@ static void writeImpl(const char *message, int length) {
 }
 
 int main(int argc, char **argv) {
-#ifdef _WIN32
-	// FIXME link-editor testing
-	printf("Main module address: %p\n", wrenStandaloneMainModule);
-#else
-
 	WrenRuntime::Initialise();
 
 	WrenRuntime::Instance().SetWriteHandler(writeImpl);
@@ -64,6 +88,5 @@ int main(int argc, char **argv) {
 	// Initialise and run the main module
 	WrenRuntime::Instance().GetOrInitModuleCaught((void *)wrenStandaloneMainModule);
 
-#endif
 	return 0;
 }

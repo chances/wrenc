@@ -65,21 +65,6 @@ common = declare_dependency(
   include_directories: ['common'],
 )
 
-# Make the main programme library almost runnable, so we can link it in to make a standalone Wren programme
-# To do this, declare it as an executable then mess around with the linker flags
-rtlib_main_stub = executable('wren-rtlib-stub',
-  'rtsrc/standalone_main_stub.cpp',
-
-  # TODO make something similar work on Windows
-  # Important flags here:
-  # - Build relocatable output: the output of the command is an object file we can link into a bigger programme later
-  # - Disable position-independent executable mode: that conflicts with relocatable, we have to turn it on in the
-  #   final linking step.
-  # - Disable the default libraries. Since ld won't search for shared objects in relocatable mode (at least I think
-  #   that's what's happening), it can't find libgcc_s.so. We'll put those libraries back in at the end.
-  link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
-)
-
 # If we're building LLVM statically, we have to link plugin code statically to avoid
 # ending up with two copies of LLVM.
 llvm_plugin_type = 'shared_library'
@@ -277,6 +262,30 @@ rtlib_lib = shared_library('wren-rtlib',
 rtlib = declare_dependency(
   link_with: [rtlib_lib],
   include_directories: ['rtsrc'],
+)
+
+# We can't link against the runtime library on Linux for some reason, which
+# seems to have something to do with our weird linking arguments.
+main_stub_deps = []
+if build_machine.system() == 'windows'
+  main_stub_deps += [rtlib]
+endif
+
+# Make the main programme library almost runnable, so we can link it in to make a standalone Wren programme
+# To do this, declare it as an executable then mess around with the linker flags
+rtlib_main_stub = executable('wren-rtlib-stub',
+  'rtsrc/standalone_main_stub.cpp',
+
+  dependencies: [main_stub_deps],
+
+  # TODO make something similar work on Windows
+  # Important flags here:
+  # - Build relocatable output: the output of the command is an object file we can link into a bigger programme later
+  # - Disable position-independent executable mode: that conflicts with relocatable, we have to turn it on in the
+  #   final linking step.
+  # - Disable the default libraries. Since ld won't search for shared objects in relocatable mode (at least I think
+  #   that's what's happening), it can't find libgcc_s.so. We'll put those libraries back in at the end.
+  link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
 )
 
 if build_machine.system() == 'windows'
