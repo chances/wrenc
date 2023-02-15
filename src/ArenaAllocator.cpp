@@ -40,9 +40,15 @@ void *ArenaAllocator::AllocateSlowPath(int size) {
 	// Allocate fresh page[s] from the kernel
 	void *addr = mm::allocateMemory(blockSize);
 	if (addr == nullptr) {
-		// TODO print the errors properly on Windows
+		// TODO unify error handling
+#ifdef _WIN32
+		std::string error = plat_util::getLastWindowsError();
+		fmt::print("Failed to allocate memory block in arena allocator, size {}. Error: {}\n", blockSize,
+		    error.c_str());
+#else
 		fmt::print("Failed to allocate memory block in arena allocator, size {}. Error {} {}\n", blockSize, errno,
 		    strerror(errno));
+#endif
 		abort();
 	}
 
