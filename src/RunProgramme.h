@@ -26,5 +26,10 @@ class RunProgramme {
 	void Run();
 
   private:
+	// Put together a properly quoted string, for printing as a diagnostic
+	// aid or for running on Windows where argument splitting is done at
+	// process start :(
+	std::string BuildCommandString();
+
 	void PrintCommand();
 };

@@ -47,7 +47,12 @@ void RunProgramme::Run() {
 
 	startupInfo.cb = sizeof(startupInfo);
 
-	bool success = CreateProcessA(args.at(0).c_str(), nullptr, nullptr, nullptr, false, 0, nullptr, nullptr,
+	// This string will get broken by CreateProcess (it sets
+	// some bytes to null for internal processing), but it's
+	// not an issue.
+	std::string commandStr = BuildCommandString();
+
+	bool success = CreateProcessA(args.at(0).c_str(), commandStr.data(), nullptr, nullptr, false, 0, nullptr, nullptr,
 	    &startupInfo, &procInfo);
 	if (!success) {
 		std::string error = plat_util::getLastWindowsError();
@@ -176,7 +181,7 @@ static int execSubProgramme(void *voidArgs) {
 
 #endif
 
-void RunProgramme::PrintCommand() {
+std::string RunProgramme::BuildCommandString() {
 	std::string result;
 
 	for (std::string arg : args) {
@@ -206,6 +211,7 @@ void RunProgramme::PrintCommand() {
 		if (needsQuotes)
 			result.push_back('"');
 	}
-
-	fmt::print("Running command: {}\n", result);
+	return result;
 }
+
+void RunProgramme::PrintCommand() { fmt::print("Running command: {}\n", BuildCommandString()); }

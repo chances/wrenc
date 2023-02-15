@@ -25,6 +25,13 @@
 
 static const std::string QBE_PATH = "lib/qbe-1.0/qbe_bin";
 
+static const bool IS_WINDOWS =
+#ifdef _WIN32
+    true;
+#else
+    false;
+#endif
+
 enum class OutputType {
 	OT_EXEC,
 	OT_LIB_STATIC,
@@ -581,43 +588,62 @@ static void runLinker(const std::string &outputPath, const std::vector<std::stri
 	}
 
 	RunProgramme prog;
-	prog.args.push_back("ld.gold"); // Using lld would be even better, but it can't find -lc by itself
-	prog.args.push_back("-o");
-	prog.args.push_back(outputPath);
 
-	// Link it to the runtime library
-	prog.args.push_back(compilerInstallDir + "/libwren-rtlib.so");
+	if (IS_WINDOWS) {
+		if (type != OutputType::OT_EXEC) {
+			fmt::print(stderr, "Building libraries is not yet supported on Windows.\n");
+			exit(1);
+		}
 
-	// Tell the dynamic link loader where to find the runtime library
-	// TODO handle rtlib in some non-hardcoding-paths way on release builds
-	prog.args.push_back("-rpath=" + compilerInstallDir);
+		prog.args.push_back(compilerInstallDir + "/tinylink/tinylink.exe");
 
-	prog.args.insert(prog.args.end(), objectFiles.begin(), objectFiles.end());
-	prog.args.push_back("-lc"); // Link against the C standard library
+		// Set the input EXE which will have the modules bolted on
+		prog.args.push_back("-e");
+		prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub.exe");
 
-	// Use the glibc dynamic linker, this will need to be changed for other C libraries
-	prog.args.push_back("-dynamic-linker=/lib64/ld-linux-x86-64.so.2");
+		prog.args.push_back("-o");
+		prog.args.push_back(outputPath);
 
-	// Generate an eh_frame header, which allows runtime access to the exception information.
-	// This is required for C++ to throw exceptions through our generated functions.
-	prog.args.push_back("--eh-frame-hdr");
+		prog.args.insert(prog.args.end(), objectFiles.begin(), objectFiles.end());
+	} else {
+		prog.withEnv = true;
+		prog.args.push_back("ld.gold"); // Using lld would be even better, but it can't find -lc by itself
+		prog.args.push_back("-o");
+		prog.args.push_back(outputPath);
 
-	switch (type) {
-	case OutputType::OT_EXEC: {
-		// Link it to the standalone programme stub
-		prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub");
-		break;
+		// Link it to the runtime library
+		prog.args.push_back(compilerInstallDir + "/libwren-rtlib.so");
+
+		// Tell the dynamic link loader where to find the runtime library
+		// TODO handle rtlib in some non-hardcoding-paths way on release builds
+		prog.args.push_back("-rpath=" + compilerInstallDir);
+
+		prog.args.insert(prog.args.end(), objectFiles.begin(), objectFiles.end());
+		prog.args.push_back("-lc"); // Link against the C standard library
+
+		// Use the glibc dynamic linker, this will need to be changed for other C libraries
+		prog.args.push_back("-dynamic-linker=/lib64/ld-linux-x86-64.so.2");
+
+		// Generate an eh_frame header, which allows runtime access to the exception information.
+		// This is required for C++ to throw exceptions through our generated functions.
+		prog.args.push_back("--eh-frame-hdr");
+
+		switch (type) {
+		case OutputType::OT_EXEC: {
+			// Link it to the standalone programme stub
+			prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub");
+			break;
+		}
+		case OutputType::OT_LIB_SHARED: {
+			prog.args.push_back("-shared");
+			break;
+		}
+		default:
+			fprintf(stderr, "invalid linker output type %d\n", (int)type);
+			abort();
+		}
 	}
-	case OutputType::OT_LIB_SHARED: {
-		prog.args.push_back("-shared");
-		break;
-	}
-	default:
-		fprintf(stderr, "invalid linker output type %d\n", (int)type);
-		abort();
-	}
 
-	prog.withEnv = true;
 	prog.Run();
 }
 
