@@ -8,6 +8,7 @@
 #include "GenEntry.h"
 #include "CoreClasses.h"
 #include "Errors.h"
+#include "GenEntry_ABI.h"
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFibre.h"
@@ -30,30 +31,6 @@
 #include <inttypes.h>
 #include <string.h>
 #include <vector>
-
-// These are the functions in question
-// NOLINTBEGIN(readability-identifier-naming)
-extern "C" {
-DLL_EXPORT void *wren_virtual_method_lookup(Value receiver, uint64_t signature);
-DLL_EXPORT void *wren_super_method_lookup(Value receiver, Value thisClassType, uint64_t signature, bool isStatic);
-DLL_EXPORT Value wren_init_string_literal(void *getGlobalsFunc, const char *literal, int length);
-DLL_EXPORT void wren_register_signatures_table(const char *signatures);
-DLL_EXPORT Value wren_init_class(void *getGlobalsFunc, const char *name, uint8_t *dataBlock, Value parentClassValue);
-DLL_EXPORT Value wren_alloc_obj(Value classVar);
-DLL_EXPORT Value wren_alloc_foreign_obj(Value classVar, Value *arguments, int count);
-DLL_EXPORT int wren_class_get_field_offset(Value classVar);
-DLL_EXPORT ClosureSpec *wren_register_closure(void *specData);
-DLL_EXPORT Value wren_create_closure(ClosureSpec *spec, void *stack, void *upvalueTable, ObjFn **listHead);
-DLL_EXPORT Value **wren_get_closure_upvalue_pack(Value closure);
-DLL_EXPORT UpvalueStorage *wren_alloc_upvalue_storage(int numClosures);
-DLL_EXPORT void wren_unref_upvalue_storage(UpvalueStorage *storage);
-DLL_EXPORT Value wren_get_bool_value(bool value);
-DLL_EXPORT Value wren_get_core_class_value(const char *name);
-DLL_EXPORT RtModule *wren_import_module(const char *name, void *getGlobalsFunc);
-DLL_EXPORT Value wren_get_module_global(RtModule *mod, const char *name);
-DLL_EXPORT Value wren_call_foreign_method(void **cacheVar, Value *args, int argsLen, Value classObj, void *funcPtr);
-}
-// NOLINTEND(readability-identifier-naming)
 
 void *wren_virtual_method_lookup(Value receiver, uint64_t signature) {
 	ObjClass *type;
