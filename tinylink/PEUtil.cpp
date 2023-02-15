@@ -106,6 +106,7 @@ void ExportSection::Load(const IMAGE_DATA_DIRECTORY &dir, const SectionMap &sect
 	for (int i = 0; i < exportDir->NumberOfNames; i++) {
 		const char *name = (const char *)sections.Translate(nameTable[i]);
 		names.push_back(name);
+		printf("DLL_EXPORT func %s\n", name);
 	}
 
 	// Load the name ordinal table
@@ -119,5 +120,62 @@ void ExportSection::Load(const IMAGE_DATA_DIRECTORY &dir, const SectionMap &sect
 		int ordinal = nameOrdinals.at(i);
 		int rva = addresses.at(ordinal);
 		nameToRVA[names.at(i)] = rva;
+	}
+}
+
+void ImportSection::Load(const IMAGE_DATA_DIRECTORY &dir, const SectionMap &sections) {
+	// Do the RVA->pointer lookup
+	importDir = (IMAGE_IMPORT_DESCRIPTOR *)sections.Translate(dir.VirtualAddress);
+
+	if (!importDir) {
+		fmt::print(stderr, "Input executable has an invalid import directory mapping!\n");
+		exit(1);
+	}
+
+	// There's an array of import descriptors, one per DLL
+	for (int i = 0;; i++) {
+		// Have we reached the end?
+		if (importDir[i].FirstThunk == 0)
+			break;
+
+		std::string name = (char *)sections.Translate(importDir[i].Name);
+		if (name != "wren-rtlib.dll")
+			continue;
+
+		// fmt::print("Loading imports for DLL {}\n", name.c_str());
+
+		wrenImport = &importDir[i];
+		break;
+	}
+
+	// Make sure the DLL actually imports the runtime library
+	if (!wrenImport) {
+		fmt::print(stderr, "WARN: No wren-rtlib.dll import!\n");
+		return;
+	}
+
+	const uint64_t *importEntries = (uint64_t *)sections.Translate(wrenImport->FirstThunk);
+
+	for (int i = 0;; i++) {
+		uint64_t entry = importEntries[i];
+
+		// Check for end-of-table.
+		if (entry == 0)
+			break;
+
+		// If the MSB is set, it's an ordinal import which we don't currently
+		// support, though this may have to change in the future if we start
+		// exporting functions by ordinal from librt.
+		if (entry & ((uint64_t)1 << 63)) {
+			continue;
+		}
+
+		// Cut out the RVA of the name
+		int nameRVA = entry & 0x7fffffff;
+		const IMAGE_IMPORT_BY_NAME *imp = (IMAGE_IMPORT_BY_NAME *)sections.Translate(nameRVA);
+		std::string name = imp->Name;
+
+		// This entry will get replaced by the function pointer at runtime.
+		importNameRVAs[name] = wrenImport->FirstThunk + i * 8;
 	}
 }

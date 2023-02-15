@@ -31,7 +31,10 @@ struct PECOFF {
 	IMAGE_SYMBOL *symbolTable = nullptr;
 	const char *stringTable = nullptr;
 	SectionMap sections;
+	ImportSection imports;
 	ExportSection exports;
+	std::optional<IMAGE_SYMBOL> getGlobalsFunc;
+	std::vector<std::string> symbolNames;
 };
 
 void *loadFile(const std::string &filename, int &size);
@@ -79,11 +82,6 @@ int main(int argc, char **argv) {
 	};
 	parsePECOFF(lib);
 
-	// TESTING FIXME
-	int rva = image.exports.nameToRVA.at("wrenStandaloneMainModule");
-	uint8_t *ptr = image.sections.Translate(rva);
-	*(uint64_t *)ptr = 0xdeadbeef12345678;
-
 	// FIXME disable base relocations so we don't have to
 	//  write a .reloc table for now.
 	image.fh->Characteristics |= IMAGE_FILE_RELOCS_STRIPPED;
@@ -100,6 +98,9 @@ int main(int argc, char **argv) {
 	//  reasonable since the Microsoft docs say that executables
 	//  don't use them under the entry for the section header
 	//  names.)
+
+	std::map<int, int> linkedSectionOffsets;
+	int firstNewSectionId = image.fh->NumberOfSections;
 
 	// Copy all the sections from the object into the executable
 	for (const Section &sec : lib.sections.list) {
@@ -119,6 +120,8 @@ int main(int argc, char **argv) {
 		// If it's not, you'll get an invalid EXE error. Pasted here from PowerShell for searches:
 		//    The specified executable is not a valid application for this OS platform.
 		DWORD virtualAddr = alignTo(prev->VirtualAddress + prev->Misc.VirtualSize, image.oh->SectionAlignment);
+
+		linkedSectionOffsets[sec.id] = virtualAddr;
 
 		IMAGE_SECTION_HEADER *sh = &image.sectionHeaders[image.fh->NumberOfSections++];
 		sh->Misc.VirtualSize = sec.size;
@@ -150,6 +153,68 @@ int main(int argc, char **argv) {
 		memcpy(sh->Name, name, 8);
 	}
 
+	// Apply all the section relocations
+	for (int i = firstNewSectionId; i < image.fh->NumberOfSections; i++) {
+		int baseId = i - firstNewSectionId;
+		const Section &sec = lib.sections.list.at(baseId);
+		IMAGE_SECTION_HEADER *sh = &image.sectionHeaders[i];
+		printf("relocating %s\n", sec.name.c_str());
+
+		// Apply the section relocations
+		// FIXME implement IMAGE_SCN_LNK_NRELOC_OVFL
+		for (int j = 0; j < sec.header->NumberOfRelocations; j++) {
+			// Manually do the pointer arithmatic, to make sure alignment
+			// isn't an issue (the struct is 10 bytes wide, and there isn't
+			// any padding in the file).
+			const IMAGE_RELOCATION *reloc = (IMAGE_RELOCATION *)(libData + sec.header->PointerToRelocations + j * 10);
+			const IMAGE_SYMBOL *sym = (IMAGE_SYMBOL *)&lib.symbolTable[reloc->SymbolTableIndex];
+			const std::string &name = lib.symbolNames.at(reloc->SymbolTableIndex);
+
+			printf("relocation t=%d at %08x against %d - %s\n", reloc->Type, (int)reloc->VirtualAddress,
+			    (int)reloc->SymbolTableIndex, name.c_str());
+
+			int targetRVA = 0;
+			if (sym->StorageClass == IMAGE_SYM_CLASS_STATIC || sym->StorageClass == IMAGE_SYM_CLASS_EXTERNAL) {
+				if (sym->SectionNumber == IMAGE_SYM_UNDEFINED) {
+					// This relocation is against a symbol that's not in the object
+					// file, and is imported from another object file or the runtime.
+					printf("\tWARN: TODO import sym %s\n", name.c_str());
+					targetRVA = image.imports.importNameRVAs.at(name);
+				} else {
+					// This relocation is against a section that was in the object file.
+					// The section numbers all increased when they got appended to the image
+					// Note that symbol section numbers are one-based, so -1.
+					int newSection = sym->SectionNumber + firstNewSectionId - 1;
+
+					IMAGE_SECTION_HEADER *symSh = &image.sectionHeaders[newSection];
+					targetRVA = symSh->VirtualAddress + sym->Value;
+				}
+			} else {
+				printf("\tWARN: Unknown storage class %d\n", sym->StorageClass);
+			}
+
+			int64_t targetVA = targetRVA + image.oh->ImageBase;
+
+			int relocAddr = reloc->VirtualAddress - sec.header->VirtualAddress;
+			uint8_t *toEdit = pe + sh->PointerToRawData + relocAddr;
+
+			int relocRVA = sh->VirtualAddress + relocAddr;
+
+			// I think adding the calculated values - rather than overwriting
+			// them - is correct.
+
+			if (reloc->Type == IMAGE_REL_AMD64_ADDR64) {
+				*(int64_t *)(toEdit) += targetVA;
+			} else if (reloc->Type == IMAGE_REL_AMD64_REL32) {
+				// +4 since this is relative to the address of the first byte
+				// *after* the value we're relocating.
+				*(int32_t *)(toEdit) += targetRVA - (relocRVA + 4);
+			} else {
+				printf("\tWARN: Unknown reloc type %d\n", reloc->Type);
+			}
+		}
+	}
+
 	// Fix up the image size attribute
 	int maxVirtualAddress = 0;
 	for (int i = 0; i < image.fh->NumberOfSections; i++) {
@@ -161,6 +226,13 @@ int main(int argc, char **argv) {
 	image.oh->SizeOfImage = maxVirtualAddress;
 	// image.oh->SizeOfInitializedData *= 2;
 	// image.oh->SizeOfInitializedData = 41472 + 0x10000;
+
+	// Link up the main module pointer
+	int sectionRVA = linkedSectionOffsets.at(lib.getGlobalsFunc->SectionNumber - 1 /* 0 vs 1 indexed */);
+	int rva = image.exports.nameToRVA.at("wrenStandaloneMainModule");
+	uint8_t *ptr = image.sections.Translate(rva);
+	// *(uint64_t *)ptr = 0xdeadbeef12345678;
+	*(uint64_t *)ptr = image.oh->ImageBase + sectionRVA + lib.getGlobalsFunc->Value;
 
 	// Write it back out
 	try {
@@ -198,6 +270,9 @@ void parsePECOFF(PECOFF &out) {
 			// is the array of them.
 			const IMAGE_AUX_SYMBOL *aux = (IMAGE_AUX_SYMBOL *)&out.symbolTable[i + 1];
 
+			// We change i later, so keep the original around
+			int idx = i;
+
 			std::string name;
 			if (sym.N.Name.Short != 0) {
 				// This symbol name is contained here
@@ -210,10 +285,14 @@ void parsePECOFF(PECOFF &out) {
 				name = out.stringTable + sym.N.Name.Long;
 			}
 
+			out.symbolNames.push_back(name);
+
 			// Skip over the auxiliary symbols
 			i += sym.NumberOfAuxSymbols;
+			for (int j = 0; j < sym.NumberOfAuxSymbols; j++)
+				out.symbolNames.push_back("<aux>");
 
-			fmt::print("Symbol {:3} aux={} sc={} type={} section={} value={} '{}'\n", i, sym.NumberOfAuxSymbols,
+			fmt::print("Symbol {:3} aux={} sc={} type={} section={} value={} '{}'\n", idx, sym.NumberOfAuxSymbols,
 			    sym.StorageClass, sym.Type, sym.SectionNumber, (int)sym.Value, name);
 
 			if (sym.StorageClass == IMAGE_SYM_CLASS_FILE) {
@@ -222,6 +301,11 @@ void parsePECOFF(PECOFF &out) {
 				ZeroMemory(filenameBuf, sizeof(filenameBuf));
 				memcpy(filenameBuf, aux->File.Name, sizeof(IMAGE_SYMBOL));
 				fmt::print("  Filename record: {}\n", filenameBuf);
+			}
+
+			if (name.ends_with("_get_globals")) {
+				// TODO handle imports of other modules
+				out.getGlobalsFunc = sym;
 			}
 
 			// These denote section definitions.
@@ -257,6 +341,7 @@ void parsePECOFF(PECOFF &out) {
 		fmt::print("Section: {} at {}\n", name, section->VirtualAddress);
 
 		out.sections.AddSection(Section{
+		    .id = i,
 		    .address = (int)section->VirtualAddress,
 		    .size = (int)section->SizeOfRawData,
 		    .data = out.fileBase + section->PointerToRawData,
@@ -268,17 +353,23 @@ void parsePECOFF(PECOFF &out) {
 	// Read the data directories, and pick the export directory (the first one)
 	// https://learn.microsoft.com/en-gb/windows/win32/debug/pe-format#optional-header-data-directories-image-only
 	std::optional<IMAGE_DATA_DIRECTORY> exportDir;
+	std::optional<IMAGE_DATA_DIRECTORY> importDir;
 	for (int i = 0; i < out.oh->NumberOfRvaAndSizes; i++) {
 		IMAGE_DATA_DIRECTORY *dir = &out.oh->DataDirectory[i];
 		// fmt::print("Directory {:02d}: {:08x}\n", i, dir->VirtualAddress);
 
 		if (i == 0) {
 			exportDir = *dir;
+		} else if (i == 1) {
+			importDir = *dir;
 		}
 	}
 
 	if (exportDir) {
 		out.exports.Load(*exportDir, out.sections);
+	}
+	if (importDir) {
+		out.imports.Load(*importDir, out.sections);
 	}
 }
 
