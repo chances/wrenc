@@ -337,8 +337,15 @@ int main(int argc, char **argv) {
 				// +4 since this is relative to the address of the first byte
 				// *after* the value we're relocating.
 				*(int32_t *)(toEdit) += targetRVA - (relocRVA + 4);
+			} else if (reloc.type == IMAGE_REL_AMD64_ADDR32NB) {
+				// It sounds like this is just the plain RVA? The MSDN docs
+				// aren't especially clear.
+				// I can't find any documentation for it, but an LLVM Phabricator
+				// patch implements it and it's easy to see what it does:
+				// https://reviews.llvm.org/D30709
+				*(int32_t *)(toEdit) += targetRVA;
 			} else {
-				printf("\tWARN: Unknown reloc type %d\n", reloc.type);
+				printf("\tWARN: Unknown reloc type %d for symbol '%s'\n", reloc.type, sym.name.c_str());
 			}
 		}
 	}
