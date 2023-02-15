@@ -73,6 +73,8 @@ struct GeneratedSection {
 	std::vector<uint8_t> data;
 	std::vector<Relocation> relocations;
 
+	// Assigned when these are copied to the output
+	IMAGE_SECTION_HEADER *sectionHeader = nullptr;
 	int virtualAddress = -1;
 };
 
@@ -169,6 +171,11 @@ int main(int argc, char **argv) {
 		if (sec.name.starts_with(".debug"))
 			continue;
 
+		// Don't copy out empty sections! That corrupts the EXE with the same
+		// error as gaps in the virtual memory.
+		if (sec.data.empty())
+			continue;
+
 		int physAddress = alignTo(peSize, image.oh->FileAlignment);
 		int physSize = alignTo(sec.data.size(), image.oh->FileAlignment);
 		peSize = physAddress + physSize;
@@ -182,6 +189,7 @@ int main(int argc, char **argv) {
 		sec.virtualAddress = alignTo(prev->VirtualAddress + prev->Misc.VirtualSize, image.oh->SectionAlignment);
 
 		IMAGE_SECTION_HEADER *sh = &image.sectionHeaders[image.fh->NumberOfSections++];
+		sec.sectionHeader = sh;
 		sh->Misc.VirtualSize = sec.data.size();
 		sh->VirtualAddress = sec.virtualAddress;
 		sh->SizeOfRawData = (DWORD)physSize;
@@ -212,11 +220,12 @@ int main(int argc, char **argv) {
 	}
 
 	// Apply all the section relocations
-	for (int i = firstNewSectionId; i < image.fh->NumberOfSections; i++) {
-		int baseId = i - firstNewSectionId;
-		const GeneratedSection *sec = state.orderedSections.at(baseId);
-		IMAGE_SECTION_HEADER *sh = &image.sectionHeaders[i];
+	for (GeneratedSection *sec : state.orderedSections) {
 		printf("relocating %s\n", sec->name.c_str());
+
+		// If this section wasn't placed, don't try doing anything with it's relocations
+		if (!sec->sectionHeader)
+			continue;
 
 		// Apply the section relocations
 		// FIXME implement IMAGE_SCN_LNK_NRELOC_OVFL
@@ -247,7 +256,7 @@ int main(int argc, char **argv) {
 
 			int64_t targetVA = targetRVA + image.oh->ImageBase;
 
-			uint8_t *toEdit = pe + sh->PointerToRawData + reloc.offset;
+			uint8_t *toEdit = pe + sec->sectionHeader->PointerToRawData + reloc.offset;
 
 			int relocRVA = sec->virtualAddress + reloc.offset;
 
@@ -295,6 +304,9 @@ int main(int argc, char **argv) {
 		fmt::print(stderr, "Failed to write output file: {}", ex.what());
 		exit(1);
 	}
+
+	// Make it easy to see when it crashed.
+	fmt::print("Linking complete.\n");
 
 	return 0;
 }
