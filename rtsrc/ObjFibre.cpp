@@ -94,7 +94,10 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 	// fine to do this while the GC is walking the heap, everything just gets
 	// added to the grey list anyway.
 	GCTracingScanner *gc = (GCTracingScanner *)ops->GetGCImpl(ops);
+	// FIXME Windows port
+#ifndef _WIN32
 	gc->MarkThreadRoots(m_suspendedContext);
+#endif
 }
 
 ObjFibre *ObjFibre::New(ObjFn *func) {

@@ -14,6 +14,11 @@
 #include "WrenAPI.h"
 #include "WrenRuntime.h"
 
+// FIXME windows support
+#ifdef _WIN32
+GCTracingScanner::~GCTracingScanner() {}
+#else
+
 #include <algorithm>
 #include <cstdio>
 #include <libunwind.h>
@@ -264,3 +269,5 @@ void *GCTracingScanner::OpsGetGCImpl(GCMarkOps *thisObj) {
 	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
 	return impl->scanner;
 }
+
+#endif
