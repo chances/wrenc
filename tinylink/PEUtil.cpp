@@ -4,6 +4,8 @@
 
 #include "common.h"
 
+#include "tinylink_main.h"
+
 #include "PEUtil.h"
 
 #include <fmt/format.h>
@@ -106,7 +108,8 @@ void ExportSection::Load(const IMAGE_DATA_DIRECTORY &dir, const SectionMap &sect
 	for (int i = 0; i < exportDir->NumberOfNames; i++) {
 		const char *name = (const char *)sections.Translate(nameTable[i]);
 		names.push_back(name);
-		printf("DLL_EXPORT func %s\n", name);
+		if (verbose)
+			printf("DLL_EXPORT func %s\n", name);
 	}
 
 	// Load the name ordinal table

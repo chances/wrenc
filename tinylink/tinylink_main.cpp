@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <ya_getopt.h>
 
+bool verbose = false;
+
 static int alignTo(int value, int alignment) {
 	int overhang = value % alignment;
 	if (overhang == 0)
@@ -103,7 +105,7 @@ int main(int argc, char **argv) {
 	std::vector<const char *> objectFiles;
 
 	while (true) {
-		int arg = getopt(argc, argv, "e:o:h");
+		int arg = getopt(argc, argv, "e:o:hv");
 
 		// Out of arguments?
 		if (arg == -1)
@@ -118,11 +120,16 @@ int main(int argc, char **argv) {
 			outputFile = optarg;
 			break;
 		}
+		case 'v': {
+			verbose = true;
+			break;
+		}
 		case 'h': {
 			// Print help immediately and do nothing else, so you can
 			// put it in with invalid commands and get help.
-			printf("Usage: %s [-h] -e exe -o output objects...\n", argv[0]);
+			printf("Usage: %s [-hv] -e exe -o output objects...\n", argv[0]);
 			printf("\t-h        Show this help message\n");
+			printf("\t-v        Print debugging information\n");
 			printf("\t-e exe    Set the path to the input EXE file\n");
 			return 0;
 		}
@@ -279,7 +286,8 @@ int main(int argc, char **argv) {
 
 	// Apply all the section relocations
 	for (GeneratedSection *sec : state.orderedSections) {
-		printf("relocating %s\n", sec->name.c_str());
+		if (verbose)
+			printf("relocating %s\n", sec->name.c_str());
 
 		// If this section wasn't placed, don't try doing anything with it's relocations
 		if (!sec->sectionHeader)
@@ -290,8 +298,10 @@ int main(int argc, char **argv) {
 		for (const Relocation &reloc : sec->relocations) {
 			const Symbol &sym = state.symbols.at(reloc.symbolId);
 
-			printf("relocation t=%d at %08x against %d - %s\n", reloc.type, (int)reloc.offset, sym.originalIndex,
-			    sym.name.c_str());
+			if (verbose) {
+				printf("relocation t=%d at %08x against %d - %s\n", reloc.type, (int)reloc.offset, sym.originalIndex,
+				    sym.name.c_str());
+			}
 
 			int targetRVA = 0;
 			if (sym.isImportReloc) {
@@ -364,7 +374,8 @@ int main(int argc, char **argv) {
 	}
 
 	// Make it easy to see when it crashed.
-	fmt::print("Linking complete.\n");
+	if (verbose)
+		fmt::print("Linking complete.\n");
 
 	return 0;
 }
@@ -515,15 +526,19 @@ void parsePECOFF(PECOFF &out) {
 			for (int j = 0; j < sym.NumberOfAuxSymbols; j++)
 				out.symbolNames.push_back("<aux>");
 
-			fmt::print("Symbol {:3} aux={} sc={} type={} section={} value={} '{}'\n", idx, sym.NumberOfAuxSymbols,
-			    sym.StorageClass, sym.Type, sym.SectionNumber, (int)sym.Value, name);
+			if (verbose) {
+				fmt::print("Symbol {:3} aux={} sc={} type={} section={} value={} '{}'\n", idx, sym.NumberOfAuxSymbols,
+				    sym.StorageClass, sym.Type, sym.SectionNumber, (int)sym.Value, name);
+			}
 
 			if (sym.StorageClass == IMAGE_SYM_CLASS_FILE) {
 				// The following symbol is a filename
 				char filenameBuf[sizeof(IMAGE_SYMBOL) + 1];
 				ZeroMemory(filenameBuf, sizeof(filenameBuf));
 				memcpy(filenameBuf, aux->File.Name, sizeof(IMAGE_SYMBOL));
-				fmt::print("  Filename record: {}\n", filenameBuf);
+				if (verbose) {
+					fmt::print("  Filename record: {}\n", filenameBuf);
+				}
 			}
 
 			// These denote section definitions.
@@ -556,7 +571,8 @@ void parsePECOFF(PECOFF &out) {
 			name = out.stringTable + offset;
 		}
 
-		fmt::print("Section: {} at {}\n", name, section->VirtualAddress);
+		if (verbose)
+			fmt::print("Section: {} at {}\n", name, section->VirtualAddress);
 
 		out.sections.AddSection(Section{
 		    .id = i,
@@ -661,7 +677,8 @@ void *loadFile(const std::string &filename, int &size) {
 		buf << input.rdbuf();
 		std::string fileContents = buf.str();
 
-		fmt::print("Loaded file '{}', size {}\n", filename, fileContents.size());
+		if (verbose)
+			fmt::print("Loaded file '{}', size {}\n", filename, fileContents.size());
 
 		// Leak the string so we can avoid copying around the file (though
 		// this is performance paranoia more than anything else).
