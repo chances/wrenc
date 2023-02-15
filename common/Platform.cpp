@@ -29,15 +29,11 @@ void *mm::allocateMemory(int size) {
 bool mem_management::allocateMemoryAtAddress(void *addr, int size, bool &outCollided) {
 	outCollided = false;
 
-	// Testing to make sure ERROR_INVALID_ADDRESS works
-	VirtualAlloc(addr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
 	void *mem = VirtualAlloc(addr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
 	if (mem == nullptr) {
 		if (GetLastError() == ERROR_INVALID_ADDRESS) {
 			outCollided = true;
-			abort(); // TESTING
 		}
 		return false;
 	}
