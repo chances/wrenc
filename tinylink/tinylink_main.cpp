@@ -51,6 +51,10 @@ struct Symbol {
 	DWORD value = 0;
 	BYTE storageClass = 0;
 
+	// If true, this is a relocation that's part of the import stubs.
+	// In this case, directly pass through the address from the import table.
+	bool isImportReloc = false;
+
 	int rva() const;
 };
 
@@ -78,6 +82,8 @@ struct IntermediateState {
 	std::vector<Symbol> symbols;
 	std::map<std::string, std::unique_ptr<GeneratedSection>> newSections;
 	std::vector<GeneratedSection *> orderedSections;
+
+	std::map<std::string, int /* symbol index */> importStubs;
 };
 
 void *loadFile(const std::string &filename, int &size);
@@ -85,6 +91,8 @@ void *loadFile(const std::string &filename, int &size);
 void parsePECOFF(PECOFF &out);
 
 void appendObject(IntermediateState &state, PECOFF &lib);
+
+void createDllImportStubs(IntermediateState &state, const PECOFF &image);
 
 int main(int argc, char **argv) {
 	// PE documentation:
@@ -148,6 +156,9 @@ int main(int argc, char **argv) {
 
 	IntermediateState state;
 	appendObject(state, lib);
+
+	// Create little mini-functions that jump to a DLL-imported function.
+	createDllImportStubs(state, image);
 
 	// Copy all the sections from the object into the executable
 	for (GeneratedSection *secPtr : state.orderedSections) {
@@ -216,12 +227,16 @@ int main(int argc, char **argv) {
 			    sym.name.c_str());
 
 			int targetRVA = 0;
-			if (sym.storageClass == IMAGE_SYM_CLASS_STATIC || sym.storageClass == IMAGE_SYM_CLASS_EXTERNAL) {
+			if (sym.isImportReloc) {
+				// This is the relocation we generate in createDllImportStubs for
+				// dealing with DLL imports.
+				targetRVA = image.imports.importNameRVAs.at(sym.name);
+			} else if (sym.storageClass == IMAGE_SYM_CLASS_STATIC || sym.storageClass == IMAGE_SYM_CLASS_EXTERNAL) {
 				if (sym.section == nullptr) {
 					// This relocation is against a symbol that's not in the object
 					// file, and is imported from another object file or the runtime.
-					printf("\tWARN: TODO import sym %s\n", sym.name.c_str());
-					targetRVA = image.imports.importNameRVAs.at(sym.name);
+					int stubSymId = state.importStubs.at(sym.name);
+					targetRVA = state.symbols.at(stubSymId).rva();
 				} else {
 					// This relocation is against a section that was in the object file.
 					targetRVA = sym.section->virtualAddress + sym.value;
@@ -504,6 +519,64 @@ void parsePECOFF(PECOFF &out) {
 	if (importDir) {
 		out.imports.Load(*importDir, out.sections);
 	}
+}
+
+void createDllImportStubs(IntermediateState &state, const PECOFF &image) {
+	// Just assume the text section exists, it'd be pretty silly if it didn't.
+	GeneratedSection &sec = *state.newSections.at(".text");
+	int textStart = sec.data.size();
+
+	// Our little .text addition
+	std::vector<uint8_t> text;
+
+	for (const auto &[name, rva] : image.imports.importNameRVAs) {
+		// We only care about the Wren generated-entry functions
+		if (!name.starts_with("wren_"))
+			continue;
+
+		// Load the address of the function (which we get from the
+		// values populated by Windows) into RAX (which is always
+		// safe to overwrite), and jump to it.
+
+		// mov rax, [rsp+0]
+		int funcPosition = textStart + text.size();
+		text.push_back(0x48);
+		text.push_back(0x8b);
+		text.push_back(0x05);
+
+		int addressPosition = textStart + text.size();
+		text.push_back(0);
+		text.push_back(0);
+		text.push_back(0);
+		text.push_back(0);
+
+		// jmp rax
+		text.push_back(0xff);
+		text.push_back(0xe0);
+
+		// Add a symbol for the objects to use
+		state.importStubs[name] = state.symbols.size();
+		state.symbols.push_back(Symbol{
+		    .section = &sec,
+		    .name = name,
+		    .value = (DWORD)funcPosition,
+		    .storageClass = IMAGE_SYM_CLASS_STATIC,
+		});
+
+		// Add a symbol/relocation pair to set the relative offset
+		// in the mov instruction.
+		sec.relocations.push_back(Relocation{
+		    .symbolId = (int)state.symbols.size(),
+		    .offset = addressPosition,
+		    .type = IMAGE_REL_AMD64_REL32,
+		});
+		state.symbols.push_back(Symbol{
+		    .name = name,
+		    .isImportReloc = true,
+		});
+	}
+
+	sec.data.insert(sec.data.end(), text.begin(), text.end());
 }
 
 void *loadFile(const std::string &filename, int &size) {
