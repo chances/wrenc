@@ -279,4 +279,8 @@ rtlib = declare_dependency(
   include_directories: ['rtsrc'],
 )
 
+if build_machine.system() == 'windows'
+  subdir('tinylink')
+endif
+
 subdir('test')
