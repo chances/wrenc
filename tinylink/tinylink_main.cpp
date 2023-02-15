@@ -13,6 +13,7 @@
 #include <optional>
 #include <sstream>
 #include <stdio.h>
+#include <ya_getopt.h>
 
 static int alignTo(int value, int alignment) {
 	int overhang = value % alignment;
@@ -97,12 +98,69 @@ void appendObject(IntermediateState &state, PECOFF &lib);
 void createDllImportStubs(IntermediateState &state, const PECOFF &image);
 
 int main(int argc, char **argv) {
+	const char *exeInputFile = nullptr;
+	const char *outputFile = nullptr;
+	std::vector<const char *> objectFiles;
+
+	while (true) {
+		int arg = getopt(argc, argv, "e:o:h");
+
+		// Out of arguments?
+		if (arg == -1)
+			break;
+
+		switch (arg) {
+		case 'e': {
+			exeInputFile = optarg;
+			break;
+		}
+		case 'o': {
+			outputFile = optarg;
+			break;
+		}
+		case 'h': {
+			// Print help immediately and do nothing else, so you can
+			// put it in with invalid commands and get help.
+			printf("Usage: %s [-h] -e exe -o output objects...\n", argv[0]);
+			printf("\t-h        Show this help message\n");
+			printf("\t-e exe    Set the path to the input EXE file\n");
+			return 0;
+		}
+		default:
+			// Invalid options are handled by getopt.
+			fmt::print(stderr, "Found unhandled argument {}.\n", arg);
+			abort();
+		}
+	}
+
+	for (int i = optind; i < argc; i++) {
+		objectFiles.push_back(argv[i]);
+	}
+
+	if (!exeInputFile) {
+		fmt::print(stderr, "Missing EXE input file (use -e)! See -h for usage information.\n");
+		return 1;
+	}
+	if (!outputFile) {
+		fmt::print(stderr, "Missing output file! See -h for usage information.\n");
+		return 1;
+	}
+
+	if (objectFiles.size() == 0) {
+		fmt::print(stderr, "No input object files specified! See -h for usage information.\n");
+		return 1;
+	}
+	if (objectFiles.size() != 1) {
+		fmt::print(stderr, "Only a single object file is currently supported :(\n");
+		return 1;
+	}
+
 	// PE documentation:
 	// https://learn.microsoft.com/en-gb/windows/win32/debug/pe-format
 
 	// Make a bit of extra space for us to muck around
 	int peSize;
-	uint8_t *rawPE = (uint8_t *)loadFile(argv[1], peSize);
+	uint8_t *rawPE = (uint8_t *)loadFile(exeInputFile, peSize);
 	std::vector<uint8_t> data;
 	data.assign(rawPE, rawPE + peSize);
 	data.resize(peSize * 2 + (1 * 1024 * 1024));
@@ -130,7 +188,7 @@ int main(int argc, char **argv) {
 
 	// Load the object file to link in
 	int libSize;
-	uint8_t *libData = (uint8_t *)loadFile(argv[2], libSize);
+	uint8_t *libData = (uint8_t *)loadFile(objectFiles.at(0), libSize);
 	PECOFF lib = {
 	    .fileBase = libData,
 	    .fh = (IMAGE_FILE_HEADER *)libData,
@@ -298,7 +356,7 @@ int main(int argc, char **argv) {
 	try {
 		std::ofstream out;
 		out.exceptions(std::ios::failbit | std::ios::badbit);
-		out.open("link-output.exe", std::ios::binary);
+		out.open(outputFile, std::ios::binary);
 		out.write((char *)pe, peSize);
 	} catch (const std::fstream::failure &ex) {
 		fmt::print(stderr, "Failed to write output file: {}", ex.what());
