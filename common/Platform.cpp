@@ -16,9 +16,13 @@ namespace mm = mem_management;
 #include <Windows.h>
 
 int mm::getPageSize() {
-	SYSTEM_INFO info = {};
-	GetSystemInfo(&info);
-	return info.dwAllocationGranularity;
+	static int pageSize = -1;
+	if (pageSize == -1) {
+		SYSTEM_INFO info = {};
+		GetSystemInfo(&info);
+		pageSize = info.dwAllocationGranularity;
+	}
+	return pageSize;
 }
 
 void *mm::allocateMemory(int size) {
@@ -40,6 +44,25 @@ bool mem_management::allocateMemoryAtAddress(void *addr, int size, bool &outColl
 	assert(mem == addr);
 
 	return true;
+}
+
+void *mem_management::allocateStackMemory(int size) {
+	// Reserve a bit of extra memory, and then only commit what was requested.
+	// This way, we can be certain a stack overflow won't wander off into
+	// unrelated data.
+	void *addr = VirtualAlloc(nullptr, size + getPageSize(), MEM_RESERVE, PAGE_NOACCESS);
+	if (addr == nullptr)
+		return nullptr;
+
+	void *addr2 = VirtualAlloc(addr, size, MEM_COMMIT, PAGE_READWRITE);
+	if (addr2 == nullptr) {
+		// FIXME does this overwrite GetLastError?
+		deallocateMemory(addr, -1);
+		return nullptr;
+	}
+
+	assert(addr == addr2);
+	return addr;
 }
 
 bool mm::deallocateMemory(void *addr, int size) { return VirtualFree(addr, 0, MEM_RELEASE) != 0; }
@@ -123,6 +146,14 @@ int mm::getPageSize() {
 
 void *mm::allocateMemory(int size) {
 	void *addr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (addr == MAP_FAILED) {
+		return nullptr;
+	}
+	return addr;
+}
+
+void *mem_management::allocateStackMemory(int size) {
+	void *addr = (void *)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
 	if (addr == MAP_FAILED) {
 		return nullptr;
 	}

@@ -130,10 +130,6 @@ ObjFibre *ObjFibre::Current() {
 	return currentFibre;
 }
 
-// FIXME Windows port
-#ifdef _WIN32
-void ObjFibre::CheckStack() { abort(); }
-#else
 void ObjFibre::CheckStack() {
 	if (m_stack)
 		return;
@@ -144,7 +140,7 @@ void ObjFibre::CheckStack() {
 	// a dynamically-sized stack, but that's a pain to free and doesn't really have
 	// any big concrete advantages.
 	if (stackSize == 0) {
-		int pageSize = getpagesize();
+		int pageSize = mm::getPageSize();
 		stackSize = 2 * 1024 * 1024; // 2MiB stacks should be waaay more than enough
 		int overhang = stackSize % pageSize;
 		if (overhang) {
@@ -152,8 +148,8 @@ void ObjFibre::CheckStack() {
 		}
 	}
 
-	m_stack = (void *)mmap(nullptr, stackSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
-	if (m_stack == MAP_FAILED) {
+	m_stack = mm::allocateStackMemory(stackSize);
+	if (m_stack == nullptr) {
 		fprintf(stderr, "Failed to map new stack for fibre.\n");
 		abort();
 	}
@@ -161,7 +157,6 @@ void ObjFibre::CheckStack() {
 	// TODO remove write permissions on the last page to catch overruns if there's something else mapped there, which
 	//  is something I've observed during testing.
 }
-#endif
 
 void ObjFibre::DeleteStack() {
 	if (m_state == State::RUNNING) {

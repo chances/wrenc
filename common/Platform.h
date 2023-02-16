@@ -18,6 +18,8 @@ void *allocateMemory(int size);
 
 bool allocateMemoryAtAddress(void *addr, int size, bool &outCollided);
 
+void *allocateStackMemory(int size);
+
 bool deallocateMemory(void *addr, int size);
 
 } // namespace mem_management
