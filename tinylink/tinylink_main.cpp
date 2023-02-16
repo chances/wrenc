@@ -18,6 +18,13 @@
 
 bool verbose = false;
 
+// Keep track of whether we've hit any errors that justify exiting with a
+// non-zero return code. We'll still continue processing the file to make
+// debugging easier, but this should bubble up making the compiler fail
+// and eventually warning the user via whatever UI they're using for running
+// the compiler.
+static bool hitFatalError = false;
+
 static int alignTo(int value, int alignment) {
 	int overhang = value % alignment;
 	if (overhang == 0)
@@ -28,6 +35,7 @@ static int alignTo(int value, int alignment) {
 
 struct GeneratedSection;
 struct Symbol;
+struct IntermediateState;
 
 // Parsed PE/COFF headers, used for both image (executable) files and object files.
 struct PECOFF {
@@ -41,7 +49,6 @@ struct PECOFF {
 	ImportSection imports;
 	ExportSection exports;
 	std::optional<IMAGE_DATA_DIRECTORY *> exceptionsDir;
-	std::optional<int> getGlobalsFunc; // Symbol ID
 	std::vector<std::string> symbolNames;
 };
 
@@ -60,7 +67,7 @@ struct Symbol {
 	// In this case, directly pass through the address from the import table.
 	bool isImportReloc = false;
 
-	int rva() const;
+	int RVA(IntermediateState &state, PECOFF &image) const;
 };
 
 // Our intermediate relocation form, used when merging objects.
@@ -96,8 +103,10 @@ struct IntermediateState {
 	std::vector<Symbol> symbols;
 	std::map<std::string, std::unique_ptr<GeneratedSection>> newSections;
 	std::vector<GeneratedSection *> orderedSections;
+	std::optional<int /* symbol index */> mainModuleGlobals;
 
 	std::map<std::string, int /* symbol index */> importStubs;
+	std::map<std::string, int /* symbol index */> moduleGetGlobals;
 };
 
 void *loadFile(const std::string &filename, int &size);
@@ -174,12 +183,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (objectFiles.size() == 0) {
+	if (objectFiles.empty()) {
 		fmt::print(stderr, "No input object files specified! See -h for usage information.\n");
-		return 1;
-	}
-	if (objectFiles.size() != 1) {
-		fmt::print(stderr, "Only a single object file is currently supported :(\n");
 		return 1;
 	}
 
@@ -214,15 +219,6 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	// Load the object file to link in
-	int libSize;
-	uint8_t *libData = (uint8_t *)loadFile(objectFiles.at(0), libSize);
-	PECOFF lib = {
-	    .fileBase = libData,
-	    .fh = (IMAGE_FILE_HEADER *)libData,
-	};
-	parsePECOFF(lib);
-
 	// FIXME disable base relocations so we don't have to
 	//  write a .reloc table for now.
 	image.fh->Characteristics |= IMAGE_FILE_RELOCS_STRIPPED;
@@ -240,10 +236,20 @@ int main(int argc, char **argv) {
 	//  don't use them under the entry for the section header
 	//  names.)
 
-	int firstNewSectionId = image.fh->NumberOfSections;
-
 	IntermediateState state;
-	appendObject(state, lib);
+
+	// Load all the the object files to link in
+	for (const std::string &file : objectFiles) {
+		int libSize;
+		uint8_t *libData = (uint8_t *)loadFile(file, libSize);
+		PECOFF lib = {
+		    .fileBase = libData,
+		    .fh = (IMAGE_FILE_HEADER *)libData,
+		};
+		parsePECOFF(lib);
+
+		appendObject(state, lib);
+	}
 
 	// Create little mini-functions that jump to a DLL-imported function.
 	createDllImportStubs(state, image);
@@ -348,24 +354,7 @@ int main(int argc, char **argv) {
 				    sym.name.c_str());
 			}
 
-			int targetRVA = 0;
-			if (sym.isImportReloc) {
-				// This is the relocation we generate in createDllImportStubs for
-				// dealing with DLL imports.
-				targetRVA = image.imports.importNameRVAs.at(sym.name);
-			} else if (sym.storageClass == IMAGE_SYM_CLASS_STATIC || sym.storageClass == IMAGE_SYM_CLASS_EXTERNAL) {
-				if (sym.section == nullptr) {
-					// This relocation is against a symbol that's not in the object
-					// file, and is imported from another object file or the runtime.
-					int stubSymId = state.importStubs.at(sym.name);
-					targetRVA = state.symbols.at(stubSymId).rva();
-				} else {
-					// This relocation is against a section that was in the object file.
-					targetRVA = sym.section->virtualAddress + sym.value;
-				}
-			} else {
-				printf("\tWARN: Unknown storage class %d\n", sym.storageClass);
-			}
+			int targetRVA = sym.RVA(state, image);
 
 			int64_t targetVA = targetRVA + image.oh->ImageBase;
 
@@ -391,6 +380,7 @@ int main(int argc, char **argv) {
 				*(int32_t *)(toEdit) += targetRVA;
 			} else {
 				printf("\tWARN: Unknown reloc type %d for symbol '%s'\n", reloc.type, sym.name.c_str());
+				hitFatalError = true;
 			}
 		}
 	}
@@ -410,11 +400,12 @@ int main(int argc, char **argv) {
 	rewriteExceptions(image, exceptions, pdata);
 
 	// Link up the main module pointer
-	const Symbol &getGlobalsSym = state.symbols.at(lib.getGlobalsFunc.value());
+	const Symbol &getGlobalsSym = state.symbols.at(state.mainModuleGlobals.value());
+	int getGlobalsFileOffset = getGlobalsSym.section->sectionHeader->PointerToRawData + getGlobalsSym.value;
+	uint64_t getGlobalsValue = *(uint64_t *)(pe + getGlobalsFileOffset);
 	int rva = image.exports.nameToRVA.at("wrenStandaloneMainModule");
 	uint8_t *ptr = image.sections.Translate(rva);
-	// *(uint64_t *)ptr = 0xdeadbeef12345678;
-	*(uint64_t *)ptr = image.oh->ImageBase + getGlobalsSym.rva();
+	*(uint64_t *)ptr = getGlobalsValue;
 
 	// Write it back out
 	try {
@@ -427,6 +418,11 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+	if (hitFatalError) {
+		fmt::print(stderr, "Hit error while processing the file, exiting with non-zero status code.\n");
+		return 1;
+	}
+
 	// Make it easy to see when it crashed.
 	if (verbose)
 		fmt::print("Linking complete.\n");
@@ -434,7 +430,43 @@ int main(int argc, char **argv) {
 	return 0;
 }
 
-int Symbol::rva() const { return section->virtualAddress + value; }
+int Symbol::RVA(IntermediateState &state, PECOFF &image) const {
+	if (isImportReloc) {
+		// This is the relocation we generate in createDllImportStubs for
+		// dealing with DLL imports.
+		return image.imports.importNameRVAs.at(name);
+	}
+	if (storageClass == IMAGE_SYM_CLASS_STATIC || storageClass == IMAGE_SYM_CLASS_EXTERNAL) {
+		if (section != nullptr) {
+			// This relocation is against a section that was in the object file.
+			return section->virtualAddress + value;
+		}
+
+		// This relocation is against a symbol that's not in the object
+		// file, and is imported from another object file or the runtime.
+
+		// Check if it's imported from the runtime.
+		auto iter = state.importStubs.find(name);
+		if (iter != state.importStubs.end()) {
+			int stubSymId = iter->second;
+			return state.symbols.at(stubSymId).RVA(state, image);
+		}
+
+		// Check if it's imported from another module
+		iter = state.moduleGetGlobals.find(name);
+		if (iter != state.moduleGetGlobals.end()) {
+			int stubSymId = iter->second;
+			return state.symbols.at(stubSymId).RVA(state, image);
+		}
+
+		fmt::print(stderr, "Unknown import function: '{}'\n", name);
+		hitFatalError = true;
+		return 0;
+	}
+
+	printf("\tWARN: Unknown storage class %d\n", storageClass);
+	return 0;
+}
 
 void appendObject(IntermediateState &state, PECOFF &lib) {
 	// The list of generated sections which correspond to
@@ -460,7 +492,7 @@ void appendObject(IntermediateState &state, PECOFF &lib) {
 		generatedInOrder.push_back(ptr.get());
 
 		sectionOffsets.push_back(out.data.size());
-		out.data.insert(out.data.begin(), sec.data, sec.data + sec.size);
+		out.data.insert(out.data.end(), sec.data, sec.data + sec.size);
 
 		// Quick and dirty, ensure alignment.
 		while (out.data.size() % 16) {
@@ -478,8 +510,10 @@ void appendObject(IntermediateState &state, PECOFF &lib) {
 		// Less than 0 has some meanings (link below) but it seems to only be used for debugging.
 		// https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-number-values
 		GeneratedSection *section = nullptr;
+		int sectionOffset = 0;
 		if (sym.SectionNumber > 0) {
 			section = generatedInOrder.at(sym.SectionNumber - 1);
+			sectionOffset = sectionOffsets.at(sym.SectionNumber - 1);
 		}
 
 		const std::string &name = lib.symbolNames.at(i);
@@ -488,13 +522,18 @@ void appendObject(IntermediateState &state, PECOFF &lib) {
 		    .section = section,
 		    .name = name,
 		    .originalIndex = i,
-		    .value = sym.Value,
+		    .value = sectionOffset + sym.Value,
 		    .storageClass = sym.StorageClass,
 		});
 
-		if (name.ends_with("_get_globals")) {
-			// TODO handle imports of other modules
-			lib.getGlobalsFunc = (int)state.symbols.size() - 1;
+		if (name == "wrenStandaloneMainModule") {
+			state.mainModuleGlobals = (int)state.symbols.size() - 1;
+		}
+
+		// Other modules will link against this symbol if they import this module.
+		// Check if section is null, since if it is then this is an import.
+		if (name.ends_with("_get_globals") && section != nullptr) {
+			state.moduleGetGlobals[name] = (int)state.symbols.size() - 1;
 		}
 
 		// Make the indices match by adding dummy symbols
