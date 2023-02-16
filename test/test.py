@@ -38,7 +38,11 @@ max_threads = args.num_threads
 if max_threads == -1:
     # Default to the number of available CPU cores.
     # See the os.cpu_count docs.
-    max_threads = len(os.sched_getaffinity(0))
+    # This is only available on certain UNIX systems.
+    if hasattr(os, 'sched_getaffinity'):
+        max_threads = len(os.sched_getaffinity(0))
+    else:
+        max_threads = os.cpu_count()
 
 WRENCC_DIR = Path(__file__).parent.parent
 WREN_DIR: Path = WRENCC_DIR / "lib" / "wren-main"
@@ -47,7 +51,7 @@ API_TEST_RUNNER: Path = WRENCC_DIR / "build" / "test" / "api-test-runner"
 
 WREN_APP_WITH_EXT = WREN_APP
 if platform.system() == "Windows":
-    WREN_APP_WITH_EXT += ".exe"
+    WREN_APP_WITH_EXT = WREN_APP.parent / (WREN_APP.name + ".exe")
 
 if not WREN_APP_WITH_EXT.is_file():
     print("The binary file 'wrencc' was not found, expected it to be at " + str(WREN_APP.absolute()))
@@ -111,7 +115,7 @@ class Test:
 
     def __init__(self, path: Path):
         self.path = path
-        self.name = str(self.path.relative_to(WREN_DIR))  # eg test/language/something.wren
+        self.name = get_test_name(self.path)  # eg test/language/something.wren
         self.output = []
         self.compile_errors = set()
         self.runtime_error_line = 0
@@ -314,7 +318,7 @@ class Test:
         # Add each of the modules we're using, including transitive dependencies
         transitive_deps = self.resolve_module_dependencies()
         for module in transitive_deps:
-            mod_name = str(module.relative_to(self.path.parent)).removesuffix('.wren')
+            mod_name = str(module.relative_to(self.path.parent)).removesuffix('.wren').replace(os.sep, '/')
             self.compiler_args.append("--module=" + mod_name)
             self.compiler_args.append(module)
 
@@ -640,7 +644,7 @@ def run_script(app, path: Path, type):
     if os.path.splitext(path)[1] != '.wren':
         return
 
-    rel_path = str(path.relative_to(WREN_DIR))
+    rel_path = get_test_name(path)
 
     # Check if we are just running a subset of the tests.
     if args.suite:
@@ -707,7 +711,7 @@ def run_api_test(path):
 
 
 def run_example(path: Path):
-    rel = str(path.relative_to(WREN_DIR))
+    rel = get_test_name(path)
 
     # Don't run examples that require user input.
     if "animals" in rel: return
@@ -748,6 +752,15 @@ def scan_for_module_imports(path: Path) -> Set[str]:
                 imports.add(match.group(1))
 
     return imports
+
+
+# Gets a test name from it's file, with forward-stroke path separators.
+# For example, lib\wren-main\test\a\b\c.wren would be a/b/c.wren.
+def get_test_name(path: Path) -> str:
+    name = str(path.relative_to(WREN_DIR))
+
+    # Always use forward-stroke as the path separator, regardless of OS.
+    return name.replace(os.sep, '/')
 
 
 def main():
