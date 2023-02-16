@@ -441,7 +441,11 @@ class Test:
             if line in IGNORED_ERR_LINES:
                 continue
 
+            # Check for linker errors on Linux
             if "Programme ld.gold failed with status code" in line:
+                found_link_error = True
+            # Check for linker errors on Windows with tinylink
+            if "Unknown import function: '" in line:
                 found_link_error = True
 
             if self.linking_error_expected:
