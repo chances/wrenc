@@ -99,6 +99,9 @@ EXPECTED_FAILURES: Set[str] = set()
 # This changes the expected error messages for failures
 EDIT_ERROR_MESSAGES: Dict[str, str] = dict()
 
+# These tests should not be run since they're too slow to compile.
+DISABLED_TESTS: Set[str] = set()
+
 passed = 0
 expected_failed_passed = []
 expected_failed = 0
@@ -655,6 +658,10 @@ def run_script(app, path: Path, type):
         if not rel_path.startswith(args.suite):
             return
 
+    # Check if it's disabled
+    if rel_path in DISABLED_TESTS:
+        return
+
     # Update the status line.
     print_line('({}) Passed: {} Failed: {} XFailed: {} Skipped: {} '.format(
         os.path.relpath(app, WREN_DIR), green(passed), red(failed), yellow(expected_failed), yellow(num_skipped)))
@@ -773,6 +780,7 @@ def main():
     OVERRIDE_SHOULD_FAIL_COMPILATION.update(load_list(WRENCC_DIR / 'test' / 'should-fail-compilation.txt'))
     EXPECTED_FAILURES.update(load_list(WRENCC_DIR / 'test' / 'expected-failures.txt'))
     EDIT_ERROR_MESSAGES.update(load_list(WRENCC_DIR / 'test' / 'edit-error-message.txt'))
+    DISABLED_TESTS.update(load_list(WRENCC_DIR / 'test' / 'disabled-tests.txt'))
 
     walk(WREN_DIR / 'test', run_test, ignored=['api', 'benchmark'])
     walk(WREN_DIR / 'test' / 'api', run_api_test)

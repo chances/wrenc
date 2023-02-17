@@ -1,0 +1,7 @@
+# These are tests that are disabled, and the test runner won't run.
+# Only put something in here if it compiles too slowly due to it
+# being unreasonably large in some way compared to real programmes.
+
+# When RS4GC (that is, the LLVM GC pass) is enabled, these become far too slow.
+test/limit/jump_too_far.wren
+test/limit/loop_too_far.wren
