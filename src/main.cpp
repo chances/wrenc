@@ -590,16 +590,16 @@ static void runLinker(const std::string &outputPath, const std::vector<std::stri
 	RunProgramme prog;
 
 	if (IS_WINDOWS) {
-		if (type != OutputType::OT_EXEC) {
-			fmt::print(stderr, "Building libraries is not yet supported on Windows.\n");
-			exit(1);
-		}
-
 		prog.args.push_back(compilerInstallDir + "/tinylink/tinylink.exe");
 
-		// Set the input EXE which will have the modules bolted on
+		// Set the input EXE or DLL which will have the modules bolted on
 		prog.args.push_back("-e");
-		prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub.exe");
+		if (type == OutputType::OT_EXEC) {
+			prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub.exe");
+		} else {
+			prog.args.push_back(compilerInstallDir + "/wren-rtlib-stub-shared.dll");
+			prog.args.push_back("-d");
+		}
 
 		prog.args.push_back("-o");
 		prog.args.push_back(outputPath);

@@ -295,6 +295,16 @@ rtlib_main_stub = executable('wren-rtlib-stub',
   link_args: ['-no-pie', '-Wl,--relocatable', '-nodefaultlibs'],
 )
 
+# On Windows we build DLLs much the same way as EXEs, relying on an
+# already-created DLL that imports all the functions used by generated
+# code, which the modules then get linked into.
+if build_machine.system() == 'windows'
+	shared_library('wren-rtlib-stub-shared',
+	  'rtsrc/standalone_lib_stub.cpp',
+	  dependencies: [rtlib],
+	)
+endif
+
 if build_machine.system() == 'windows'
   subdir('tinylink')
 endif
