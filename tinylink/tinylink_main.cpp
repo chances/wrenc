@@ -9,6 +9,7 @@
 
 #include <Windows.h>
 #include <algorithm>
+#include <assert.h>
 #include <fmt/format.h>
 #include <fstream>
 #include <optional>
@@ -32,6 +33,8 @@ static int alignTo(int value, int alignment) {
 	value += alignment - overhang;
 	return value;
 }
+
+static void ensureAlignment(std::vector<uint8_t> &data, int alignment) { data.resize(alignTo(data.size(), alignment)); }
 
 struct GeneratedSection;
 struct Symbol;
@@ -92,9 +95,15 @@ struct GeneratedSection {
 	std::vector<uint8_t> data;
 	std::vector<Relocation> relocations;
 
+	// If this is an uninitialised section, this tracks how
+	// much data is present.
+	int uninitialisedSize = 0;
+
 	// Assigned when these are copied to the output
 	IMAGE_SECTION_HEADER *sectionHeader = nullptr;
 	int virtualAddress = -1;
+
+	bool IsUninitialised() { return (characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA) != 0; }
 };
 
 // The data that's used to combine one or more images before
@@ -289,7 +298,7 @@ int main(int argc, char **argv) {
 
 		// Don't copy out empty sections! That corrupts the EXE with the same
 		// error as gaps in the virtual memory.
-		if (sec.data.empty())
+		if (sec.data.empty() && sec.uninitialisedSize == 0)
 			continue;
 
 		int physAddress = alignTo(peSize, image.oh->FileAlignment);
@@ -306,7 +315,7 @@ int main(int argc, char **argv) {
 
 		IMAGE_SECTION_HEADER *sh = &image.sectionHeaders[image.fh->NumberOfSections++];
 		sec.sectionHeader = sh;
-		sh->Misc.VirtualSize = sec.data.size();
+		sh->Misc.VirtualSize = sec.data.size() + sec.uninitialisedSize;
 		sh->VirtualAddress = sec.virtualAddress;
 		sh->SizeOfRawData = (DWORD)physSize;
 		sh->PointerToRawData = (DWORD)physAddress;
@@ -438,6 +447,9 @@ int Symbol::RVA(IntermediateState &state, PECOFF &image) const {
 	}
 	if (storageClass == IMAGE_SYM_CLASS_STATIC || storageClass == IMAGE_SYM_CLASS_EXTERNAL) {
 		if (section != nullptr) {
+			// The section must have been written out.
+			assert(section->virtualAddress != -1);
+
 			// This relocation is against a section that was in the object file.
 			return section->virtualAddress + value;
 		}
@@ -491,14 +503,21 @@ void appendObject(IntermediateState &state, PECOFF &lib) {
 
 		generatedInOrder.push_back(ptr.get());
 
+		// If this is an uninitialised section (eg, .bss) then don't actually
+		// write any data. The OBJ will set a physical data size, but leave
+		// it's physical data pointer at zero. This just indicates how much
+		// space is required, it's obviously not asking for the object header
+		// to be appended to .bss.
+		if (out.IsUninitialised()) {
+			sectionOffsets.push_back(out.uninitialisedSize);
+			out.uninitialisedSize = alignTo(out.uninitialisedSize + sec.size, 16);
+			continue;
+		}
+
 		sectionOffsets.push_back(out.data.size());
 		out.data.insert(out.data.end(), sec.data, sec.data + sec.size);
 
-		// Quick and dirty, ensure alignment.
-		while (out.data.size() % 16) {
-			// 16-byte alignment should be enough.
-			out.data.push_back(0);
-		}
+		ensureAlignment(out.data, 16);
 	}
 
 	// Copy all the symbols into the state.
@@ -741,7 +760,7 @@ void parsePECOFF(PECOFF &out) {
 		}
 	}
 
-	if (exportDir) {
+	if (exportDir && exportDir->VirtualAddress) {
 		out.exports.Load(*exportDir, out.sections);
 	}
 	if (importDir) {
