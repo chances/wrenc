@@ -1505,6 +1505,7 @@ void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
 	if (!node) {
 		// Used in the function prologue, to tell the debugger that it's not user-defined code
 		m_builder.SetCurrentDebugLocation(llvm::DebugLoc());
+		m_dbgCurrentNode = node;
 		return;
 	}
 
@@ -1521,6 +1522,11 @@ void LLVMBackendImpl::WriteNodeDebugInfo(IRNode *node) {
 
 	m_builder.SetCurrentDebugLocation(
 	    llvm::DILocation::get(m_dbgCompileUnit->getContext(), di.lineNumber, di.column, m_dbgSubProgramme));
+
+	// Be sure to only set this *after* the synthetic node check - if
+	// we switch back to it by a scope guard going out of scope, we want
+	// to be sure that actually does something.
+	m_dbgCurrentNode = node;
 }
 
 ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
