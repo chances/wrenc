@@ -2,26 +2,19 @@
 // Created by znix on 24/12/22.
 //
 
-// Only use 'local unwinding' - see https://www.nongnu.org/libunwind/man/libunwind(3).html
-#define UNW_LOCAL_ONLY
-
 #include "GCTracingScanner.h"
 #include "Obj.h"
 #include "ObjFibre.h"
 #include "RtModule.h"
 #include "SlabObjectAllocator.h"
 #include "StackMapDescription.h"
+#include "StackWalker.h"
 #include "WrenAPI.h"
 #include "WrenRuntime.h"
 
-// FIXME windows support
-#ifdef _WIN32
-GCTracingScanner::~GCTracingScanner() {}
-#else
-
 #include <algorithm>
 #include <cstdio>
-#include <libunwind.h>
+#include <inttypes.h>
 #include <stdint.h>
 
 using SMD = StackMapDescription;
@@ -109,9 +102,9 @@ void GCTracingScanner::BeginGCCycle() {
 
 void GCTracingScanner::MarkCurrentThreadRoots() {
 	// Mark the current fibre now, since ObjFibre only marks suspended fibres.
-	unw_context_t uc;
-	unw_getcontext(&uc);
-	MarkThreadRoots(&uc);
+	StackContext context;
+	CAPTURE_STACK_CONTEXT(context);
+	MarkThreadRoots(&context);
 
 	// Mark all the threads on the thread callstack as reachable, as they can
 	// be resumed by yielding. For this, we only have to mark the current fibre,
@@ -123,29 +116,26 @@ void GCTracingScanner::MarkCurrentThreadRoots() {
 	}
 }
 
-void GCTracingScanner::MarkAPIRoots() {
-	api_interface::markGCRoots(&m_markOps);
-}
+void GCTracingScanner::MarkAPIRoots() { api_interface::markGCRoots(&m_markOps); }
 
-void GCTracingScanner::MarkThreadRoots(void *unwindContext) {
-	unw_context_t *uc = (unw_context_t *)unwindContext;
+void GCTracingScanner::MarkThreadRoots(StackContext *unwindContext) {
+	StackWalker walker(unwindContext);
 
-	unw_cursor_t cursor;
-	unw_word_t ip, sp;
-
-	unw_init_local(&cursor, uc);
-	while (unw_step(&cursor) > 0) {
-		unw_get_reg(&cursor, UNW_REG_IP, &ip);
-		unw_get_reg(&cursor, UNW_REG_SP, &sp);
+	// Calling step immediately does loose the first frame, but it's not
+	// an issue since none of the functions that capture the stack are
+	// Wren functions, and thus we'd ignore them anyway.
+	while (walker.Step()) {
+		void *ip = walker.GetInstructionPointer();
+		void *sp = walker.GetStackPointer();
 		if (PRINT_STACK_WALK_DBG)
-			printf("ip = %lx, sp = %lx\n", (long)ip, (long)sp);
+			printf("ip = %" PRIx64 ", sp = %" PRIx64 "\n", (uint64_t)ip, (uint64_t)sp);
 
 		// Try and find a function which might contain this instruction - this is assuming that the contents
 		// of a function start at its function pointer and continues until the next function. This is conservative,
 		// so we might find a function that doesn't actually contain this pointer. It's fine though, since we'll
 		// try looking up the exact address in this function so we'll find out if it's wrong then.
 		struct {
-			bool operator()(const FunctionInfo &a, unw_word_t b) const { return (uint64_t)a.functionPointer < b; }
+			bool operator()(const FunctionInfo &a, void *b) const { return (uint64_t)a.functionPointer < (uint64_t)b; }
 		} functionCompare;
 		decltype(m_functions)::iterator match =
 		    std::lower_bound(m_functions.begin(), m_functions.end(), ip, functionCompare);
@@ -269,5 +259,3 @@ void *GCTracingScanner::OpsGetGCImpl(GCMarkOps *thisObj) {
 	MarkOpsImpl *impl = (MarkOpsImpl *)thisObj;
 	return impl->scanner;
 }
-
-#endif

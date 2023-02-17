@@ -153,10 +153,6 @@ RtModule *WrenRuntime::GetModuleByName(const std::string &name) {
 }
 
 void WrenRuntime::RunGC() {
-	// FIXME Windows support
-#ifdef _WIN32
-	abort();
-#else
 	if (!m_gcScanner) {
 		// Note that when creating the scanner, it'll dig through our list of loaded modules.
 		m_gcScanner = std::make_unique<GCTracingScanner>();
@@ -177,7 +173,6 @@ void WrenRuntime::RunGC() {
 
 	// Walk the heap and clear out the allocator
 	m_gcScanner->EndGCCycle();
-#endif
 }
 
 RtModule *WrenRuntime::GetCoreModule() { return m_coreModule.get(); }

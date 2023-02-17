@@ -14,6 +14,7 @@
 class ObjFn;
 class GCTracingScanner;
 class RtModule;
+class StackContext;
 
 // Whenever we're interacting with assembly we'll use the Microsoft calling convention, to avoid
 // writing bits of the assembly twice.
@@ -149,12 +150,10 @@ class ObjFibre : public Obj {
 	/// If the fibre failed, this is the exception that caused it.
 	std::unique_ptr<FibreAbortException> m_exception;
 
-	/// If the fibre is suspended, this is a libunwind context from the last
+	/// If the fibre is suspended, this is a context from the last
 	/// function in that fibre's stack. This allows the GC to walk the stack
 	/// of suspended fibres.
-	///
-	/// This is a void pointer instead of a unw_context_t to avoid importing it.
-	/* unw_context_t */ void *m_suspendedContext = nullptr;
+	StackContext *m_suspendedContext = nullptr;
 
 #ifdef _WIN32
 	/// If this is the fibre representing the main thread, this is the stack

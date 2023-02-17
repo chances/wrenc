@@ -153,6 +153,9 @@ void *mm::allocateMemory(int size) {
 }
 
 void *mem_management::allocateStackMemory(int size) {
+	// TODO remove write permissions on the last page to catch overruns if there's something else mapped there, which
+	//  is something I've observed during testing.
+
 	void *addr = (void *)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
 	if (addr == MAP_FAILED) {
 		return nullptr;

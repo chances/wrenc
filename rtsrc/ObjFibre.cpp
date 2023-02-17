@@ -2,9 +2,6 @@
 // Created by znix on 28/07/22.
 //
 
-// Only use 'local unwinding' - see https://www.nongnu.org/libunwind/man/libunwind(3).html
-#define UNW_LOCAL_ONLY
-
 #define WIN32_LEAN_AND_MEAN
 
 #include "ObjFibre.h"
@@ -13,8 +10,8 @@
 #include "ObjBool.h"
 #include "ObjClass.h"
 #include "ObjFn.h"
-#include "ObjString.h"
 #include "SlabObjectAllocator.h"
+#include "StackWalker.h"
 #include "WrenRuntime.h"
 #include "common/Platform.h"
 
@@ -105,10 +102,7 @@ void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 	// fine to do this while the GC is walking the heap, everything just gets
 	// added to the grey list anyway.
 	GCTracingScanner *gc = (GCTracingScanner *)ops->GetGCImpl(ops);
-	// FIXME Windows port
-#ifndef _WIN32
 	gc->MarkThreadRoots(m_suspendedContext);
-#endif
 }
 
 ObjFibre *ObjFibre::New(ObjFn *func) {
@@ -158,9 +152,6 @@ void ObjFibre::CheckStack() {
 		fprintf(stderr, "Failed to map new stack for fibre.\n");
 		abort();
 	}
-
-	// TODO remove write permissions on the last page to catch overruns if there's something else mapped there, which
-	//  is something I've observed during testing.
 }
 
 void ObjFibre::DeleteStack() {
@@ -360,12 +351,9 @@ Value ObjFibre::StartAndSwitchTo(Value argument) {
 	// safe to put out a pointer to something on the stack, since it'll be
 	// cleared by ResumeSuspended before switchToExisting returns.
 	// TODO deduplicate with ResumeSuspended.
-	// FIXME Windows port
-#ifndef _WIN32
-	unw_context_t context;
-	unw_getcontext(&context);
+	StackContext context;
+	CAPTURE_STACK_CONTEXT(context);
 	currentFibre->m_suspendedContext = &context;
-#endif
 
 	// Find the top of the stack - that's what we pass to the assembly, since we work downwards that's a lot
 	// more useful.
@@ -395,12 +383,9 @@ Value ObjFibre::ResumeSuspended(Value argument, bool terminate) {
 	// Save the current context, so our stack can be unwound by the GC. It's
 	// safe to put out a pointer to something on the stack, since it'll be
 	// cleared by ResumeSuspended before switchToExisting returns.
-	// FIXME Windows port
-#ifndef _WIN32
-	unw_context_t context;
-	unw_getcontext(&context);
+	StackContext context;
+	CAPTURE_STACK_CONTEXT(context);
 	currentFibre->m_suspendedContext = &context;
-#endif
 
 	// Clear out our old suspended pointers, since we're about to start running
 	// they're going to be invalid.

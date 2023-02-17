@@ -13,6 +13,7 @@
 class StackMapDescription;
 class RtModule;
 class ObjFibre;
+class StackContext;
 
 class GCTracingScanner {
   public:
@@ -66,7 +67,7 @@ class GCTracingScanner {
 	/// managed (Wren) code as roots.
 	/// The supplied argument is a unw_context_t pointer, represented here as
 	/// void* to avoid importing libunwind.
-	void MarkThreadRoots(/* unw_context_t */ void *unwindContext);
+	void MarkThreadRoots(StackContext *unwindContext);
 
 	/// The current number stored in the GC word of all objects marked white (reachable and scanned) in the
 	/// tri-colour GC system. See the comment at the start of the cpp file for more information.

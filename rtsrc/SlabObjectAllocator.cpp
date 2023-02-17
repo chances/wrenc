@@ -228,8 +228,6 @@ void *SlabObjectAllocator::AllocateRaw(int requestedSize) {
 }
 
 SlabObjectAllocator::Slab *SlabObjectAllocator::CreateSlab(SlabObjectAllocator::SizeCategory *size) {
-	// TODO Windows port
-
 	// Linux doesn't have a good way to ask for a large alignment with mmap, so pick
 	// a random address and on a 64-bit system it's extremely unlikely for it to be occupied.
 	// Once we've picked one address, allocate the others adjacent to it (to hopefully
