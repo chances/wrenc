@@ -104,6 +104,11 @@ struct GeneratedSection {
 	int virtualAddress = -1;
 
 	bool IsUninitialised() { return (characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA) != 0; }
+
+	template <typename T> void Append(const T &value) {
+		uint8_t *valuePtr = (uint8_t *)&value;
+		data.insert(data.end(), valuePtr, valuePtr + sizeof(T));
+	}
 };
 
 // The data that's used to combine one or more images before
@@ -128,21 +133,28 @@ void createDllImportStubs(IntermediateState &state, const PECOFF &image);
 
 void rewriteExceptions(PECOFF &image, std::vector<ExceptionRecord> &exceptions, GeneratedSection *pdata);
 
+int createExportsTable(IntermediateState &state, int &outSize);
+
 int main(int argc, char **argv) {
 	const char *exeInputFile = nullptr;
 	const char *outputFile = nullptr;
 	std::vector<const char *> objectFiles;
 
 	bool hitInvalidArg = false;
+	bool dllMode = false;
 
 	while (true) {
-		int arg = getopt(argc, argv, "e:o:hv");
+		int arg = getopt(argc, argv, "e:o:hvd");
 
 		// Out of arguments?
 		if (arg == -1)
 			break;
 
 		switch (arg) {
+		case 'd': {
+			dllMode = true;
+			break;
+		}
 		case 'e': {
 			exeInputFile = optarg;
 			break;
@@ -158,10 +170,11 @@ int main(int argc, char **argv) {
 		case 'h': {
 			// Print help immediately and do nothing else, so you can
 			// put it in with invalid commands and get help.
-			printf("Usage: %s [-hv] -e exe -o output objects...\n", argv[0]);
+			printf("Usage: %s [-hvd] -e exe -o output objects...\n", argv[0]);
 			printf("\t-h        Show this help message\n");
 			printf("\t-v        Print debugging information\n");
 			printf("\t-e exe    Set the path to the input EXE file\n");
+			printf("\t-d        DLL mode - read and write a DLL\n");
 			return 0;
 		}
 		case '?': {
@@ -223,11 +236,6 @@ int main(int argc, char **argv) {
 	};
 	parsePECOFF(image);
 
-	if (!image.exports.IsLoaded()) {
-		fmt::print(stderr, "Input executable is missing it's export directory!\n");
-		exit(1);
-	}
-
 	// FIXME disable base relocations so we don't have to
 	//  write a .reloc table for now.
 	image.fh->Characteristics |= IMAGE_FILE_RELOCS_STRIPPED;
@@ -262,6 +270,13 @@ int main(int argc, char **argv) {
 
 	// Create little mini-functions that jump to a DLL-imported function.
 	createDllImportStubs(state, image);
+
+	// If we're exporting a DLL, create a new exports table
+	int exportTableSym = -1;
+	int exportDirSize = -1;
+	if (dllMode) {
+		exportTableSym = createExportsTable(state, exportDirSize);
+	}
 
 	// We need to add in our exception data, so make space in the
 	// new .pdata section for that. We'll copy it in after relocations
@@ -408,13 +423,27 @@ int main(int argc, char **argv) {
 
 	rewriteExceptions(image, exceptions, pdata);
 
-	// Link up the main module pointer
-	const Symbol &getGlobalsSym = state.symbols.at(state.mainModuleGlobals.value());
-	int getGlobalsFileOffset = getGlobalsSym.section->sectionHeader->PointerToRawData + getGlobalsSym.value;
-	uint64_t getGlobalsValue = *(uint64_t *)(pe + getGlobalsFileOffset);
-	int rva = image.exports.nameToRVA.at("wrenStandaloneMainModule");
-	uint8_t *ptr = image.sections.Translate(rva);
-	*(uint64_t *)ptr = getGlobalsValue;
+	if (dllMode) {
+		// Set up the DLL export section
+		Symbol &exportTable = state.symbols.at(exportTableSym);
+		image.oh->DataDirectory[0] = {
+		    .VirtualAddress = (DWORD)exportTable.RVA(state, image),
+		    .Size = (DWORD)exportDirSize,
+		};
+	} else {
+		if (!image.exports.IsLoaded()) {
+			fmt::print(stderr, "Input executable is missing it's export directory!\n");
+			exit(1);
+		}
+
+		// Link up the main module pointer
+		const Symbol &getGlobalsSym = state.symbols.at(state.mainModuleGlobals.value());
+		int getGlobalsFileOffset = getGlobalsSym.section->sectionHeader->PointerToRawData + getGlobalsSym.value;
+		uint64_t getGlobalsValue = *(uint64_t *)(pe + getGlobalsFileOffset);
+		int rva = image.exports.nameToRVA.at("wrenStandaloneMainModule");
+		uint8_t *ptr = image.sections.Translate(rva);
+		*(uint64_t *)ptr = getGlobalsValue;
+	}
 
 	// Write it back out
 	try {
@@ -639,6 +668,127 @@ void rewriteExceptions(PECOFF &image, std::vector<ExceptionRecord> &exceptions, 
 	// I don't think we need to add one for the trailing zero entry, and it doesn't
 	// appear to have that in the original .pdata section.
 	exDir->Size = exceptions.size() * sizeof(IMAGE_AMD64_RUNTIME_FUNCTION_ENTRY);
+}
+
+int createExportsTable(IntermediateState &state, int &outSize) {
+	GeneratedSection *ro = state.newSections.at(".rdata").get();
+
+	// Generate a symbol for the start of the rodata section, as our
+	// strings and sections will all reside inside the rodata section.
+	int roSym = state.symbols.size();
+	state.symbols.push_back(Symbol{
+	    .section = ro,
+	    .name = "<dll export .rodata>",
+	    .originalIndex = -1,
+	    .value = 0,
+	    .storageClass = IMAGE_SYM_CLASS_STATIC,
+	});
+
+	// Write a value that will be relocated into an offset from the
+	// start of the section.
+	auto writeRVA = [&](int offset) -> int {
+		int position = ro->data.size();
+		ro->Append(offset);
+		ro->relocations.push_back(Relocation{
+		    .symbolId = roSym,
+		    .offset = position,
+		    .type = IMAGE_REL_AMD64_ADDR32NB,
+		});
+		return position;
+	};
+
+	// Update an existing location with a new value.
+	// This is for making simple edits without bothering to make
+	// a custom symbol for the one thing.
+	auto update = [&](int offset, DWORD newValue) { memcpy(ro->data.data() + offset, &newValue, sizeof(newValue)); };
+
+	// Put the exports into a fixed order - we can't trust the
+	// map iteration order will remain constant.
+	std::vector<std::string> orderedExportNames;
+	for (const auto &entry : state.moduleGetGlobals) {
+		orderedExportNames.push_back(entry.first);
+	}
+	int exportCount = orderedExportNames.size();
+
+	// The names have to be sorted to allow binary searches.
+	std::sort(orderedExportNames.begin(), orderedExportNames.end());
+
+	// Nothing is more than four bytes in any of the structures.
+	ensureAlignment(ro->data, 4);
+	int exportDirPosition = ro->data.size();
+
+	// Write out the IMAGE_EXPORT_DIRECTORY
+	ro->Append<DWORD>(0);           // Characteristics
+	ro->Append<DWORD>(0);           // TimeDateStamp
+	ro->Append<WORD>(0);            // MajorVersion
+	ro->Append<WORD>(0);            // MinorVersion
+	int nameRva = writeRVA(0);      // Name RVA
+	ro->Append<DWORD>(1);           // Base - first export is ordinal 1
+	ro->Append<DWORD>(exportCount); // NumberOfFunctions
+	ro->Append<DWORD>(exportCount); // NumberOfNames
+
+	// The RVA pointers to the tables. Store the addresses
+	// of these, and later edit them with the section-relative
+	// address. The relocation will turn that into an RVA.
+	int addrTableAddr = writeRVA(0);    // AddressOfFunctions
+	int nameTableAddr = writeRVA(0);    // AddressOfNames
+	int nameOrdTableAddr = writeRVA(0); // AddressOfNameOrdinals
+
+	// Generate the export address table
+	update(addrTableAddr, ro->data.size());
+	for (const std::string &name : orderedExportNames) {
+		int symbolId = state.moduleGetGlobals.at(name);
+
+		int position = ro->data.size();
+		ro->Append<DWORD>(0);
+		ro->relocations.push_back(Relocation{
+		    .symbolId = symbolId,
+		    .offset = position,
+		    .type = IMAGE_REL_AMD64_ADDR32NB,
+		});
+	}
+
+	// Generate the export name table
+	update(nameTableAddr, ro->data.size());
+	std::map<std::string, int> nameRVAOffsets;
+	for (const std::string &name : orderedExportNames) {
+		nameRVAOffsets[name] = writeRVA(0);
+	}
+
+	// Generate the export name-ordinal mappings - this is simple, they're
+	// a 1-1 mapping. Note these aren't biased by the Base field in the
+	// export directory, so 0 is the first export, not 1 (even though 1 is the
+	// ordinal of the first export).
+	update(nameOrdTableAddr, ro->data.size());
+	for (int i = 0; i < orderedExportNames.size(); i++) {
+		ro->Append((uint16_t)i);
+	}
+
+	// Generate the export name strings
+	for (const auto &entry : state.moduleGetGlobals) {
+		update(nameRVAOffsets.at(entry.first), ro->data.size());
+		ro->data.insert(ro->data.end(), entry.first.begin(), entry.first.end());
+		ro->data.push_back(0); // Null terminator
+	}
+
+	// Generate the DLL name
+	update(nameRva, ro->data.size());
+	std::string dllName = "todo.dll"; // TODO fill this in
+	ro->data.insert(ro->data.end(), dllName.begin(), dllName.end());
+	ro->data.push_back(0); // Null terminator
+
+	// Generate a symbol to represent the export directory, since that's convenient
+	// to get the RVA from later.
+	int exportDirSym = state.symbols.size();
+	state.symbols.push_back(Symbol{
+	    .section = ro,
+	    .name = "<dll export table>",
+	    .originalIndex = -1,
+	    .value = (DWORD)exportDirPosition,
+	    .storageClass = IMAGE_SYM_CLASS_STATIC,
+	});
+	outSize = ro->data.size() - exportDirPosition;
+	return exportDirSym;
 }
 
 void parsePECOFF(PECOFF &out) {
