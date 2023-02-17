@@ -10,6 +10,11 @@
 WrenGCStrategy::WrenGCStrategy() {
 	UseStatepoints = true;
 
+	// A patch landed in what will be LLVM 17 (D141110) requires this flag
+	// whenever RS4GC is to be used. Prior LLVM versions had a hardcoded
+	// list of strategy names that needed to be patched.
+	UseRS4GC = true;
+
 	// These options are all gc.root specific, we specify them so that the
 	// gc.root lowering code doesn't run.
 	NeededSafePoints = false;
