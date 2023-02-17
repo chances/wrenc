@@ -90,6 +90,8 @@ ObjFibre *ObjFibre::GetMainThreadFibre() {
 void ObjFibre::MarkGCValues(GCMarkOps *ops) {
 	ops->ReportObject(ops, m_function);
 	ops->ReportObject(ops, m_parent);
+	if (m_exception)
+		ops->ReportValue(ops, m_exception->message);
 
 	// If we're not suspended, we don't need to walk the stack:
 	// * Running: stack is scanned by the GC automatically.
