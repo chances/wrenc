@@ -66,16 +66,27 @@ Value WrenRuntime::GetCoreGlobal(const std::string &name) {
 }
 
 RtModule *WrenRuntime::GetOrInitModule(void *getGlobalsFunction) {
-	if (m_userModules.contains(getGlobalsFunction))
-		return m_userModules.at(getGlobalsFunction).get();
-
+	// Index the userModules map by the globals table, not the globals function.
+	// This is due to how DLL importing/exporting works on Windows, and might
+	// also cause a problem on Linux: calls can be sent via a 'stub' function
+	// which calls the real function. Thus an executable can see a DLL's function
+	// as having a different address than that DLL does.
+	// This is notable with the random module and the standalone stub: the compiled
+	// code uses the address of the stub in the EXE, then when that module is
+	// being initialised it uses the address from the runtime library DLL's
+	// version of that function.
+	// Since there's only one actual implementation of the function though, it
+	// always returns the same pointer, so we can safely use that as a map key.
 	typedef void *(*globalsFunc_t)();
 	globalsFunc_t func = (globalsFunc_t)getGlobalsFunction;
 	void *globalsTable = func();
 
+	if (m_userModules.contains(globalsTable))
+		return m_userModules.at(globalsTable).get();
+
 	std::unique_ptr<RtModule> mod = std::make_unique<RtModule>(globalsTable);
 	RtModule *ptr = mod.get();
-	m_userModules[getGlobalsFunction] = std::move(mod);
+	m_userModules[globalsTable] = std::move(mod);
 	m_modulesByName[ptr->moduleName] = ptr;
 
 	// Destroy the GC, which will need to rebuild it's function table with the newly-added functions in the
@@ -115,15 +126,22 @@ RtModule *WrenRuntime::GetOrInitModuleCaught(void *getGlobalsFunction) {
 }
 
 RtModule *WrenRuntime::GetPreInitialisedModule(void *getGlobalsFunction) {
-	// Handle the core module as a special case
-	if (getGlobalsFunction == wren_core_get_globals)
+	// See GetOrInitModule for the explanation of why we don't use the
+	// function pointer as a map key. TLDR DLL function stubs.
+	typedef void *(*globalsFunc_t)();
+	globalsFunc_t func = (globalsFunc_t)getGlobalsFunction;
+	void *globalsTable = func();
+
+	// Handle the core module as a special case. Compare the table
+	// here for the same reason as the map keys.
+	if (globalsTable == wren_core_get_globals())
 		return m_coreModule.get();
 
-	decltype(m_userModules)::iterator iter = m_userModules.find(getGlobalsFunction);
+	decltype(m_userModules)::iterator iter = m_userModules.find(globalsTable);
 	if (iter != m_userModules.end())
 		return iter->second.get();
 
-	errors::wrenAbort("Could not find supposedly pre-initialised module %p", getGlobalsFunction);
+	errors::wrenAbort("Could not find supposedly pre-initialised module %p", globalsTable);
 	return nullptr;
 }
 

@@ -21,10 +21,13 @@ typedef void *(*wren_main_func_t)();
 
 #ifdef _WIN32
 
+extern "C" {
 // This variable will get overwritten by tinylink, our custom tiny
 // link-editor, to point to the real module start.
-extern "C" {
 DLL_EXPORT wren_main_func_t wrenStandaloneMainModule = nullptr;
+
+// This is exported by the random module built into the runtime
+GEN_ENTRY_ABI void *random_get_globals();
 };
 
 // Force the compiler to import all the symbols the generated Wren
@@ -49,6 +52,9 @@ void *linkerFuncPtrs[] = {
     (void *)wren_import_module,
     (void *)wren_get_module_global,
     (void *)wren_call_foreign_method,
+
+    // We also need any bundled Wren modules
+    (void *)random_get_globals,
 };
 
 #else

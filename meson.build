@@ -218,6 +218,14 @@ if build_machine.system() != 'windows'
   rtlib_deps += dependency('libunwind')
 endif
 
+rtlib_link_args = []
+# Force the linker to include the random globals function, otherwise it would be removed.
+if build_machine.system() == 'windows'
+  rtlib_link_args += ['/EXPORT:random_get_globals']
+else
+  rtlib_link_args += ['-Wl,--undefined=random_get_globals']
+endif
+
 rtlib_lib = shared_library('wren-rtlib',
   'rtsrc/GenEntry.cpp',
   'rtsrc/Errors.cpp',
@@ -247,8 +255,7 @@ rtlib_lib = shared_library('wren-rtlib',
   include_directories: ['rtsrc'],
   link_with: [rtlib_random],
   link_args: [
-    # Force the linker to include the random globals function, otherwise it would be removed.
-    '-Wl,--undefined=random_get_globals',
+    rtlib_link_args,
   ],
   dependencies: [
     common,

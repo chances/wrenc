@@ -758,8 +758,9 @@ void createDllImportStubs(IntermediateState &state, const PECOFF &image) {
 	std::vector<uint8_t> text;
 
 	for (const auto &[name, rva] : image.imports.importNameRVAs) {
-		// We only care about the Wren generated-entry functions
-		if (!name.starts_with("wren_"))
+		// We only care about the Wren generated-entry functions, and any
+		// modules bundled with the runtime.
+		if (!name.starts_with("wren_") && !name.ends_with("_get_globals"))
 			continue;
 
 		// Load the address of the function (which we get from the
