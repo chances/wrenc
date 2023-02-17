@@ -120,6 +120,13 @@ class ObjFibre : public Obj {
 	/// fibre.
 	Value HandleResumed(ResumeFibreArgs *result);
 
+	/// Called by both StartAndSwitchTo and ResumeSuspend, this is executed immediately
+	/// before a fibre is switched to. This is notably where on Windows we set the current
+	/// stack pointers, without which both the C runtime and the NT platform API will
+	/// kill us if they find out we're on the wrong thread, thinking the process is being
+	/// attacked via a stack-pivot attack.
+	void SetupFibreEnvironment();
+
 	/// The entrypoint function that gets called when the new stack has
 	/// been created and we transfer control to it.
 	WREN_MSVC_CALLCONV static void RunOnNewStack(void *oldStack, StartFibreArgs *args);
@@ -148,6 +155,17 @@ class ObjFibre : public Obj {
 	///
 	/// This is a void pointer instead of a unw_context_t to avoid importing it.
 	/* unw_context_t */ void *m_suspendedContext = nullptr;
+
+#ifdef _WIN32
+	/// If this is the fibre representing the main thread, this is the stack
+	/// range set in the TEB. This is only set if another fibre is running, and
+	/// is thus updated each time control is transferred away from the main
+	/// fibre (to ensure that we don't re-set to an old version of these
+	/// values if they change, eg due to the stack growing).
+	struct {
+		void *stackBase, *stackLimit;
+	} m_oldStackLimits = {nullptr, nullptr};
+#endif
 
 	// The GC needs to access the thread stack.
 	friend GCTracingScanner;

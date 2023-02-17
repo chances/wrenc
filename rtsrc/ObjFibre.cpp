@@ -5,6 +5,8 @@
 // Only use 'local unwinding' - see https://www.nongnu.org/libunwind/man/libunwind(3).html
 #define UNW_LOCAL_ONLY
 
+#define WIN32_LEAN_AND_MEAN
+
 #include "ObjFibre.h"
 #include "Errors.h"
 #include "GCTracingScanner.h"
@@ -21,6 +23,9 @@
 #ifndef _WIN32
 #include <libunwind.h>
 #include <sys/mman.h>
+#else
+#include <Windows.h>
+#undef Yield
 #endif
 
 namespace mm = mem_management;
@@ -366,7 +371,7 @@ Value ObjFibre::StartAndSwitchTo(Value argument) {
 	// more useful.
 	void *topOfStack = (void *)((uint64_t)m_stack + stackSize);
 
-	currentFibre = this;
+	SetupFibreEnvironment();
 	ResumeFibreArgs *result = (ResumeFibreArgs *)fibreAsm_invokeOnNewStack(topOfStack, (void *)RunOnNewStack, &args);
 	return HandleResumed(result);
 }
@@ -402,7 +407,7 @@ Value ObjFibre::ResumeSuspended(Value argument, bool terminate) {
 	m_resumeAddress = nullptr;
 	m_suspendedContext = nullptr;
 
-	currentFibre = this;
+	SetupFibreEnvironment();
 	ResumeFibreArgs *result = (ResumeFibreArgs *)fibreAsm_switchToExisting(resumeStackAddr, &args);
 	return HandleResumed(result);
 }
@@ -412,8 +417,8 @@ Value ObjFibre::HandleResumed(ObjFibre::ResumeFibreArgs *result) {
 	ObjFibre *fibre = result->oldFibre;
 	fibre->m_resumeAddress = result->oldStackPtr;
 
-	// There's no need to set currentFibre, as the ResumeSuspend call that resumed
-	// the current fibre already did that for us.
+	// There's no need to set currentFibre, as the SetupFibreEnvironment call
+	// that resumed the current fibre already did that for us.
 
 	// Grab the argument now, since we might free the stack this struct lives on
 	Value arg = result->argument;
@@ -460,6 +465,37 @@ WREN_MSVC_CALLCONV void ObjFibre::RunOnNewStack(void *oldStack, StartFibreArgs *
 
 	fprintf(stderr, "Resumed thread that should be destroyed!\n");
 	abort();
+}
+
+void ObjFibre::SetupFibreEnvironment() {
+	// Windows Exception processing (and probably a bunch of
+	// other stuff too, due to the presence of
+	// RtlGuardIsValidStackPointer) requires that the stack is
+	// within the range specified in it's thread environment block.
+	// This isn't really documented and it seems Microsoft would
+	// really rather you avoid dealing with this, but it looks
+	// like enough other people are changing it that they probably
+	// won't be able to get rid of it.
+	// Note that in particular, this is used for the exception
+	// processing - RtlDispatchException checks it.
+#ifdef _WIN32
+	NT_TIB *teb = (NT_TIB *)NtCurrentTeb();
+	if (currentFibre == GetMainThreadFibre()) {
+		currentFibre->m_oldStackLimits.stackBase = teb->StackBase;
+		currentFibre->m_oldStackLimits.stackLimit = teb->StackLimit;
+	}
+	if (this == GetMainThreadFibre()) {
+		teb->StackBase = m_oldStackLimits.stackBase;
+		teb->StackLimit = m_oldStackLimits.stackLimit;
+		m_oldStackLimits.stackBase = nullptr;
+		m_oldStackLimits.stackLimit = nullptr;
+	} else {
+		teb->StackBase = (void *)((uint64_t)m_stack + stackSize);
+		teb->StackLimit = m_stack;
+	}
+#endif
+
+	currentFibre = this;
 }
 
 void ObjFibre::Abort(Value message) {
