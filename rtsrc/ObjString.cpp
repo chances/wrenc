@@ -198,7 +198,9 @@ Value ObjString::IterateImpl(Value previous, bool unicode) const {
 
 	int position = errors::validateInt(previous, "Iterator");
 
-	if (position < 0)
+	// Check out-of-bounds first, since we need the value to
+	// be within bounds for the UTF-8 handling.
+	if (position < 0 || position >= (int)m_value.size())
 		return encode_object(ObjBool::Get(false)); // Invalid, specified by the iterate.wren test
 
 	if (unicode) {
@@ -216,6 +218,8 @@ Value ObjString::IterateImpl(Value previous, bool unicode) const {
 		position++;
 	}
 
+	// Check out-of-bounds again, since we may have moved forwards and
+	// off the end of the string.
 	if (position >= (int)m_value.size())
 		return encode_object(ObjBool::Get(false));
 
