@@ -15,7 +15,7 @@ extern "C" {
 #include <string>
 #include <vector>
 
-static const char *testModule = nullptr;
+static std::string testModule;
 
 static char *nameTransformer(const char *originalName) {
 	std::string name = originalName;
@@ -87,6 +87,16 @@ int main(int argc, char **argv) {
 
 	testModule = argv[2];
 
+	// The Wren tests can't handle backstroke paths on Windows, so get rid of them.
+	while (true) {
+		// I love the STL string library! A simple find-replace is only six lines
+		// of code, a mere five more than in every other language.
+		size_t pos = testModule.find('\\');
+		if (pos == std::string::npos)
+			break;
+		testModule[pos] = '/';
+	}
+
 	std::unique_ptr<DyLib> library = DyLib::Load(argv[1]);
 	if (!library) {
 		fprintf(stderr, "Failed to load test library!\n");
@@ -119,7 +129,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Run the API tests
-	int exitCode = APITest_Run(vm, testModule);
+	int exitCode = APITest_Run(vm, testModule.c_str());
 
 	wrenFreeVM(vm);
 
