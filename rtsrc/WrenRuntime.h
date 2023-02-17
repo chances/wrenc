@@ -6,6 +6,7 @@
 
 #include "common/common.h"
 
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,7 +51,7 @@ class WrenRuntime {
 	/// disfavoured for other purposes.
 	RtModule *GetModuleByName(const std::string &name);
 
-	DLL_EXPORT void RunGC();
+	void RunGC(const std::initializer_list<Value> &extraRoots);
 
 	RtModule *GetCoreModule();
 

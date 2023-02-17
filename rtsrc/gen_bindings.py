@@ -245,7 +245,16 @@ def generate(output: TextIO, options: GenOptions):
 
             # Run the GC, if that debugging option is enabled
             if options.pre_entry_gc:
-                output.write("\tWrenRuntime::Instance().RunGC();\n")
+                # Mark all the arguments as GC roots, as a function doesn't have to
+                # mark a variable once it's passed to a function.
+                # This is otherwise fine, since the GC is only invoked via System.gc()
+                # which has no arguments, and for foreign functions the arguments
+                # are pushed onto the stack, and thus marked as roots.
+                roots = [arg.raw_name() for arg in method.args]
+                if receiver_def != "":
+                    roots.append("receiver")
+                roots_str = ", ".join(roots)
+                output.write("\tWrenRuntime::Instance().RunGC({%s});\n" % roots_str)
 
             # Convert the receiver (if not static or the null or number class)
             if cls.name == NULL_CLASS:

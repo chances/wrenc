@@ -152,7 +152,7 @@ RtModule *WrenRuntime::GetModuleByName(const std::string &name) {
 	return iter->second;
 }
 
-void WrenRuntime::RunGC() {
+void WrenRuntime::RunGC(const std::initializer_list<Value> &extraRoots) {
 	if (!m_gcScanner) {
 		// Note that when creating the scanner, it'll dig through our list of loaded modules.
 		m_gcScanner = std::make_unique<GCTracingScanner>();
@@ -164,6 +164,11 @@ void WrenRuntime::RunGC() {
 	m_gcScanner->AddModuleRoots(m_coreModule.get());
 	for (const auto &entry : m_userModules) {
 		m_gcScanner->AddModuleRoots(entry.second.get());
+	}
+
+	// Mark the manually-specified roots
+	for (Value value : extraRoots) {
+		m_gcScanner->MarkValueAsRoot(value);
 	}
 
 	// TODO when we support multithreading, mark all the threads
