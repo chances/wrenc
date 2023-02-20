@@ -837,7 +837,7 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		m_builder.CreateStore(value, destPtr);
 	}
 
-	VisitStmt(&ctx, func->body);
+	VisitBlock(&ctx, func->body);
 
 	m_dbgSubProgramme = nullptr;
 

@@ -10,8 +10,6 @@
 BasicBlockPass::BasicBlockPass(ArenaAllocator *allocator) : m_allocator(allocator) {}
 
 void BasicBlockPass::Process(IRFn *fn) {
-	StmtBlock *contents = dynamic_cast<StmtBlock *>(fn->body);
-
 	// See the comment on m_newContents - basically, this will replace contents->statements
 	m_newContents.clear();
 
@@ -21,8 +19,8 @@ void BasicBlockPass::Process(IRFn *fn) {
 	// unconditional jump, or a return. This is used when adding a label to check if we need a fallthrough jump.
 	bool lastWasUnconditionalBranch = false;
 
-	for (size_t i = 0; i < contents->statements.size(); i++) {
-		IRStmt *statement = contents->statements.at(i);
+	for (size_t i = 0; i < fn->body->statements.size(); i++) {
+		IRStmt *statement = fn->body->statements.at(i);
 
 		bool prevUnconditionalBranch = lastWasUnconditionalBranch;
 		lastWasUnconditionalBranch = statement->IsUnconditionalBranch();
@@ -81,7 +79,7 @@ void BasicBlockPass::Process(IRFn *fn) {
 		}
 	}
 
-	contents->statements = std::move(m_newContents);
+	fn->body->statements = std::move(m_newContents);
 }
 
 StmtBlock *BasicBlockPass::CreateBasicBlock() {

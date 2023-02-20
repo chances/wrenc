@@ -156,7 +156,14 @@ void IRVisitor::VisitFn(IRFn *node) {
 		VisitVar(entry.second);
 	}
 
-	Visit(node->body);
+	IRStmt *body = node->body;
+	Visit(body);
+	node->body = dynamic_cast<StmtBlock *>(body);
+	if (!node->body) {
+		fprintf(stderr, "Cannot convert function body to non-block '%s' in function '%s'!\n", typeid(body).name(),
+		    node->debugName.c_str());
+		abort();
+	}
 }
 void IRVisitor::VisitClass(IRClass *node) {}
 void IRVisitor::VisitGlobalDecl(IRGlobalDecl *node) {}

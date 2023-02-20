@@ -478,9 +478,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 		Print("%this_field_start =l add %this_field_start, %this_ptr"); // Add this to get the field area pointer
 	}
 
-	StmtBlock *block = dynamic_cast<StmtBlock *>(node->body);
-	ASSERT(block, "Function body must be a StmtBlock");
-	for (IRStmt *stmt : block->statements) {
+	for (IRStmt *stmt : node->body->statements) {
 		Snippet *snip = VisitStmt(stmt);
 		for (const std::string &line : snip->lines) {
 			Print("{}", line);

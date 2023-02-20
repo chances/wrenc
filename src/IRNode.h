@@ -126,7 +126,7 @@ class IRFn : public IRNode {
 	std::vector<IRFn *> closures;
 
 	// The thing that gets run when this function is called
-	IRStmt *body = nullptr;
+	StmtBlock *body = nullptr;
 
 	// The root-level upvalue start block - this may be useful if a function's arguments are
 	// used by upvalues.

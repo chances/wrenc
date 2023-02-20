@@ -1549,7 +1549,7 @@ static IRNode *finishBlock(Compiler *compiler) {
 //
 // If [Compiler->isInitializer] is `true`, this is the body of a constructor
 // initializer. In that case, this adds the code to ensure it returns `this`.
-static IRStmt *finishBody(Compiler *compiler, bool isMethod) {
+static StmtBlock *finishBody(Compiler *compiler, bool isMethod) {
 	// Declare the method receiver for methods, so it can be bound by upvalues like any other
 	// local variable. It's not used when the user types 'this' though, since that has a
 	// special IR node for it.
@@ -3524,7 +3524,8 @@ IRFn *wrenCompile(CompContext *context, Module *mod, const char *source, bool is
 	if (isExpression) {
 		IRExpr *expr = expression(&compiler);
 		consume(&compiler, TOKEN_EOF, "Expect end of expression.");
-		compiler.fn->body = compiler.New<StmtReturn>(expr);
+		compiler.fn->body = compiler.New<StmtBlock>();
+		compiler.AddNew<StmtReturn>(compiler.fn->body, expr);
 	} else {
 		StmtBlock *block = compiler.New<StmtBlock>();
 		bool hitEOF = false;
