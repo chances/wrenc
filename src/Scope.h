@@ -17,11 +17,6 @@ class LocalVariable : public VarDecl {
 	// Unsurprisingly, the name of this variable.
 	std::string name;
 
-	// The depth in the scope chain that this variable was declared at. Zero is
-	// the outermost scope--parameters for a method, or the first local block in
-	// top level code. One is the scope within that, etc.
-	int depth = -1;
-
 	// If upvalues are bound to this variable, this contains the list of such variables.
 	std::vector<UpvalueVariable *> upvalues;
 

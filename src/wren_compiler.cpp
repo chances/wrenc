@@ -1143,7 +1143,6 @@ static void allowLineBeforeDot(Compiler *compiler) {
 static LocalVariable *addLocal(Compiler *compiler, const std::string &name) {
 	LocalVariable *local = compiler->New<LocalVariable>();
 	local->name = name;
-	local->depth = compiler->scopeDepth;
 
 	if (!compiler->locals.Add(local))
 		return nullptr;
@@ -1159,7 +1158,6 @@ static LocalVariable *addLocal(Compiler *compiler, const std::string &name) {
 static LocalVariable *addTemporary(Compiler *compiler, const std::string &debugName) {
 	LocalVariable *local = compiler->New<LocalVariable>();
 	local->name = debugName;
-	local->depth = 0;
 	compiler->fn->temporaries.push_back(local);
 	return local;
 }
@@ -3245,7 +3243,6 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		for (LocalVariable *initArg : method->fn->parameters) {
 			LocalVariable *local = compiler->New<LocalVariable>();
 			local->name = initArg->name;
-			local->depth = 0;
 			fn->locals.push_back(local);
 			fn->parameters.push_back(local);
 			args.push_back(local);
@@ -3256,7 +3253,6 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 
 		LocalVariable *objLocal = compiler->New<LocalVariable>();
 		objLocal->name = "alloc_temp_special";
-		objLocal->depth = 0;
 		fn->locals.push_back(objLocal);
 
 		// First, allocate the memory of the new instance
