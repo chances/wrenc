@@ -49,11 +49,16 @@ class IRPrinter : private IRVisitor {
 	std::string GetBeginUpvaluesId(StmtBeginUpvalues *upvalue);
 
 	/// Colourise (using ANSI escape codes) a given string, with a colour derived by hashing a pointer.
-	static std::string Colourise(const void *ptr, const std::string &input);
+	std::string Colourise(IRNode *ptr, const std::string &input);
 
+	/// Colourise (using ANSI escape codes) a given string, using a 0-359 hue value.
+	static std::string Colourise(int hue, const std::string &input);
+
+	int m_basicBlockCount = -1;
 	std::vector<Tag> m_tagStack;
 	std::unique_ptr<std::stringstream> m_stream;
 
 	std::unordered_map<StmtLabel *, int> m_labelIds;
+	std::unordered_map<StmtBlock *, int> m_basicBlockIds;
 	std::unordered_map<StmtBeginUpvalues *, int> m_beginUpvaluesIds;
 };

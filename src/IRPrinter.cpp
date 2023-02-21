@@ -90,7 +90,20 @@ void IRPrinter::VisitReadOnly(IRNode *node) {
 	EndTag();
 }
 
-void IRPrinter::Process(IRNode *root) { VisitReadOnly(root); }
+void IRPrinter::Process(IRNode *root) {
+	// If this is a function that's in basic-block form, note that down and we'll
+	// use it to evenly distribute the label colours.
+	m_basicBlockCount = -1;
+	IRFn *fn = dynamic_cast<IRFn *>(root);
+	if (fn != nullptr && !fn->body->statements.empty()) {
+		StmtBlock *firstChild = dynamic_cast<StmtBlock *>(fn->body->statements.at(0));
+		if (firstChild != nullptr && firstChild->isBasicBlock) {
+			m_basicBlockCount = fn->body->statements.size();
+		}
+	}
+
+	VisitReadOnly(root);
+}
 
 void IRPrinter::VisitVar(VarDecl *var) { FullTag(std::string(typeid(*var).name()) + ":" + var->Name()); }
 
@@ -258,12 +271,34 @@ void IRPrinter::VisitBlock(StmtBlock *node) {
 	IRVisitor::VisitBlock(node);
 }
 
-std::string IRPrinter::Colourise(const void *ptr, const std::string &input) {
+std::string IRPrinter::Colourise(IRNode *ptr, const std::string &input) {
+	// If we're in basic block mode, colourise basic blocks specially
+	StmtBlock *block = dynamic_cast<StmtBlock *>(ptr);
+	if (m_basicBlockCount != -1 && block) {
+		// Find or assign an ID for this basic block.
+		int id;
+		auto iter = m_basicBlockIds.find(block);
+		if (iter != m_basicBlockIds.end()) {
+			id = iter->second;
+		} else {
+			id = m_basicBlockIds.size();
+			m_basicBlockIds[block] = id;
+		}
+
+		// Use that to build a colour, based on the number of basic blocks
+		int hue = 360 * id / m_basicBlockCount;
+		return Colourise(hue, input);
+	}
+
 	// Make up an HSV colour for this item, which we can use to refer to it in jump nodes etc
 	// See https://en.wikipedia.org/wiki/HSL_and_HSV#HSV_to_RGB
 	// We'll do this by hashing the pointer - not a particularly elegant way to do things, but it works
 	int hue = hash_util::hashData((const uint8_t *)&ptr, sizeof(void *), 1234) % 360;
 
+	return Colourise(hue, input);
+}
+
+std::string IRPrinter::Colourise(int hue, const std::string &input) {
 	int chroma = 255; // Assuming saturation and value are both 1
 	int section = hue / 60;
 	int minor = hue % 60;
