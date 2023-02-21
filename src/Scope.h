@@ -10,8 +10,11 @@
 #include <string>
 #include <unordered_map>
 
-// Slightly odd place to put this, but since there's not really a good place to put this in the IR tree, leave
-// it here.
+/// A local variable that can be reassigned at runtime. These variables do
+/// not implement SSA semantics.
+/// These are always used for upvalues; upvalues don't use SSA form.
+// Slightly odd place to put this, but since there's not really a good place
+// to put this in the IR tree, leave it here.
 class LocalVariable : public VarDecl {
   public:
 	// Unsurprisingly, the name of this variable.
@@ -27,6 +30,26 @@ class LocalVariable : public VarDecl {
 	DLL_EXPORT std::string Name() const override;
 	DLL_EXPORT ScopeType Scope() const override;
 	DLL_EXPORT void Accept(IRVisitor *visitor) override;
+};
+
+/// A local variable in SSA form. SSA variables are assigned once, and are never
+/// bound to as upvalues.
+/// As a future optimisation, we could use SSA variables for upvalues that are
+/// never modified after any closure binding to them is created.
+class DLL_EXPORT SSAVariable : public VarDecl {
+  public:
+	std::string name;
+
+	/// The local variable that this SSA variable represents.
+	SSAVariable *local = nullptr;
+
+	/// The one-and-only assignment that writes to this variable, or
+	/// null for function arguments.
+	StmtAssign *assignment = nullptr;
+
+	std::string Name() const override;
+	ScopeType Scope() const override;
+	void Accept(IRVisitor *visitor) override;
 };
 
 /// Reference a variable from the enclosing function.

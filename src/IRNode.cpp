@@ -26,6 +26,17 @@ void StmtBlock::Add(IRStmt *stmt) {
 		statements.push_back(stmt);
 }
 
+StmtAssign::StmtAssign(VarDecl *var, IRExpr *expr) : var(var), expr(expr) {
+	SSAVariable *ssa = dynamic_cast<SSAVariable *>(var);
+	if (ssa) {
+		if (ssa->assignment) {
+			fmt::print(stderr, "Cannot create an StmtAssign on already-assigned SSAVariable '{}'\n", ssa->name.c_str());
+			abort();
+		}
+		ssa->assignment = this;
+	}
+}
+
 ExprConst::ExprConst() {}
 ExprConst::ExprConst(CcValue value) : value(value) {}
 
@@ -217,4 +228,5 @@ void IRVisitor::VisitExprSystemVar(ExprSystemVar *node) {}
 void IRVisitor::VisitExprGetClassVar(ExprGetClassVar *node) {}
 
 void IRVisitor::VisitLocalVariable(LocalVariable *var) {}
+void IRVisitor::VisitSSAVariable(SSAVariable *var) {}
 void IRVisitor::VisitUpvalueVariable(UpvalueVariable *var) {}

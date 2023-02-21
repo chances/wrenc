@@ -57,7 +57,7 @@ class QbeBackend : public IBackend {
 	// Private, so declaring inline is fine
 	template <typename... Args> void Print(fmt::format_string<Args...> fmtStr, Args &&...args);
 
-	VLocal *LookupVariable(LocalVariable *decl);
+	VLocal *LookupVariable(VarDecl *decl);
 	std::string GetLabelName(StmtLabel *label);
 	std::string GetClosureName(IRFn *func);
 	std::string MangleGlobalName(IRGlobalDecl *var);
@@ -114,7 +114,7 @@ class QbeBackend : public IBackend {
 	bool m_inFunction = false;
 	int m_exprIndentation = 0;
 	std::stringstream m_output;
-	std::unordered_map<LocalVariable *, std::unique_ptr<VLocal>> m_locals;
+	std::unordered_map<VarDecl *, std::unique_ptr<VLocal>> m_locals;
 	std::vector<std::unique_ptr<VLocal>> m_temporaries;
 	UpvaluePackDef *m_currentFnUpvaluePack = nullptr;
 	std::unordered_map<VarDecl *, int> m_stackVariables; // Local variables that are on the stack, and their positions

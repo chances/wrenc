@@ -1155,10 +1155,18 @@ static LocalVariable *addLocal(Compiler *compiler, const std::string &name) {
 // Create a new temporary (for compiler use only) local variable with the
 // name [debugName], though this shouldn't ever be shown to the user, doesn't
 // have to be unique and doesn't have to be a valid identifier.
-static LocalVariable *addTemporary(Compiler *compiler, const std::string &debugName) {
-	LocalVariable *local = compiler->New<LocalVariable>();
+static SSAVariable *addTemporary(Compiler *compiler, const std::string &debugName) {
+	SSAVariable *local = compiler->New<SSAVariable>();
 	local->name = debugName;
 	compiler->fn->temporaries.push_back(local);
+	return local;
+}
+
+// Add a non-SSA temporary.
+static LocalVariable *addMutableTemporary(Compiler *compiler, const std::string &debugName) {
+	LocalVariable *local = compiler->New<LocalVariable>();
+	local->name = debugName;
+	compiler->fn->locals.push_back(local);
 	return local;
 }
 
@@ -1602,7 +1610,7 @@ static StmtBlock *finishBody(Compiler *compiler, bool isMethod) {
 
 	// Free everything on the stack, making sure we evaluate the expression first so there aren't any
 	// last-minute uses of the variables after discarding them.
-	LocalVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
+	SSAVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
 	compiler->AddNew<StmtAssign>(block, tempReturn, returnValue);
 	block->Add(discardLocals(compiler, compiler->locals.GetFramesSince(0)));
 
@@ -1902,7 +1910,7 @@ static IRExpr *grouping(Compiler *compiler, bool canAssign) {
 // A list literal.
 static IRExpr *list(Compiler *compiler, bool canAssign) {
 	// Make a block to put our initialising statements in, and wrap that into an expression
-	LocalVariable *list = addTemporary(compiler, "list-builder");
+	SSAVariable *list = addTemporary(compiler, "list-builder");
 	StmtBlock *block = compiler->New<StmtBlock>();
 	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
 	expr->temporary = list;
@@ -1935,7 +1943,7 @@ static IRExpr *list(Compiler *compiler, bool canAssign) {
 // A map literal.
 static IRExpr *map(Compiler *compiler, bool canAssign) {
 	// Make a block to put our initialising statements in, and wrap that into an expression
-	LocalVariable *map = addTemporary(compiler, "map-builder");
+	SSAVariable *map = addTemporary(compiler, "map-builder");
 	StmtBlock *block = compiler->New<StmtBlock>();
 	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
 	expr->temporary = map;
@@ -2063,7 +2071,7 @@ static IRExpr *field(Compiler *compiler, bool canAssign) {
 
 		// Assignments in Wren can be used as expressions themselves, so we have to return an expression
 		ExprRunStatements *run = compiler->New<ExprRunStatements>();
-		LocalVariable *temporary = addTemporary(compiler, "set-field-expr");
+		SSAVariable *temporary = addTemporary(compiler, "set-field-expr");
 		StmtBlock *block = compiler->New<StmtBlock>();
 		run->statement = block;
 		run->temporary = temporary;
@@ -2089,7 +2097,7 @@ static IRExpr *bareName(Compiler *compiler, bool canAssign, VarDecl *variable) {
 		// This has to be an expression, so wrap it up like that
 		ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
 		StmtBlock *block = compiler->New<StmtBlock>();
-		LocalVariable *tmp = addTemporary(compiler, "bareName-assign-" + variable->Name());
+		SSAVariable *tmp = addTemporary(compiler, "bareName-assign-" + variable->Name());
 		wrapper->statement = block;
 		wrapper->temporary = tmp;
 
@@ -2194,8 +2202,8 @@ static IRExpr *literal(Compiler *compiler, bool canAssign = false) {
 //     ["a ", b + c, " d"].join()
 static IRExpr *stringInterpolation(Compiler *compiler, bool canAssign) {
 	// Make a block to put our initialising statements in, and wrap that into an expression
-	LocalVariable *parts = addTemporary(compiler, "string-interpolation-parts");
-	LocalVariable *result = addTemporary(compiler, "string-interpolation-result");
+	SSAVariable *parts = addTemporary(compiler, "string-interpolation-parts");
+	SSAVariable *result = addTemporary(compiler, "string-interpolation-result");
 	StmtBlock *block = compiler->New<StmtBlock>();
 	ExprRunStatements *expr = compiler->New<ExprRunStatements>();
 	expr->temporary = result;
@@ -2312,22 +2320,26 @@ static IRExpr *and_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	// We have to run a series of statements including jumps to find
 	// the value.
 	StmtBlock *block = compiler->New<StmtBlock>();
-	LocalVariable *tmp = addTemporary(compiler, "and-value-tmp");
+	SSAVariable *tmp = addTemporary(compiler, "and-value-tmp");
 	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
 	wrapper->statement = block;
 	wrapper->temporary = tmp;
 
+	// Since we can't reassign SSA variables, make a temporary non-SSA variable.
+	LocalVariable *local = addMutableTemporary(compiler, "and-value-mut");
+
 	// Put the LHS in the temporary
-	compiler->AddNew<StmtAssign>(block, tmp, lhs);
+	compiler->AddNew<StmtAssign>(block, local, lhs);
 
 	// Skip the right argument if the left is false.
 	StmtJump *jump = compiler->AddNew<StmtJump>(block);
-	jump->condition = loadVariable(compiler, tmp);
+	jump->condition = loadVariable(compiler, local);
 	jump->jumpOnFalse = true;
 	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_AND);
-	compiler->AddNew<StmtAssign>(block, tmp, rhs);
+	compiler->AddNew<StmtAssign>(block, local, rhs);
 	jump->target = compiler->AddNew<StmtLabel>(block, "and-target");
 
+	compiler->AddNew<StmtAssign>(block, tmp, loadVariable(compiler, local));
 	return wrapper;
 }
 
@@ -2337,21 +2349,25 @@ static IRExpr *or_(Compiler *compiler, IRExpr *lhs, bool canAssign) {
 	// We have to run a series of statements including jumps to find
 	// the value.
 	StmtBlock *block = compiler->New<StmtBlock>();
-	LocalVariable *tmp = addTemporary(compiler, "or-value-tmp");
+	SSAVariable *tmp = addTemporary(compiler, "or-value-tmp");
 	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
 	wrapper->statement = block;
 	wrapper->temporary = tmp;
 
+	// Since we can't reassign SSA variables, make a temporary non-SSA variable.
+	LocalVariable *local = addMutableTemporary(compiler, "or-value-mut");
+
 	// Put the LHS in the temporary
-	compiler->AddNew<StmtAssign>(block, tmp, lhs);
+	compiler->AddNew<StmtAssign>(block, local, lhs);
 
 	// Skip the right argument if the left is true.
 	StmtJump *jump = compiler->AddNew<StmtJump>(block);
-	jump->condition = loadVariable(compiler, tmp);
+	jump->condition = loadVariable(compiler, local);
 	IRExpr *rhs = parsePrecedence(compiler, PREC_LOGICAL_OR);
-	compiler->AddNew<StmtAssign>(block, tmp, rhs);
+	compiler->AddNew<StmtAssign>(block, local, rhs);
 	jump->target = compiler->AddNew<StmtLabel>(block, "or-target");
 
+	compiler->AddNew<StmtAssign>(block, tmp, loadVariable(compiler, local));
 	return wrapper;
 }
 
@@ -2362,10 +2378,13 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 	// We have to run a series of statements including jumps to find
 	// the value.
 	StmtBlock *block = compiler->New<StmtBlock>();
-	LocalVariable *tmp = addTemporary(compiler, "conditional-value-tmp");
+	SSAVariable *tmp = addTemporary(compiler, "conditional-value-tmp");
 	ExprRunStatements *wrapper = compiler->New<ExprRunStatements>();
 	wrapper->statement = block;
 	wrapper->temporary = tmp;
+
+	// Since we can't reassign SSA variables, make a temporary non-SSA variable.
+	LocalVariable *local = addMutableTemporary(compiler, "conditional-value-mut");
 
 	// If the condition is false, jump to the 2nd term
 	StmtJump *jumpToFalse = compiler->AddNew<StmtJump>(block);
@@ -2374,7 +2393,7 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 
 	// Compile the then branch.
 	IRExpr *trueValue = parsePrecedence(compiler, PREC_CONDITIONAL);
-	compiler->AddNew<StmtAssign>(block, tmp, trueValue);
+	compiler->AddNew<StmtAssign>(block, local, trueValue);
 
 	consume(compiler, TOKEN_COLON, "Expect ':' after then branch of conditional operator.");
 	ignoreNewlines(compiler);
@@ -2386,10 +2405,12 @@ static IRExpr *conditional(Compiler *compiler, IRExpr *condition, bool canAssign
 	jumpToFalse->target = compiler->AddNew<StmtLabel>(block, "condition-start-to-else");
 
 	IRExpr *falseValue = parsePrecedence(compiler, PREC_ASSIGNMENT);
-	compiler->AddNew<StmtAssign>(block, tmp, falseValue);
+	compiler->AddNew<StmtAssign>(block, local, falseValue);
 
 	// Patch the jump over the else.
 	trueToEnd->target = compiler->AddNew<StmtLabel>(block, "condition-true-to-end");
+
+	compiler->AddNew<StmtAssign>(block, tmp, loadVariable(compiler, local));
 
 	return wrapper;
 }
@@ -2971,7 +2992,7 @@ IRStmt *statement(Compiler *compiler) {
 
 		// Free everything on the stack, making sure we evaluate the expression first so there aren't any
 		// last-minute uses of the variables after discarding them.
-		LocalVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
+		SSAVariable *tempReturn = addTemporary(compiler, "return_expr_temp");
 		compiler->AddNew<StmtAssign>(block, tempReturn, returnValue);
 
 		// Relocate any upvalues, and any other cleanup we have to do. Do this all the way down to the first

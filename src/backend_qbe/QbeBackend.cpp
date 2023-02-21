@@ -932,14 +932,17 @@ std::string QbeBackend::EscapeString(std::string value) {
 	return value;
 }
 
-QbeBackend::VLocal *QbeBackend::LookupVariable(LocalVariable *decl) {
+// Accept VarDecl so we can handle both LocalVariable and SSAVariable.
+QbeBackend::VLocal *QbeBackend::LookupVariable(VarDecl *decl) {
+	ASSERT(decl->Scope() == VarDecl::SCOPE_LOCAL, "Cannot LookupVariable on non-local variable");
+
 	auto iter = m_locals.find(decl);
 	if (iter != m_locals.end())
 		return iter->second.get();
 
 	m_locals[decl] = std::make_unique<VLocal>();
 	VLocal *local = m_locals.at(decl).get();
-	local->name = "lv_" + MangleUniqueName(decl->name, false); // lv for local variable
+	local->name = "lv_" + MangleUniqueName(decl->Name(), false); // lv for local variable
 	return local;
 }
 

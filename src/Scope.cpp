@@ -76,6 +76,10 @@ VarDecl::ScopeType LocalVariable::Scope() const { return SCOPE_LOCAL; }
 
 void LocalVariable::Accept(IRVisitor *visitor) { visitor->VisitLocalVariable(this); }
 
+std::string SSAVariable::Name() const { return name; }
+VarDecl::ScopeType SSAVariable::Scope() const { return VarDecl::SCOPE_LOCAL; }
+void SSAVariable::Accept(IRVisitor *visitor) { visitor->VisitSSAVariable(this); }
+
 void UpvalueVariable::Accept(IRVisitor *visitor) { visitor->VisitUpvalueVariable(this); }
 std::string UpvalueVariable::Name() const { return parent->Name() + "_UPVALUE"; }
 VarDecl::ScopeType UpvalueVariable::Scope() const { return SCOPE_UPVALUE; }

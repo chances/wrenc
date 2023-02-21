@@ -126,6 +126,11 @@ class VarData : public BackendNodeData {
 	int closedAddressPosition = -1;
 };
 
+class SSAData : public BackendNodeData {
+  public:
+	llvm::Value *value = nullptr;
+};
+
 /// Stores information about a storage block (the thing that contains local variables
 /// that are used as upvalues).
 struct BeginUpvaluesData : public BackendNodeData {
@@ -773,10 +778,8 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		varData->closedAddressPosition = (int)beginUpvalues->contents.size();
 		beginUpvalues->contents.push_back(local);
 	}
-	for (LocalVariable *local : func->temporaries) {
-		VarData *varData = new VarData;
-		local->backendVarData = std::unique_ptr<BackendNodeData>(varData);
-		varData->address = m_builder.CreateAlloca(m_valueType, nullptr, local->Name());
+	for (SSAVariable *var : func->temporaries) {
+		var->backendVarData = std::unique_ptr<BackendNodeData>(new SSAData);
 	}
 
 	// Create the memory to store the pointers to the storage blocks
@@ -1376,11 +1379,27 @@ llvm::Value *LLVMBackendImpl::GetVariablePointer(VisitorContext *ctx, VarDecl *v
 }
 
 llvm::Value *LLVMBackendImpl::LoadVariable(VisitorContext *ctx, VarDecl *var) {
+	SSAVariable *ssa = dynamic_cast<SSAVariable *>(var);
+	if (ssa) {
+		return ssa->GetBackendVarData<SSAData>()->value;
+	}
+
 	llvm::Value *ptr = GetVariablePointer(ctx, var);
 	return m_builder.CreateLoad(m_valueType, ptr, var->Name() + "_value");
 }
 
 void LLVMBackendImpl::SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value *value) {
+	SSAVariable *ssa = dynamic_cast<SSAVariable *>(var);
+	if (ssa) {
+		SSAData *data = ssa->GetBackendVarData<SSAData>();
+		if (data->value) {
+			fmt::print(stderr, "Cannot re-assign SSA var (in LLVM backend): '{}'\n", var->Name());
+			abort();
+		}
+		data->value = value;
+		return;
+	}
+
 	llvm::Value *ptr = GetVariablePointer(ctx, var);
 	m_builder.CreateStore(value, ptr);
 }

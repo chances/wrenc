@@ -18,6 +18,7 @@ class IRExpr;
 class IRStmt;
 class IRClass;
 class LocalVariable;   // From Scope.h
+class SSAVariable;     // From Scope.h
 class UpvalueVariable; // From Scope.h
 class FieldVariable;   // From SymbolTable.h
 class Signature;       // From CompContext.h
@@ -120,7 +121,7 @@ class IRFn : public IRNode {
 	std::vector<LocalVariable *> parameters;
 
 	// Locals used as temporaries by the compiler, which aren't checked for name conflicts.
-	std::vector<LocalVariable *> temporaries;
+	std::vector<SSAVariable *> temporaries;
 
 	// The closure functions defined inside this function. This is mainly for upvalue processing.
 	std::vector<IRFn *> closures;
@@ -240,7 +241,7 @@ class IRStmt : public IRNode {
 class StmtAssign : public IRStmt {
   public:
 	StmtAssign() {}
-	StmtAssign(VarDecl *var, IRExpr *expr) : var(var), expr(expr) {}
+	StmtAssign(VarDecl *var, IRExpr *expr);
 
 	void Accept(IRVisitor *visitor) override;
 
@@ -471,7 +472,7 @@ class ExprRunStatements : public IRExpr {
 	void Accept(IRVisitor *visitor) override;
 
 	IRStmt *statement = nullptr;
-	LocalVariable *temporary = nullptr;
+	SSAVariable *temporary = nullptr;
 };
 
 /// Allocates the memory for a new object. If this is a foreign object, the foreign allocation method
@@ -564,6 +565,7 @@ class IRVisitor {
 	virtual void VisitStmtDefineClass(StmtDefineClass *node);
 
 	virtual void VisitLocalVariable(LocalVariable *var);
+	virtual void VisitSSAVariable(SSAVariable *var);
 	virtual void VisitUpvalueVariable(UpvalueVariable *var);
 	// TODO for other variables
 };
