@@ -167,6 +167,8 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Value *GetLocalPointer(VisitorContext *ctx, LocalVariable *local);
 	llvm::Value *GetUpvaluePointer(VisitorContext *ctx, UpvalueVariable *upvalue);
 	llvm::Value *GetVariablePointer(VisitorContext *ctx, VarDecl *var);
+	llvm::Value *LoadVariable(VisitorContext *ctx, VarDecl *var);
+	void SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value *value);
 	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
 	llvm::Value *GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar);
 
@@ -1373,6 +1375,16 @@ llvm::Value *LLVMBackendImpl::GetVariablePointer(VisitorContext *ctx, VarDecl *v
 	abort();
 }
 
+llvm::Value *LLVMBackendImpl::LoadVariable(VisitorContext *ctx, VarDecl *var) {
+	llvm::Value *ptr = GetVariablePointer(ctx, var);
+	return m_builder.CreateLoad(m_valueType, ptr, var->Name() + "_value");
+}
+
+void LLVMBackendImpl::SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value *value) {
+	llvm::Value *ptr = GetVariablePointer(ctx, var);
+	m_builder.CreateStore(value, ptr);
+}
+
 llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel *label) {
 	if (ctx->labelBlocks.contains(label))
 		return ctx->labelBlocks.at(label);
@@ -1397,8 +1409,7 @@ llvm::Value *LLVMBackendImpl::GetObjectFieldPointer(VisitorContext *ctx, VarDecl
 	// There's no error checking here for performance, we'll probably
 	// get a fault if something is wrong (though we can't count on
 	// it from a security perspective).
-	llvm::Value *thisValuePtr = GetVariablePointer(ctx, thisVar);
-	llvm::Value *thisValue = m_builder.CreateLoad(m_valueType, thisValuePtr, "this_value");
+	llvm::Value *thisValue = LoadVariable(ctx, thisVar);
 	llvm::Value *thisPtr =
 	    m_builder.CreateCall(m_ptrMask, {thisValue, CInt::get(m_int64Type, CONTENT_MASK)}, "this_ptr");
 
@@ -1566,8 +1577,7 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprLoad(VisitorContext *ctx, ExprLoad *node) {
-	llvm::Value *ptr = GetVariablePointer(ctx, node->var);
-	llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, node->var->Name() + "_value");
+	llvm::Value *value = LoadVariable(ctx, node->var);
 	return {value};
 }
 ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node) {
@@ -1736,10 +1746,7 @@ ExprRes LLVMBackendImpl::VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadRece
 ExprRes LLVMBackendImpl::VisitExprRunStatements(VisitorContext *ctx, ExprRunStatements *node) {
 	VisitStmt(ctx, node->statement);
 
-	llvm::Value *ptr = GetLocalPointer(ctx, node->temporary);
-	llvm::Value *value = m_builder.CreateLoad(m_valueType, ptr, "temp_value");
-
-	return {value};
+	return {LoadVariable(ctx, node->temporary)};
 }
 ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, ExprAllocateInstanceMemory *node) {
 	std::string name = node->target->info->name;
@@ -1788,8 +1795,7 @@ ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassV
 StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) {
 	llvm::Value *value = VisitExpr(ctx, node->expr).value;
 
-	llvm::Value *ptr = GetVariablePointer(ctx, node->var);
-	m_builder.CreateStore(value, ptr);
+	SetVariable(ctx, node->var, value);
 
 	return {};
 }
@@ -1950,8 +1956,7 @@ StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule
 		llvm::Value *varValue =
 		    m_builder.CreateCall(m_getModuleVariable, {modPtr, GetStringConst(var.name)}, "mod_var_" + var.name);
 
-		llvm::Value *destPtr = GetVariablePointer(ctx, var.bindTo);
-		m_builder.CreateStore(varValue, destPtr);
+		SetVariable(ctx, var.bindTo, varValue);
 	}
 
 	return {};
@@ -2020,8 +2025,7 @@ StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineCla
 	m_builder.CreateStore(fieldOffsetValue, data.fieldOffset);
 
 	// Store the class object into the provided variable
-	llvm::Value *varPtr = GetVariablePointer(ctx, node->outputVariable);
-	m_builder.CreateStore(classValue, varPtr);
+	SetVariable(ctx, node->outputVariable, classValue);
 
 	return {};
 }
