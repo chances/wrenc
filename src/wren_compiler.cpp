@@ -18,7 +18,6 @@
 #include "CcValue.h"
 #include "ClassInfo.h"
 #include "CompContext.h"
-#include "ConstantsPool.h"
 #include "IRNode.h"
 #include "Module.h"
 #include "Scope.h"
@@ -278,9 +277,6 @@ class Compiler {
 
 	// The function being compiled.
 	IRFn *fn;
-
-	// The constants for the function being compiled.
-	ConstantsPool constants;
 
 	// Whether or not the compiler is for a constructor initializer
 	bool isInitializer;
