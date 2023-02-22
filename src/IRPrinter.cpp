@@ -217,7 +217,7 @@ void IRPrinter::VisitFn(IRFn *node) {
 
 	// Add a tag with the arguments
 	std::string args = "args";
-	for (LocalVariable *arg : node->parameters) {
+	for (SSAVariable *arg : node->parameters) {
 		args += " " + arg->name;
 	}
 	StartTag(args, true);

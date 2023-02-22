@@ -40,8 +40,9 @@ class DLL_EXPORT SSAVariable : public VarDecl {
   public:
 	std::string name;
 
-	/// The local variable that this SSA variable represents.
-	SSAVariable *local = nullptr;
+	/// The local variable that this SSA variable represents, or null if it wasn't
+	/// auto-converted from a local.
+	LocalVariable *local = nullptr;
 
 	/// The one-and-only assignment that writes to this variable, or
 	/// null for function arguments.

@@ -117,8 +117,11 @@ class IRFn : public IRNode {
 	std::unordered_map<VarDecl *, UpvalueVariable *> upvalues; // Upvalues imported from the parent function
 	std::unordered_map<std::string, UpvalueVariable *> upvaluesByName;
 
-	// Function parameters. These also appear in [locals].
-	std::vector<LocalVariable *> parameters;
+	// Function parameters. These also appear in [ssaVars].
+	std::vector<SSAVariable *> parameters;
+
+	// Local variables in SSA form.
+	std::vector<SSAVariable *> ssaVars;
 
 	// Locals used as temporaries by the compiler, which aren't checked for name conflicts.
 	std::vector<SSAVariable *> temporaries;
@@ -484,7 +487,7 @@ class ExprAllocateInstanceMemory : public IRExpr {
 	IRClass *target = nullptr;
 
 	/// If this is a foreign class, these are the parameters to pass to the native initialiser.
-	std::vector<LocalVariable *> foreignParameters;
+	std::vector<SSAVariable *> foreignParameters;
 };
 
 /// Get a built-in variable, for example the Object class.

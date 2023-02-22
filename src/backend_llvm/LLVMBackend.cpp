@@ -779,6 +779,9 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		varData->closedAddressPosition = (int)beginUpvalues->contents.size();
 		beginUpvalues->contents.push_back(local);
 	}
+	for (SSAVariable *var : func->ssaVars) {
+		var->backendVarData = std::unique_ptr<BackendNodeData>(new SSAData);
+	}
 	for (SSAVariable *var : func->temporaries) {
 		var->backendVarData = std::unique_ptr<BackendNodeData>(new SSAData);
 	}
@@ -835,12 +838,11 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		func->rootBeginUpvalues->GetBackendData<BeginUpvaluesData>()->createdEarly = true;
 	}
 
-	for (LocalVariable *arg : func->parameters) {
+	for (SSAVariable *arg : func->parameters) {
 		// Load the arguments
-		llvm::Value *destPtr = GetLocalPointer(&ctx, arg);
 		llvm::Value *value = function->getArg(nextArg++);
 		value->setName(arg->Name());
-		m_builder.CreateStore(value, destPtr);
+		arg->GetBackendVarData<SSAData>()->value = value;
 	}
 
 	// Jump to the first block
@@ -1795,9 +1797,8 @@ ExprRes LLVMBackendImpl::VisitExprAllocateInstanceMemory(VisitorContext *ctx, Ex
 	int arity = node->foreignParameters.size();
 	for (int i = 0; i < arity; i++) {
 		llvm::Value *arrayItemPtr = m_builder.CreateGEP(m_valueType, array, {CInt::get(m_int32Type, i)}, "slot");
-		llvm::Value *localPtr = GetLocalPointer(ctx, node->foreignParameters.at(i));
-		llvm::Value *localValue = m_builder.CreateLoad(m_valueType, localPtr, "arg_value");
-		m_builder.CreateStore(localValue, arrayItemPtr);
+		llvm::Value *argValue = LoadVariable(ctx, node->foreignParameters.at(i));
+		m_builder.CreateStore(argValue, arrayItemPtr);
 	}
 
 	llvm::Value *newObj =

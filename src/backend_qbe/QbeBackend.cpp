@@ -387,7 +387,7 @@ void QbeBackend::VisitFn(IRFn *node, std::optional<std::string> initFunction) {
 		// QBE ever gets support for that).
 		args += std::string("l %upvalue_pack, ");
 	}
-	for (LocalVariable *arg : node->parameters) {
+	for (SSAVariable *arg : node->parameters) {
 		VLocal *var = LookupVariable(arg);
 		args += fmt::format("l %{}, ", var->name);
 	}

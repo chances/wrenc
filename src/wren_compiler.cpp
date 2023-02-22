@@ -278,6 +278,10 @@ class Compiler {
 	// The function being compiled.
 	IRFn *fn;
 
+	// The local variables associated with the parameters. These should be immediately
+	// initialised with the SSA parameter variables (found in IRFn).
+	std::vector<LocalVariable *> parameterLocals;
+
 	// Whether or not the compiler is for a constructor initializer
 	bool isInitializer;
 
@@ -1587,6 +1591,14 @@ static StmtBlock *finishBody(Compiler *compiler, bool isMethod) {
 		block->Add(setupThis);
 	}
 
+	// Initialise the local variable version of the arguments. The actual arguments
+	// come in as SSA variables, so load them into the locals.
+	for (int i = 0; i < (int)compiler->parameterLocals.size(); i++) {
+		LocalVariable *local = compiler->parameterLocals.at(i);
+		SSAVariable *ssa = compiler->fn->parameters.at(i);
+		compiler->AddNew<StmtAssign>(block, local, compiler->New<ExprLoad>(ssa));
+	}
+
 	if (compiler->isInitializer) {
 		// If the initializer body evaluates to a value, discard it.
 		if (expr) {
@@ -1624,6 +1636,16 @@ static void validateNumParameters(Compiler *compiler, int numArgs) {
 	}
 }
 
+static void addParameterLocal(Compiler *compiler, LocalVariable *local) {
+	compiler->parameterLocals.push_back(local);
+
+	// Make an SSA variable to accept the parameter.
+	SSAVariable *ssa = compiler->New<SSAVariable>();
+	ssa->name = local->name + "_pssa"; // For Parameter SSA
+	compiler->fn->parameters.push_back(ssa);
+	compiler->fn->ssaVars.push_back(ssa);
+}
+
 // Parses the rest of a comma-separated parameter list after the opening
 // delimeter. Updates `arity` in [signature] with the number of parameters.
 static void finishParameterList(Compiler *compiler, Signature *signature) {
@@ -1643,7 +1665,7 @@ static void finishParameterList(Compiler *compiler, Signature *signature) {
 			continue;
 		}
 
-		compiler->fn->parameters.push_back(local);
+		addParameterLocal(compiler, local);
 	} while (match(compiler, TOKEN_COMMA));
 }
 
@@ -2449,7 +2471,7 @@ void infixSignature(Compiler *compiler, Signature *signature) {
 		std::string name = var->Name();
 		error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
 	} else {
-		compiler->fn->parameters.push_back(local);
+		addParameterLocal(compiler, local);
 	}
 }
 
@@ -2479,7 +2501,7 @@ void mixedSignature(Compiler *compiler, Signature *signature) {
 			std::string name = var->Name();
 			error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
 		} else {
-			compiler->fn->parameters.push_back(local);
+			addParameterLocal(compiler, local);
 		}
 	}
 }
@@ -2509,7 +2531,7 @@ static bool maybeSetter(Compiler *compiler, Signature *signature) {
 		std::string name = var->Name();
 		error(compiler, "Parameter '%s' is not a local variable!", name.c_str());
 	} else {
-		compiler->fn->parameters.push_back(local);
+		addParameterLocal(compiler, local);
 	}
 
 	signature->arity++;
@@ -3256,13 +3278,13 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		fn->debugName = method->fn->debugName + "::alloc";
 		alloc->fn = fn;
 
-		std::vector<LocalVariable *> args;
-		for (LocalVariable *initArg : method->fn->parameters) {
-			LocalVariable *local = compiler->New<LocalVariable>();
-			local->name = initArg->name;
-			fn->locals.push_back(local);
-			fn->parameters.push_back(local);
-			args.push_back(local);
+		std::vector<SSAVariable *> args;
+		for (SSAVariable *initArg : method->fn->parameters) {
+			SSAVariable *arg = compiler->New<SSAVariable>();
+			arg->name = initArg->name;
+			fn->ssaVars.push_back(arg);
+			fn->parameters.push_back(arg);
+			args.push_back(arg);
 		}
 
 		StmtBlock *block = compiler->New<StmtBlock>();
@@ -3287,7 +3309,7 @@ static bool method(Compiler *compiler, IRClass *classNode) {
 		ExprFuncCall *call = compiler->New<ExprFuncCall>();
 		call->signature = signature;
 		call->receiver = compiler->New<ExprLoad>(objLocal);
-		for (LocalVariable *arg : args) {
+		for (SSAVariable *arg : args) {
 			call->args.push_back(loadVariable(compiler, arg));
 		}
 		block->Add(compiler->New<StmtEvalAndIgnore>(call));
