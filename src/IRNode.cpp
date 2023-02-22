@@ -44,6 +44,7 @@ bool IRExpr::IsPure() const { return false; }
 bool ExprConst::IsPure() const { return true; }
 bool ExprLoad::IsPure() const { return true; } // Loading an already-defined variable is never an error.
 bool ExprFieldLoad::IsPure() const { return true; }
+bool ExprPhi::IsPure() const { return true; }
 bool ExprLoadReceiver::IsPure() const { return true; }
 bool ExprSystemVar::IsPure() const { return true; }
 bool ExprGetClassVar::IsPure() const { return true; }
@@ -137,6 +138,7 @@ void StmtDefineClass::Accept(IRVisitor *visitor) { visitor->VisitStmtDefineClass
 void ExprConst::Accept(IRVisitor *visitor) { visitor->VisitExprConst(this); }
 void ExprLoad::Accept(IRVisitor *visitor) { visitor->VisitExprLoad(this); }
 void ExprFieldLoad::Accept(IRVisitor *visitor) { visitor->VisitExprFieldLoad(this); }
+void ExprPhi::Accept(IRVisitor *visitor) { visitor->VisitExprPhi(this); }
 void ExprFuncCall::Accept(IRVisitor *visitor) { visitor->VisitExprFuncCall(this); }
 void ExprClosure::Accept(IRVisitor *visitor) { visitor->VisitExprClosure(this); }
 void ExprLoadReceiver::Accept(IRVisitor *visitor) { visitor->VisitExprLoadReceiver(this); }
@@ -208,6 +210,10 @@ void IRVisitor::VisitStmtDefineClass(StmtDefineClass *node) {
 void IRVisitor::VisitExprConst(ExprConst *node) {}
 void IRVisitor::VisitExprLoad(ExprLoad *node) { VisitVar(node->var); }
 void IRVisitor::VisitExprFieldLoad(ExprFieldLoad *node) {}
+void IRVisitor::VisitExprPhi(ExprPhi *node) {
+	for (SSAVariable *var : node->inputs)
+		VisitVar(var);
+}
 void IRVisitor::VisitExprFuncCall(ExprFuncCall *node) {
 	Visit(node->receiver);
 	for (IRExpr *&expr : node->args)
@@ -223,6 +229,8 @@ void IRVisitor::VisitExprRunStatements(ExprRunStatements *node) {
 }
 void IRVisitor::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) {
 	// Our IRClass nodes are already in the tree, don't visit them
+	for (SSAVariable *var : node->foreignParameters)
+		VisitVar(var);
 }
 void IRVisitor::VisitExprSystemVar(ExprSystemVar *node) {}
 void IRVisitor::VisitExprGetClassVar(ExprGetClassVar *node) {}

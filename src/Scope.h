@@ -27,6 +27,12 @@ class LocalVariable : public VarDecl {
 	// when this variable came into scope.
 	StmtBeginUpvalues *beginUpvalues = nullptr;
 
+	// Should this variable be kept in actual-variable form, rather than being
+	// converted to SSA?
+	// This is for module imports - it's really horrible, but it's the only
+	// reasonable way to do it without an excessive amount of work.
+	bool disableSSA = false;
+
 	DLL_EXPORT std::string Name() const override;
 	DLL_EXPORT ScopeType Scope() const override;
 	DLL_EXPORT void Accept(IRVisitor *visitor) override;

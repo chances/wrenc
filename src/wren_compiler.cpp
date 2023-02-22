@@ -1529,11 +1529,19 @@ static IRNode *finishBlock(Compiler *compiler) {
 				continue;
 			}
 
+			// First, pass the class through an SSA variable though, since the SSA pass
+			// will be unhappy if we put a local into outputVariable.
+			SSAVariable *ssaOutput = addTemporary(compiler, classOutput->name + "_clssa"); // clssa for CLass SSA
+
 			// Perform the actual class definition
 			StmtDefineClass *classDef = compiler->New<StmtDefineClass>();
 			classDef->targetClass = cls;
-			classDef->outputVariable = classOutput;
+			classDef->outputVariable = ssaOutput;
 			block->Add(classDef);
+
+			// Copy the SSA into the local.
+			compiler->AddNew<StmtAssign>(block, classOutput, compiler->New<ExprLoad>(ssaOutput));
+
 			continue;
 		}
 
@@ -3447,6 +3455,14 @@ static IRNode *importStatement(Compiler *compiler) {
 			// import "module" for Source
 			// Uses 'Source' as the name directly
 			slot = declareVariable(compiler, &sourceVariableToken);
+		}
+
+		// Prevent these locals from being converted to SSA form. It's really
+		// horrible, but there's not really any convenient way that makes
+		// sense in the IR - where would the StmtAssign go?
+		LocalVariable *local = dynamic_cast<LocalVariable *>(slot);
+		if (local) {
+			local->disableSSA = true;
 		}
 
 		// When the module gets imported, make sure it sets up this slot

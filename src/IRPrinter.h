@@ -41,6 +41,7 @@ class IRPrinter : private IRVisitor {
 	void VisitExprFieldLoad(ExprFieldLoad *node) override;
 	void VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node) override;
 	void VisitExprClosure(ExprClosure *node) override;
+	void VisitStmtAssign(StmtAssign *node) override;
 	void VisitStmtBeginUpvalues(StmtBeginUpvalues *node) override;
 	void VisitStmtRelocateUpvalues(StmtRelocateUpvalues *node) override;
 	void VisitBlock(StmtBlock *node) override;

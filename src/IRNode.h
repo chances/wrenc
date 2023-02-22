@@ -287,6 +287,11 @@ class StmtBlock : public IRStmt {
 
 	std::vector<IRStmt *> statements;
 
+	/// If this is a basic block that contains Phi nodes, this contains the possible predecessor
+	/// blocks. The indices in this list matches those in the Phi node inputs, so the 2nd variable
+	/// in the Phi node input list comes from the 2nd block in this list.
+	std::vector<StmtBlock *> ssaInputs;
+
 	/// Is this block a basic block? This means the block starts with a label and ends with a control flow
 	/// statement (either a jump or a return). Blocks are converted to basic blocks by the basic block pass.
 	/// The only exception is for conditional jumps: then the last two statements must both be jumps, first
@@ -430,9 +435,23 @@ class ExprFieldLoad : public IRExpr {
 	/// null since there's no ambiguity.
 	/// This is to allow us to pass 'this' into closures through
 	/// the normal upvalue handling code.
+	/// Note it's safe to store a local variable here (normally the
+	/// SSA pass gets upset if you do that), as long as it is, or is
+	/// used as, an upvalue - which it always should be.
 	VarDecl *thisVar = nullptr;
 
 	FieldVariable *var = nullptr;
+};
+
+/// Represents a Phi node. The input variables share indexes with StmtBlock.ssaInputs.
+/// Phi nodes MUST only be contained in assignments.
+class ExprPhi : public IRExpr {
+  public:
+	void Accept(IRVisitor *visitor) override;
+	bool IsPure() const override;
+
+	StmtAssign *assignment = nullptr;
+	std::vector<SSAVariable *> inputs;
 };
 
 /// Either a function or a method call, depending on whether the receiver is null or not
@@ -556,6 +575,7 @@ class IRVisitor {
 	virtual void VisitExprConst(ExprConst *node);
 	virtual void VisitExprLoad(ExprLoad *node);
 	virtual void VisitExprFieldLoad(ExprFieldLoad *node);
+	virtual void VisitExprPhi(ExprPhi *node);
 	virtual void VisitExprFuncCall(ExprFuncCall *node);
 	virtual void VisitExprClosure(ExprClosure *node);
 	virtual void VisitExprLoadReceiver(ExprLoadReceiver *node);

@@ -109,6 +109,7 @@ wrenc = executable('wrencc',
   'src/IBackend.cpp',
   'src/passes/IRCleanup.cpp',
   'src/passes/BasicBlockPass.cpp',
+  'src/passes/SSAPass.cpp',
   'src/backend_qbe/QbeBackend.cpp',
 
   dependencies: [

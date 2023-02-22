@@ -83,6 +83,10 @@ struct VisitorContext {
 	/// but aren't added to the function until the StmtBlock is encountered in the AST.
 	std::map<StmtBlock *, llvm::BasicBlock *> basicBlocks;
 
+	/// The PHI nodes that need all their inputs wired up.
+	/// This is done last, so all the SSA variables will already have been created.
+	std::vector<ExprPhi *> phiNodes;
+
 	llvm::Function *currentFunc = nullptr;
 	IRFn *currentWrenFunc = nullptr;
 	Module *currentModule = nullptr;
@@ -129,6 +133,11 @@ class VarData : public BackendNodeData {
 class SSAData : public BackendNodeData {
   public:
 	llvm::Value *value = nullptr;
+};
+
+class PhiData : public BackendNodeData {
+  public:
+	llvm::PHINode *node = nullptr;
 };
 
 /// Stores information about a storage block (the thing that contains local variables
@@ -187,6 +196,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	ExprRes VisitExprConst(VisitorContext *ctx, ExprConst *node);
 	ExprRes VisitExprLoad(VisitorContext *ctx, ExprLoad *node);
 	ExprRes VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *node);
+	ExprRes VisitExprPhi(VisitorContext *ctx, ExprPhi *node);
 	ExprRes VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *node);
 	ExprRes VisitExprClosure(VisitorContext *ctx, ExprClosure *node);
 	ExprRes VisitExprLoadReceiver(VisitorContext *ctx, ExprLoadReceiver *node);
@@ -854,6 +864,22 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 
 	m_dbgSubProgramme = nullptr;
 
+	// Set up all the inputs for the Phi nodes.
+	// We have to wait until now to do this, as all the input variables to the node might
+	// not have been created at the time the node was.
+	for (ExprPhi *node : ctx.phiNodes) {
+		StmtBlock *block = node->assignment->basicBlock;
+		assert(node->inputs.size() == block->ssaInputs.size());
+
+		llvm::PHINode *phi = node->GetBackendData<PhiData>()->node;
+
+		for (int i = 0; i < (int)node->inputs.size(); i++) {
+			llvm::Value *var = node->inputs.at(i)->GetBackendVarData<SSAData>()->value;
+			llvm::BasicBlock *src = GetBasicBlock(&ctx, block->ssaInputs.at(i));
+			phi->addIncoming(var, src);
+		}
+	}
+
 	return function;
 }
 
@@ -1496,6 +1522,7 @@ ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
 	DISPATCH(VisitExprConst, ExprConst);
 	DISPATCH(VisitExprLoad, ExprLoad);
 	DISPATCH(VisitExprFieldLoad, ExprFieldLoad);
+	DISPATCH(VisitExprPhi, ExprPhi);
 	DISPATCH(VisitExprFuncCall, ExprFuncCall);
 	DISPATCH(VisitExprClosure, ExprClosure);
 	DISPATCH(VisitExprLoadReceiver, ExprLoadReceiver);
@@ -1615,6 +1642,16 @@ ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *
 
 	llvm::Value *result = m_builder.CreateLoad(m_valueType, fieldPointer, "field_" + node->var->Name());
 	return {result};
+}
+ExprRes LLVMBackendImpl::VisitExprPhi(VisitorContext *ctx, ExprPhi *node) {
+	llvm::PHINode *phi = m_builder.CreatePHI(m_valueType, node->inputs.size(), node->assignment->var->Name());
+
+	// Fill in the node's inputs later, when all the input variables have been created.
+	node->backendData = std::make_unique<PhiData>();
+	node->GetBackendData<PhiData>()->node = phi;
+	ctx->phiNodes.push_back(node);
+
+	return {phi};
 }
 ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *node) {
 	ExprRes receiver = VisitExpr(ctx, node->receiver);

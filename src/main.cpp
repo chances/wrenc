@@ -8,6 +8,7 @@
 #include "common/Platform.h"
 #include "passes/BasicBlockPass.h"
 #include "passes/IRCleanup.h"
+#include "passes/SSAPass.h"
 #include "wren_compiler.h"
 #include "wrencc_config.h"
 
@@ -466,7 +467,11 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 	for (IRFn *fn : mod.GetFunctions())
 		cleanup.Process(fn);
 
-	BasicBlockPass ssa(&ctx.alloc);
+	BasicBlockPass bb(&ctx.alloc);
+	for (IRFn *fn : mod.GetFunctions())
+		bb.Process(fn);
+
+	SSAPass ssa(&ctx.alloc);
 	for (IRFn *fn : mod.GetFunctions())
 		ssa.Process(fn);
 

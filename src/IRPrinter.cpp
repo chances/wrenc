@@ -94,6 +94,7 @@ void IRPrinter::Process(IRNode *root) {
 	// If this is a function that's in basic-block form, note that down and we'll
 	// use it to evenly distribute the label colours.
 	m_basicBlockCount = -1;
+	m_basicBlockIds.clear();
 	IRFn *fn = dynamic_cast<IRFn *>(root);
 	if (fn != nullptr && !fn->body->statements.empty()) {
 		StmtBlock *firstChild = dynamic_cast<StmtBlock *>(fn->body->statements.at(0));
@@ -243,6 +244,23 @@ void IRPrinter::VisitExprAllocateInstanceMemory(ExprAllocateInstanceMemory *node
 void IRPrinter::VisitExprClosure(ExprClosure *node) {
 	m_tagStack.back().header += " " + node->func->debugName;
 	IRVisitor::VisitExprClosure(node);
+}
+
+void IRPrinter::VisitStmtAssign(StmtAssign *node) {
+	// If we're assigning the result of a Phi node, draw that specially - there's
+	// going to be a lot of Phi nodes, and it's important to make them readable.
+	SSAVariable *ssaResult = dynamic_cast<SSAVariable *>(node->var);
+	ExprPhi *phi = dynamic_cast<ExprPhi *>(node->expr);
+	if (ssaResult && phi) {
+		std::string &out = m_tagStack.back().header;
+		out += fmt::format(" [SSA] {} <- ", ssaResult->name);
+		for (SSAVariable *src : phi->inputs) {
+			out += fmt::format("{}, ", src->name);
+		}
+		return;
+	}
+
+	IRVisitor::VisitStmtAssign(node);
 }
 
 void IRPrinter::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
