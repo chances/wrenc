@@ -72,8 +72,10 @@ void BasicBlockPass::Process(IRFn *fn) {
 			fallthroughJump->debugInfo.synthetic = true;
 
 			current->statements.push_back(fallthroughJump);
+			fallthroughJump->basicBlock = current;
 			current = CreateBasicBlock();
 			current->statements.push_back(fallthroughLabel);
+			fallthroughLabel->basicBlock = current;
 
 			continue;
 		}

@@ -79,9 +79,9 @@ struct VisitorContext {
 	/// The array of upvalue value pointers.
 	llvm::Value *upvaluePackPtr = nullptr;
 
-	/// The BasicBlock that each label represents. These are created whenever they're first needed, but aren't
-	/// added to the function until the StmtLabel is encountered in the AST.
-	std::map<StmtLabel *, llvm::BasicBlock *> labelBlocks;
+	/// The BasicBlock that each StmtBlock represents. These are created whenever they're first needed,
+	/// but aren't added to the function until the StmtBlock is encountered in the AST.
+	std::map<StmtBlock *, llvm::BasicBlock *> basicBlocks;
 
 	llvm::Function *currentFunc = nullptr;
 	IRFn *currentWrenFunc = nullptr;
@@ -174,7 +174,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::Value *GetVariablePointer(VisitorContext *ctx, VarDecl *var);
 	llvm::Value *LoadVariable(VisitorContext *ctx, VarDecl *var);
 	void SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value *value);
-	llvm::BasicBlock *GetLabelBlock(VisitorContext *ctx, StmtLabel *label);
+	llvm::BasicBlock *GetBasicBlock(VisitorContext *ctx, StmtBlock *block);
 	llvm::Value *GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar);
 
 	/// Process a string literal, to make it suitable for using as a name in the IR
@@ -198,9 +198,10 @@ class LLVMBackendImpl : public LLVMBackend {
 	StmtRes VisitStmtAssign(VisitorContext *ctx, StmtAssign *node);
 	StmtRes VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssign *node);
 	StmtRes VisitStmtEvalAndIgnore(VisitorContext *ctx, StmtEvalAndIgnore *node);
-	StmtRes VisitBlock(VisitorContext *ctx, StmtBlock *node);
+	StmtRes VisitBodyBlock(VisitorContext *ctx, StmtBlock *node);
+	StmtRes VisitBasicBlock(VisitorContext *ctx, StmtBlock *node);
 	StmtRes VisitStmtLabel(VisitorContext *ctx, StmtLabel *node);
-	StmtRes VisitStmtJump(VisitorContext *ctx, StmtJump *node);
+	StmtRes VisitStmtJump(VisitorContext *ctx, StmtJump *cond, StmtJump *unCond);
 	StmtRes VisitStmtReturn(VisitorContext *ctx, StmtReturn *node);
 	StmtRes VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule *node);
 	StmtRes VisitStmtBeginUpvalues(VisitorContext *ctx, StmtBeginUpvalues *node);
@@ -842,7 +843,12 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		m_builder.CreateStore(value, destPtr);
 	}
 
-	VisitBlock(&ctx, func->body);
+	// Jump to the first block
+	StmtBlock *firstBlock = dynamic_cast<StmtBlock *>(func->body->statements.at(0));
+	assert(firstBlock && "Couldn't get first StmtBlock!");
+	m_builder.CreateBr(GetBasicBlock(&ctx, firstBlock));
+
+	VisitBodyBlock(&ctx, func->body);
 
 	m_dbgSubProgramme = nullptr;
 
@@ -1404,16 +1410,19 @@ void LLVMBackendImpl::SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value
 	m_builder.CreateStore(value, ptr);
 }
 
-llvm::BasicBlock *LLVMBackendImpl::GetLabelBlock(VisitorContext *ctx, StmtLabel *label) {
-	if (ctx->labelBlocks.contains(label))
-		return ctx->labelBlocks.at(label);
+llvm::BasicBlock *LLVMBackendImpl::GetBasicBlock(VisitorContext *ctx, StmtBlock *block) {
+	assert(block && "Cannot get basic block for null block.");
 
-	// Don't supply the function - we'll add it when we find the StmtLabel, so it'll be in the proper order
-	// when read manually. The order of the BBs shouldn't matter (AFAIK) to the compiler.
-	llvm::BasicBlock *block = llvm::BasicBlock::Create(m_context, "lbl_" + label->debugName);
+	if (ctx->basicBlocks.contains(block))
+		return ctx->basicBlocks.at(block);
 
-	ctx->labelBlocks[label] = block;
-	return block;
+	// We can create the basic block at any time, it'll only be written to when
+	// the relevant StmtBlock is written.
+	// The order of the BBs shouldn't matter (AFAIK) to the compiler.
+	llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_context); // The name will be set by the StmtLabel handler.
+
+	ctx->basicBlocks[block] = bb;
+	return bb;
 }
 
 llvm::Value *LLVMBackendImpl::GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar) {
@@ -1512,9 +1521,7 @@ StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
 	DISPATCH(VisitStmtAssign, StmtAssign);
 	DISPATCH(VisitStmtFieldAssign, StmtFieldAssign);
 	DISPATCH(VisitStmtEvalAndIgnore, StmtEvalAndIgnore);
-	DISPATCH(VisitBlock, StmtBlock);
 	DISPATCH(VisitStmtLabel, StmtLabel);
-	DISPATCH(VisitStmtJump, StmtJump);
 	DISPATCH(VisitStmtReturn, StmtReturn);
 	DISPATCH(VisitStmtLoadModule, StmtLoadModule);
 	DISPATCH(VisitStmtBeginUpvalues, StmtBeginUpvalues);
@@ -1832,38 +1839,74 @@ StmtRes LLVMBackendImpl::VisitStmtEvalAndIgnore(VisitorContext *ctx, StmtEvalAnd
 	VisitExpr(ctx, node->expr);
 	return {};
 }
-StmtRes LLVMBackendImpl::VisitBlock(VisitorContext *ctx, StmtBlock *node) {
+StmtRes LLVMBackendImpl::VisitBodyBlock(VisitorContext *ctx, StmtBlock *node) {
+	assert(!node->isBasicBlock && "body block must not be a basic block!");
 	for (IRStmt *stmt : node->statements) {
+		StmtBlock *block = dynamic_cast<StmtBlock *>(stmt);
+		assert(block && "found non-block directly in body!");
+		VisitBasicBlock(ctx, block);
+	}
+	return {};
+}
+StmtRes LLVMBackendImpl::VisitBasicBlock(VisitorContext *ctx, StmtBlock *node) {
+	assert(node->isBasicBlock && "basic block is not marked as such!");
+
+	// Set up the LLVM basic block for this StmtBlock.
+	llvm::BasicBlock *llvmBB = GetBasicBlock(ctx, node);
+	llvmBB->insertInto(ctx->currentFunc);
+	m_builder.SetInsertPoint(llvmBB);
+
+	bool hitJump = false;
+	for (int i = 0; i < (int)node->statements.size(); i++) {
+		IRStmt *stmt = node->statements.at(i);
+		StmtJump *jump = dynamic_cast<StmtJump *>(stmt);
+
+		if (hitJump) {
+			fprintf(stderr, "Found invalid node after jump: %s\n", typeid(stmt).name());
+			abort();
+		}
+
+		if (jump) {
+			// If this is the last jump then it must be unconditional, otherwise
+			// it must be conditional.
+			if (i == (int)node->statements.size() - 1) {
+				VisitStmtJump(ctx, nullptr, jump);
+			} else {
+				IRStmt *next = node->statements.at(++i);
+				StmtJump *nextJump = dynamic_cast<StmtJump *>(next);
+				assert(nextJump && "Non-last jump was not followed by another jump!");
+				VisitStmtJump(ctx, jump, nextJump);
+			}
+			hitJump = true;
+			continue;
+		}
+
 		VisitStmt(ctx, stmt);
 	}
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtLabel(VisitorContext *ctx, StmtLabel *node) {
-	llvm::BasicBlock *block = GetLabelBlock(ctx, node);
+	// Set the label name.
+	llvm::BasicBlock *block = GetBasicBlock(ctx, node->basicBlock);
+	block->setName(node->debugName);
 
-	// Create the fallthrough branch, but only if the last instruction wasn't a terminator
-	bool isTerminator = false;
-	if (!m_builder.GetInsertBlock()->empty()) {
-		llvm::Instruction &last = m_builder.GetInsertBlock()->back();
-		isTerminator = last.isTerminator();
-	}
-	if (!isTerminator) {
-		m_builder.CreateBr(block);
-	}
-
-	// Add in the new block
-	block->insertInto(ctx->currentFunc);
-	m_builder.SetInsertPoint(block);
+	// Setting up the builder is done by VisitBasicBlock, this function doesn't
+	// really do anything important.
 
 	return {};
 }
-StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *node) {
-	if (node->condition) {
-		ExprRes res = VisitExpr(ctx, node->condition);
-		llvm::Value *toCheck = res.value;
+StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *cond, StmtJump *unCond) {
+	// We're passed two arguments: an optional conditional jump, and a mandatory unconditional jump.
+	// Conditional jumps require passing in two jumps, since a conditional jump doesn't specify
+	// where it goes if it's false.
 
-		// We have to create a fallthrough block, since our jump node falls through if the condition is false
-		llvm::BasicBlock *fallthrough = llvm::BasicBlock::Create(m_context, "fallthrough", ctx->currentFunc);
+	assert(unCond);
+	assert(unCond->condition == nullptr && "conditional jump passed as unconditional");
+
+	if (cond) {
+		assert(cond->condition && "unconditional jump passed as conditional");
+		ExprRes res = VisitExpr(ctx, cond->condition);
+		llvm::Value *toCheck = res.value;
 
 		// Find the value of 'false'
 		llvm::Value *falseValue = m_builder.CreateLoad(m_valueType, m_valueFalsePtr, "false_value");
@@ -1873,21 +1916,18 @@ StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *node) {
 		llvm::Value *isFalse = m_builder.CreateICmpEQ(toCheck, falseValue, "is_false");
 		llvm::Value *isFalseyValue = m_builder.CreateOr(isNull, isFalse);
 
-		llvm::BasicBlock *trueBB = GetLabelBlock(ctx, node->target);
-		llvm::BasicBlock *falseBB = fallthrough;
-		if (node->jumpOnFalse) {
+		llvm::BasicBlock *trueBB = GetBasicBlock(ctx, cond->target->basicBlock);
+		llvm::BasicBlock *falseBB = GetBasicBlock(ctx, unCond->target->basicBlock);
+		if (cond->jumpOnFalse) {
 			std::swap(trueBB, falseBB);
 		}
 
 		// Note the arguments for CreateCondBr is in the order trueBlock,falseBlock. However since we're checking if
 		// our value is false, the 'true' condition will get called for a null/false value.
 		m_builder.CreateCondBr(isFalseyValue, falseBB, trueBB);
-
-		// Switch to our newly-made fallthrough block
-		m_builder.SetInsertPoint(fallthrough);
 	} else {
 		// Unconditional branch, very easy :)
-		m_builder.CreateBr(GetLabelBlock(ctx, node->target));
+		m_builder.CreateBr(GetBasicBlock(ctx, unCond->target->basicBlock));
 	}
 
 	return {};
