@@ -57,6 +57,7 @@ namespace dwarf = llvm::dwarf;
 namespace wren_llvm_backend {
 
 class ScopedDebugGuard;
+class LLVMBackendImpl;
 
 struct UpvaluePackDef {
 	// All the variables bound to upvalues in the relevant closure
@@ -93,8 +94,24 @@ struct VisitorContext {
 	Module *currentModule = nullptr;
 };
 
+/// ExprRes wraps the result of evaluating an expression. It does this to
+/// cleanly handle the conversion between regular values and doubles (and
+/// if we later implement them, vectors and other special types).
 struct ExprRes {
-	llvm::Value *value = nullptr;
+  public:
+	ExprRes(llvm::Value *value) : m_value(value) {}
+
+	// Get this value as a Wren value
+	llvm::Value *Value(LLVMBackendImpl *backend) const;
+
+	// Get this value as a Wren double
+	llvm::Value *Double(LLVMBackendImpl *backend) const;
+
+	// Get this value in raw form, as a value or a double.
+	llvm::Value *Raw() const;
+
+  private:
+	llvm::Value *m_value = nullptr;
 };
 
 struct StmtRes {};
@@ -186,6 +203,9 @@ class LLVMBackendImpl : public LLVMBackend {
 	void SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value *value);
 	llvm::BasicBlock *GetBasicBlock(VisitorContext *ctx, StmtBlock *block);
 	llvm::Value *GetObjectFieldPointer(VisitorContext *ctx, VarDecl *thisVar);
+	llvm::Value *ValueToDouble(llvm::Value *pointerValue);
+	llvm::Value *DoubleToValue(llvm::Value *doubleValue);
+	llvm::Value *ToWrenType(llvm::Value *value, VarType *type);
 
 	/// Process a string literal, to make it suitable for using as a name in the IR
 	static std::string FilterStringLiteral(const std::string &literal);
@@ -284,6 +304,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	// Should statepoints (for GC use) be generated?
 	bool m_enableStatepoints = true;
 
+	friend ExprRes;
 	friend ScopedDebugGuard;
 };
 
@@ -558,7 +579,11 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 		break;
 	}
 
-	{
+	// This always needs to be run, but add a flag to disable it for
+	// development purposes - it can crash on invalid input IR, so manually
+	// checking (and seeing the IR validator on) the input can be helpful.
+	const char *disablePassEnv = getenv("WRENC_DISABLE_LLVM_PASSES");
+	if (disablePassEnv == nullptr || strcmp(disablePassEnv, "1") != 0) {
 		// See https://llvm.org/docs/NewPassManager.html
 		llvm::PassBuilder pb;
 
@@ -873,11 +898,28 @@ llvm::Function *LLVMBackendImpl::GenerateFunc(IRFn *func, Module *mod) {
 		StmtBlock *block = node->assignment->basicBlock;
 		assert(node->inputs.size() == block->ssaInputs.size());
 
+		// Phi nodes always write to SSA variables
+		SSAVariable *dest = dynamic_cast<SSAVariable *>(node->assignment->var);
+
 		llvm::PHINode *phi = node->GetBackendData<PhiData>()->node;
 
 		for (int i = 0; i < (int)node->inputs.size(); i++) {
 			llvm::Value *var = node->inputs.at(i)->GetBackendVarData<SSAData>()->value;
 			llvm::BasicBlock *src = GetBasicBlock(&ctx, block->ssaInputs.at(i));
+
+			// We might have to insert some type conversion instructions. We
+			// can't insert these before the Phi node - they have to be at the
+			// start of the basic block, and their inputs have to come from
+			// the stated basic blocks. So append the instructions right before
+			// the end of the basic blocks they're coming from.
+			// TODO does this hurt optimisations, if we have one conversion per
+			//  Phi node?
+			m_builder.SetInsertPoint(src->getTerminator());
+
+			// It's possible to have different types of inputs to an SSA node,
+			// so convert them all to the right type.
+			var = ToWrenType(var, dest->type);
+
 			phi->addIncoming(var, src);
 		}
 	}
@@ -1432,9 +1474,13 @@ void LLVMBackendImpl::SetVariable(VisitorContext *ctx, VarDecl *var, llvm::Value
 			fmt::print(stderr, "Cannot re-assign SSA var (in LLVM backend): '{}'\n", var->Name());
 			abort();
 		}
-		data->value = value;
+		// Use whatever datatype was set in the SSA variable.
+		data->value = ToWrenType(value, ssa->type);
 		return;
 	}
+
+	// Non-SSA values are always stored as values, never as doubles.
+	value = DoubleToValue(value);
 
 	llvm::Value *ptr = GetVariablePointer(ctx, var);
 	m_builder.CreateStore(value, ptr);
@@ -1486,6 +1532,35 @@ llvm::Value *LLVMBackendImpl::GetObjectFieldPointer(VisitorContext *ctx, VarDecl
 	return m_builder.CreateGEP(m_int8Type, thisPtr, {offsetNumber});
 }
 
+/// Bitcast a value from a Wren value type (which is a pointer) to a double.
+/// If the passed pointer is actually a double, it is returned as-is.
+llvm::Value *LLVMBackendImpl::ValueToDouble(llvm::Value *ptrValue) {
+	if (ptrValue->getType() == m_doubleType)
+		return ptrValue;
+
+	llvm::Value *asInt = m_builder.CreatePtrToInt(ptrValue, m_int64Type);
+	return m_builder.CreateBitCast(asInt, m_doubleType);
+}
+
+/// Bitcast a value from a double to a Wren value type (which is a pointer).
+/// If the passed double is actually a pointer, it is returned as-is.
+llvm::Value *LLVMBackendImpl::DoubleToValue(llvm::Value *doubleValue) {
+	if (doubleValue->getType() == m_valueType)
+		return doubleValue;
+
+	llvm::Value *asInt = m_builder.CreateBitCast(doubleValue, m_int64Type);
+	return m_builder.CreateCall(m_dummyPtrBitcast, {asInt});
+}
+
+llvm::Value *LLVMBackendImpl::ToWrenType(llvm::Value *value, VarType *type) {
+	// Note that both these functions can handle both values and doubles, and
+	// return their input as-is if conversion isn't required.
+	if (type != nullptr && type->type == VarType::NUM) {
+		return ValueToDouble(value);
+	}
+	return DoubleToValue(value);
+}
+
 std::string LLVMBackendImpl::FilterStringLiteral(const std::string &literal) {
 	// Limit the maximum string length
 	int length = std::min((int)literal.size(), 30);
@@ -1503,6 +1578,10 @@ std::string LLVMBackendImpl::FilterStringLiteral(const std::string &literal) {
 
 	return result;
 }
+
+llvm::Value *ExprRes::Value(LLVMBackendImpl *backend) const { return backend->DoubleToValue(m_value); }
+llvm::Value *ExprRes::Double(LLVMBackendImpl *backend) const { return backend->ValueToDouble(m_value); }
+llvm::Value *ExprRes::Raw() const { return m_value; }
 
 ScopedDebugGuard::ScopedDebugGuard(LLVMBackendImpl *backend, IRNode *node) : m_backend(backend) {
 	m_previous = backend->m_dbgCurrentNode;
@@ -1537,7 +1616,7 @@ ExprRes LLVMBackendImpl::VisitExpr(VisitorContext *ctx, IRExpr *expr) {
 
 	fmt::print("Unknown expr node {}\n", typeid(*expr).name());
 	abort();
-	return {};
+	return m_nullValue;
 }
 
 StmtRes LLVMBackendImpl::VisitStmt(VisitorContext *ctx, IRStmt *expr) {
@@ -1620,9 +1699,10 @@ ExprRes LLVMBackendImpl::VisitExprConst(VisitorContext *ctx, ExprConst *node) {
 	}
 	case CcValue::INT:
 	case CcValue::NUM: {
-		// Since valueType is a pointer, we have to produce the value as an integer then cast it in
-		llvm::Constant *intValue = CInt::get(m_int64Type, encode_number(node->value.n));
-		value = m_builder.CreateCall(m_dummyPtrBitcast, {intValue});
+		// Encode the value as a floating-point value. If it's needed as a
+		// value it'll be bitcasted, but if it's used with maths intrinsics
+		// then it can take advantage of LLVM's optimisations.
+		value = llvm::ConstantFP::get(m_doubleType, node->value.n);
 		break;
 	}
 	default:
@@ -1646,7 +1726,11 @@ ExprRes LLVMBackendImpl::VisitExprFieldLoad(VisitorContext *ctx, ExprFieldLoad *
 	return {result};
 }
 ExprRes LLVMBackendImpl::VisitExprPhi(VisitorContext *ctx, ExprPhi *node) {
-	llvm::PHINode *phi = m_builder.CreatePHI(m_valueType, node->inputs.size(), node->assignment->var->Name());
+	// Phi nodes always write to SSA variables
+	SSAVariable *dest = dynamic_cast<SSAVariable *>(node->assignment->var);
+
+	llvm::Type *type = (dest->type != nullptr && dest->type->type == VarType::NUM) ? m_doubleType : m_valueType;
+	llvm::PHINode *phi = m_builder.CreatePHI(type, node->inputs.size(), node->assignment->var->Name());
 
 	// Fill in the node's inputs later, when all the input variables have been created.
 	node->backendData = std::make_unique<PhiData>();
@@ -1658,22 +1742,18 @@ ExprRes LLVMBackendImpl::VisitExprPhi(VisitorContext *ctx, ExprPhi *node) {
 ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *node) {
 	ExprRes receiver = VisitExpr(ctx, node->receiver);
 
-	std::vector<llvm::Value *> args;
-	args.push_back(receiver.value);
-	for (IRExpr *expr : node->args) {
-		ExprRes res = VisitExpr(ctx, expr);
-		args.push_back(res.value);
-	}
-
 	// Handle intrinsic functions.
-	// This requires bit-casting from pointers to floats and back, so use a helper function for it.
+	// This requires bit-casting from pointers to floats, so use a helper function for it.
 	auto fpIntrinsic = [&](std::function<llvm::Value *(llvm::Value *, llvm::Value *)> func) -> ExprRes {
-		llvm::Value *lhs = m_builder.CreateBitCast(m_builder.CreatePtrToInt(args.at(0), m_int64Type), m_doubleType);
-		llvm::Value *rhs = m_builder.CreateBitCast(m_builder.CreatePtrToInt(args.at(1), m_int64Type), m_doubleType);
+		llvm::Value *lhs = VisitExpr(ctx, node->receiver).Double(this);
+		llvm::Value *rhs = VisitExpr(ctx, node->args.at(0)).Double(this);
 		llvm::Value *fpResult = func(lhs, rhs);
-		llvm::Value *intResult = m_builder.CreateBitCast(fpResult, m_int64Type);
-		llvm::Value *valueResult = m_builder.CreateCall(m_dummyPtrBitcast, {intResult});
-		return {valueResult};
+
+		// It's fine to just return a floating-point value as-is.
+		// Function calls are only ever used in StmtAssign-s, so if we return
+		// a double and we're supposed to return a value, it'll be converted
+		// automatically by SetVariable.
+		return {fpResult};
 	};
 	switch (node->intrinsic) {
 	case ExprFuncCall::NUM_ADD:
@@ -1688,6 +1768,14 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 		break;
 	}
 
+	std::vector<llvm::Value *> args;
+	llvm::Value *receiverValue = receiver.Value(this);
+	args.push_back(receiverValue);
+	for (IRExpr *expr : node->args) {
+		ExprRes res = VisitExpr(ctx, expr);
+		args.push_back(res.Value(this));
+	}
+
 	std::string name = node->signature->ToString();
 	m_signatures.insert(name);
 	SignatureId signature = hash_util::findSignatureId(name);
@@ -1696,7 +1784,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	// Call the lookup function
 	llvm::CallInst *func;
 	if (!node->superCaller) {
-		std::vector<llvm::Value *> lookupArgs = {receiver.value, sigValue};
+		std::vector<llvm::Value *> lookupArgs = {receiverValue, sigValue};
 		func = m_builder.CreateCall(m_virtualMethodLookup, lookupArgs, "vptr_" + name);
 	} else {
 		// Super lookups are special - we pass in the class this method is declared on, so the lookup function
@@ -1710,7 +1798,7 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 
 		llvm::Value *isStatic = CInt::get(m_int8Type, node->superCaller->methodInfo->isStatic);
 
-		std::vector<llvm::Value *> lookupArgs = {receiver.value, thisClass, sigValue, isStatic};
+		std::vector<llvm::Value *> lookupArgs = {receiverValue, thisClass, sigValue, isStatic};
 		func = m_builder.CreateCall(m_superMethodLookup, lookupArgs, "vptr_" + name);
 	}
 
@@ -1882,7 +1970,9 @@ ExprRes LLVMBackendImpl::VisitExprGetClassVar(VisitorContext *ctx, ExprGetClassV
 // Statements
 
 StmtRes LLVMBackendImpl::VisitStmtAssign(VisitorContext *ctx, StmtAssign *node) {
-	llvm::Value *value = VisitExpr(ctx, node->expr).value;
+	// SetVariable handles type conversion, pass the type through without
+	// conversion to avoid adding unnecessary bitcasts for doubles.
+	llvm::Value *value = VisitExpr(ctx, node->expr).Raw();
 
 	SetVariable(ctx, node->var, value);
 
@@ -1895,7 +1985,7 @@ StmtRes LLVMBackendImpl::VisitStmtFieldAssign(VisitorContext *ctx, StmtFieldAssi
 	llvm::Value *fieldPointer = m_builder.CreateGEP(m_valueType, objFieldsPointer,
 	    {CInt::get(m_int32Type, node->var->Id())}, "field_ptr_" + node->var->Name());
 
-	m_builder.CreateStore(res.value, fieldPointer);
+	m_builder.CreateStore(res.Value(this), fieldPointer);
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtEvalAndIgnore(VisitorContext *ctx, StmtEvalAndIgnore *node) {
@@ -1969,7 +2059,8 @@ StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *cond, Stmt
 	if (cond) {
 		assert(cond->condition && "unconditional jump passed as conditional");
 		ExprRes res = VisitExpr(ctx, cond->condition);
-		llvm::Value *toCheck = res.value;
+		// TODO optimise numbers and other values that are true based on their Wren type.
+		llvm::Value *toCheck = res.Value(this);
 
 		// Find the value of 'false'
 		llvm::Value *falseValue = m_builder.CreateLoad(m_valueType, m_valueFalsePtr, "false_value");
@@ -1997,7 +2088,7 @@ StmtRes LLVMBackendImpl::VisitStmtJump(VisitorContext *ctx, StmtJump *cond, Stmt
 }
 StmtRes LLVMBackendImpl::VisitStmtReturn(VisitorContext *ctx, StmtReturn *node) {
 	ExprRes value = VisitExpr(ctx, node->value);
-	m_builder.CreateRet(value.value);
+	m_builder.CreateRet(value.Value(this));
 	return {};
 }
 StmtRes LLVMBackendImpl::VisitStmtLoadModule(VisitorContext *ctx, StmtLoadModule *node) {
@@ -2122,7 +2213,7 @@ StmtRes LLVMBackendImpl::VisitStmtDefineClass(VisitorContext *ctx, StmtDefineCla
 		// Inherits from Object by default
 		supertype = m_builder.CreateLoad(m_valueType, m_systemVars.at("Object"), "obj_class");
 	} else {
-		supertype = VisitExpr(ctx, cls->info->parentClass).value;
+		supertype = VisitExpr(ctx, cls->info->parentClass).Value(this);
 	}
 
 	// The data block stored in the ClassData is a pointer to the actual data block. See where classDataBlock is
