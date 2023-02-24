@@ -35,10 +35,10 @@ class ObjNumClass : public ObjNativeClass {
 	WREN_METHOD(getter) bool OperatorBoolNegate(double receiver);
 	WREN_METHOD(getter) double OperatorBitwiseNegate(double receiver);
 
-	WREN_METHOD() double OperatorPlus(double receiver, ARG("Right operand") double other);
-	WREN_METHOD() double OperatorMinus(double receiver, ARG("Right operand") double other);
-	WREN_METHOD() double OperatorMultiply(double receiver, ARG("Right operand") double other);
-	WREN_METHOD() double OperatorDivide(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() WREN_INTRINSIC(NUM_ADD) double OperatorPlus(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() WREN_INTRINSIC(NUM_SUB) double OperatorMinus(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() WREN_INTRINSIC(NUM_MUL) double OperatorMultiply(double receiver, ARG("Right operand") double other);
+	WREN_METHOD() WREN_INTRINSIC(NUM_DIV) double OperatorDivide(double receiver, ARG("Right operand") double other);
 	WREN_METHOD() double OperatorModulo(double receiver, ARG("Right operand") double other);
 
 	// Bitwise binary operators

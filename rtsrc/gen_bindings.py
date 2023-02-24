@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 METHOD_REGEX = re.compile(
     r"^\s*WREN_METHOD\((?P<type>[^)]*)\)\s+(?P<stat_virt>static\s+|virtual\s+)?" +
+    r"(?:WREN_INTRINSIC\((?P<intrinsic>[^)]+)\)\s+)?" +
     r"(?P<return>[\w*:]+\s+\**)(?P<name>\w+)\s*\((?P<args>.*)\)(?:\s+const)?\s*;$")
 CLASS_REGEX = re.compile(r"^class\s+(?P<name>Obj\w*)\s+[:{]")
 ARG_REGEX = re.compile(r"^\s*(?P<type>.+\s[*&]*)(?P<name>\w+)\s*$")
@@ -72,6 +73,7 @@ class Method:
     static: bool
     special_type: str
     parent_class: 'Class'
+    intrinsic: str
 
     def arity(self) -> int:
         count = len(self.args)
@@ -156,6 +158,7 @@ def parse_file(fi: TextIO) -> List[Class]:
         name = method_match.group("name")
         args_str = method_match.group("args")
         static_virtual = method_match.group("stat_virt")
+        intrinsic = method_match.group("intrinsic")
         special_type = method_match.group("type")
 
         # We can either have a static or a virtual qualifier - we only care about static qualifiers, and this group
@@ -198,7 +201,7 @@ def parse_file(fi: TextIO) -> List[Class]:
         if special_type == 'variadic':
             args.pop()
 
-        method = Method(return_type, name, args, static, special_type, current_class)
+        method = Method(return_type, name, args, static, special_type, current_class, intrinsic)
         current_class.methods.append(method)
 
     return classes
@@ -456,6 +459,10 @@ def generate_type_inference(output: TextIO, options: GenOptions):
         for method in cls.methods:
             return_value = cpp_type_to_inference_type(method, method.return_type)
 
+            intrinsic = "NONE"
+            if method.intrinsic:
+                intrinsic = method.intrinsic
+
             is_static = "true" if method.static else "false"
 
             args = [cpp_type_to_inference_type(method, arg.type) for arg in method.args]
@@ -467,8 +474,8 @@ def generate_type_inference(output: TextIO, options: GenOptions):
             args_str = ", ".join(args)
 
             output.write('\t\tif (signature == "%s") {\n' % method.signature())
-            output.write("\t\t\tresult = FnInfo{%s, %s, {%s}};\n" % (
-                return_value, is_static, args_str))
+            output.write("\t\t\tresult = FnInfo{%s, ExprFuncCall::%s, %s, {%s}};\n" % (
+                return_value, intrinsic, is_static, args_str))
             output.write("\t\t\treturn true;\n")
             output.write("\t\t}\n")
 

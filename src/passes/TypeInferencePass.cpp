@@ -330,7 +330,9 @@ void TypeInferencePass::GetExprDepsLoadReceiver(ExprLoadReceiver *expr, const Ty
 }
 void TypeInferencePass::GetExprDepsFuncCall(ExprFuncCall *expr, const TypeInferencePass::MarkDepFunc &markDep) {
 	GetExprDeps(expr->receiver, markDep);
-	// The arguments don't affect the return type.
+	for (IRExpr *arg : expr->args) {
+		GetExprDeps(arg, markDep);
+	}
 }
 void TypeInferencePass::GetExprDepsSystemVar(ExprSystemVar *expr, const MarkDepFunc &markDep) {
 	// No dependencies.
@@ -470,7 +472,23 @@ VarType *TypeInferencePass::ProcessExprFuncCall(ExprFuncCall *expr) {
 		return nullptr;
 	}
 
-	// No need to check the arguments, they don't affect the return type.
+	// Check all the arguments. If the arguments are wrong then we'll still
+	// get the same return type - we don't have method overloading - but it'll
+	// call Fibre.abort at runtime.
+	// In this case though, we need to make sure we don't make the call an
+	// intrinsic, since that might replace the error message with undefined
+	// behaviour.
+	bool areArgsCorrect = true;
+	for (int i = 0; i < (int)expr->args.size(); i++) {
+		VarType *argType = ProcessExpr(expr->args.at(i));
+		if (result.argTypes.at(i) != argType) {
+			areArgsCorrect = false;
+			break;
+		}
+	}
+
+	// If this function call can be turned into an intrinsic in the backend, mark that.
+	expr->intrinsic = areArgsCorrect ? result.intrinsic : ExprFuncCall::NONE;
 
 	return result.returnType;
 }

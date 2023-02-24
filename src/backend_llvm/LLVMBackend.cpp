@@ -18,6 +18,7 @@
 #include "LLVMBackend.h"
 #include "Scope.h"
 #include "Utils.h"
+#include "VarType.h"
 #include "common/common.h"
 
 #include <fmt/format.h>
@@ -256,6 +257,7 @@ class LLVMBackendImpl : public LLVMBackend {
 	llvm::IntegerType *m_int8Type = nullptr;
 	llvm::IntegerType *m_int32Type = nullptr;
 	llvm::IntegerType *m_int64Type = nullptr;
+	llvm::Type *m_doubleType = nullptr;
 	llvm::Type *m_voidType = nullptr;
 
 	llvm::DIBasicType *m_dbgValueType = nullptr;
@@ -303,6 +305,7 @@ LLVMBackendImpl::LLVMBackendImpl() : m_builder(m_context), m_module("myModule", 
 	m_int8Type = llvm::Type::getInt8Ty(m_context);
 	m_int32Type = llvm::Type::getInt32Ty(m_context);
 	m_int64Type = llvm::Type::getInt64Ty(m_context);
+	m_doubleType = llvm::Type::getDoubleTy(m_context);
 	m_voidType = llvm::Type::getVoidTy(m_context);
 
 	m_nullValue = llvm::ConstantExpr::getIntToPtr(CInt::get(m_int64Type, encode_object(nullptr)), m_valueType);
@@ -619,10 +622,9 @@ CompilationResult LLVMBackendImpl::Generate(Module *mod, const CompilationOption
 			llvm::BasicBlock::iterator iter(call);
 			llvm::ReplaceInstWithValue(iter, asPtr);
 		} else {
-			// TODO if we need to support non-constant ints, use BitCastInst and ReplaceInstWithInst
-			fmt::print(stderr, "dummy bitcast used with non-const arg (not implemented): {}\n", user->getName());
-			user->print(llvm::errs());
-			abort();
+			llvm::CastInst *asPtr = llvm::CastInst::CreateBitOrPointerCast(arg, m_valueType);
+
+			llvm::ReplaceInstWithInst(call, asPtr);
 		}
 	}
 
@@ -1661,6 +1663,29 @@ ExprRes LLVMBackendImpl::VisitExprFuncCall(VisitorContext *ctx, ExprFuncCall *no
 	for (IRExpr *expr : node->args) {
 		ExprRes res = VisitExpr(ctx, expr);
 		args.push_back(res.value);
+	}
+
+	// Handle intrinsic functions.
+	// This requires bit-casting from pointers to floats and back, so use a helper function for it.
+	auto fpIntrinsic = [&](std::function<llvm::Value *(llvm::Value *, llvm::Value *)> func) -> ExprRes {
+		llvm::Value *lhs = m_builder.CreateBitCast(m_builder.CreatePtrToInt(args.at(0), m_int64Type), m_doubleType);
+		llvm::Value *rhs = m_builder.CreateBitCast(m_builder.CreatePtrToInt(args.at(1), m_int64Type), m_doubleType);
+		llvm::Value *fpResult = func(lhs, rhs);
+		llvm::Value *intResult = m_builder.CreateBitCast(fpResult, m_int64Type);
+		llvm::Value *valueResult = m_builder.CreateCall(m_dummyPtrBitcast, {intResult});
+		return {valueResult};
+	};
+	switch (node->intrinsic) {
+	case ExprFuncCall::NUM_ADD:
+		return fpIntrinsic([&](auto lhs, auto rhs) { return m_builder.CreateFAdd(lhs, rhs, "num_add"); });
+	case ExprFuncCall::NUM_SUB:
+		return fpIntrinsic([&](auto lhs, auto rhs) { return m_builder.CreateFSub(lhs, rhs, "num_sub"); });
+	case ExprFuncCall::NUM_MUL:
+		return fpIntrinsic([&](auto lhs, auto rhs) { return m_builder.CreateFMul(lhs, rhs, "num_mul"); });
+	case ExprFuncCall::NUM_DIV:
+		return fpIntrinsic([&](auto lhs, auto rhs) { return m_builder.CreateFDiv(lhs, rhs, "num_div"); });
+	default:
+		break;
 	}
 
 	std::string name = node->signature->ToString();

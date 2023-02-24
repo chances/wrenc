@@ -23,6 +23,7 @@ class TypeInferencePass {
 
 	struct FnInfo {
 		VarType *returnType = nullptr;
+		ExprFuncCall::IntrinsicType intrinsic = ExprFuncCall::NONE;
 		bool isStatic = false;
 		std::vector<VarType *> argTypes;
 	};

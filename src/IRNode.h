@@ -457,6 +457,14 @@ class ExprPhi : public IRExpr {
 /// Either a function or a method call, depending on whether the receiver is null or not
 class ExprFuncCall : public IRExpr {
   public:
+	enum IntrinsicType {
+		NONE = 0,
+		NUM_ADD,
+		NUM_SUB,
+		NUM_MUL,
+		NUM_DIV,
+	};
+
 	void Accept(IRVisitor *visitor) override;
 
 	Signature *signature = nullptr; /// The signature of the method to call. MUST be unique-ified by CompContext
@@ -467,6 +475,9 @@ class ExprFuncCall : public IRExpr {
 	/// method either in which this call was made, or if this call was made in a closure, then the method that the
 	/// closure was defined in. Nested closures all point back to the method the outer-most one was declared in.
 	IRFn *superCaller = nullptr;
+
+	/// If this function can be replaced with some fixed functionality by the backend, this denotes how.
+	IntrinsicType intrinsic = NONE;
 };
 
 /// Create a closure over a function, binding any upvalues. This is used even when there are no upvalues, and
