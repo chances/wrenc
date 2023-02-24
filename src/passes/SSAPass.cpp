@@ -116,7 +116,7 @@ void SSAPass::Process(IRFn *fn) {
 	for (IRStmt *blockStmt : fn->body->statements) {
 		StmtBlock *block = dynamic_cast<StmtBlock *>(blockStmt);
 		if (!block) {
-			fprintf(stderr, "Found non-block statement in SSA pass: '%s'\n", typeid(blockStmt).name());
+			fprintf(stderr, "Found non-block statement in SSA pass: '%s'\n", typeid(*blockStmt).name());
 			abort();
 		}
 		if (!block->isBasicBlock) {

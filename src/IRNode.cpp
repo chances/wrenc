@@ -173,7 +173,7 @@ void IRVisitor::VisitFn(IRFn *node) {
 	Visit(body);
 	node->body = dynamic_cast<StmtBlock *>(body);
 	if (!node->body) {
-		fprintf(stderr, "Cannot convert function body to non-block '%s' in function '%s'!\n", typeid(body).name(),
+		fprintf(stderr, "Cannot convert function body to non-block '%s' in function '%s'!\n", typeid(*body).name(),
 		    node->debugName.c_str());
 		abort();
 	}
