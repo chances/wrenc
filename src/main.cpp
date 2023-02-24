@@ -9,6 +9,7 @@
 #include "passes/BasicBlockPass.h"
 #include "passes/IRCleanup.h"
 #include "passes/SSAPass.h"
+#include "passes/TypeInferencePass.h"
 #include "wren_compiler.h"
 #include "wrencc_config.h"
 
@@ -474,6 +475,10 @@ static CompilationResult runCompiler(const std::istream &input, const std::strin
 	SSAPass ssa(&ctx.alloc);
 	for (IRFn *fn : mod.GetFunctions())
 		ssa.Process(fn);
+
+	TypeInferencePass typeInference(&ctx.alloc);
+	for (IRFn *fn : mod.GetFunctions())
+		typeInference.Process(fn);
 
 	IRPrinter printer;
 	for (IRFn *fn : mod.GetFunctions())

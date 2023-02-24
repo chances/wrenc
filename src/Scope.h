@@ -10,6 +10,8 @@
 #include <string>
 #include <unordered_map>
 
+class VarType; // From VarType.h
+
 /// A local variable that can be reassigned at runtime. These variables do
 /// not implement SSA semantics.
 /// These are always used for upvalues; upvalues don't use SSA form.
@@ -53,6 +55,9 @@ class DLL_EXPORT SSAVariable : public VarDecl {
 	/// The one-and-only assignment that writes to this variable, or
 	/// null for function arguments.
 	StmtAssign *assignment = nullptr;
+
+	/// The type of this variable, or null to indicate it's unknown.
+	VarType *type = nullptr;
 
 	std::string Name() const override;
 	ScopeType Scope() const override;

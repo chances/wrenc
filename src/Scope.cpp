@@ -3,6 +3,7 @@
 //
 
 #include "Scope.h"
+#include "VarType.h"
 
 ScopeStack::ScopeStack() {}
 ScopeStack::~ScopeStack() {}

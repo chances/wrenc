@@ -414,22 +414,93 @@ def generate(output: TextIO, options: GenOptions):
     output.write("}\n")
 
 
+def cpp_type_to_inference_type(method: Method, cpp_type: str) -> str:
+    if cpp_type == "void":
+        return "m_nullType"
+    elif cpp_type == "std::string":
+        return "m_nativeTypeObjString"
+    elif cpp_type == "bool":
+        return "m_nativeTypeObjBool"
+    elif cpp_type == "int" or cpp_type == "double":
+        return "m_numType"
+    elif cpp_type == "Value":
+        return "nullptr"
+    elif cpp_type == "Obj*":
+        # TODO null-ness marking
+        return "nullptr"
+    elif cpp_type.startswith("Obj"):
+        # TODO null-ness marking
+        return "m_nativeType" + cpp_type.strip('*')
+    else:
+        raise Exception(f"Invalid (type-inf) type {cpp_type} for method {method.signature()}")
+
+
+def generate_type_inference(output: TextIO, options: GenOptions):
+    """Generate the compiler-side code that provides information on the core function return types."""
+
+    # Parse the headers
+    classes: List[Class] = []
+    for filename in options.files:
+        with open(filename, "r") as fi:
+            classes += parse_file(fi)
+
+    output.write("// Auto-generated file (from gen_bindings.py), DO NOT EDIT MANUALLY\n")
+    output.write("#include \"passes/TypeInferencePass.h\"\n")
+
+    output.write("bool TypeInferencePass::GenGetCoreFunctionInfo(\n")
+    output.write("\tconst std::string &name, const std::string &signature, FnInfo &result) {\n")
+
+    for cls in classes:
+        output.write('\tif (name == "%s") {\n' % cls.name)
+
+        for method in cls.methods:
+            return_value = cpp_type_to_inference_type(method, method.return_type)
+
+            is_static = "true" if method.static else "false"
+
+            args = [cpp_type_to_inference_type(method, arg.type) for arg in method.args]
+            if cls.name == NUMBER_CLASS and not method.static:
+                # Non-static number methods take the receiver as the first argument.
+                # How the C++ code takes it's receivers isn't something the compiler cares
+                # about for the purposes of type inference.
+                del args[0]
+            args_str = ", ".join(args)
+
+            output.write('\t\tif (signature == "%s") {\n' % method.signature())
+            output.write("\t\t\tresult = FnInfo{%s, %s, {%s}};\n" % (
+                return_value, is_static, args_str))
+            output.write("\t\t\treturn true;\n")
+            output.write("\t\t}\n")
+
+        output.write("\t}\n")
+
+    output.write("\treturn false;\n")
+    output.write("}\n")
+
+
 def main():
     parser = OptionParser()
     parser.add_option("--output", dest="filename", help="The filename to write to, or stdout if omitted",
                       metavar="FILE")
     parser.add_option("--pre-entry-gc", dest="pre_entry_gc", action="store_true",
                       help="Run the GC before every function call, for testing")
+    parser.add_option("--type-inference", dest="type_inference", action="store_true",
+                      help="Generate the compiler-side file with the type inference information")
 
     (options, args) = parser.parse_args()
 
     gen_opts = GenOptions(args, options.pre_entry_gc)
 
+    if options.type_inference:
+        gen_func = generate_type_inference
+    else:
+        gen_func = generate
+
     if options.filename:
         with open(options.filename, "w") as fi:
-            generate(fi, gen_opts)
+            gen_func(fi, gen_opts)
     else:
-        generate(sys.stdout, gen_opts)
+        gen_func(sys.stdout, gen_opts)
 
 
 if __name__ == "__main__":

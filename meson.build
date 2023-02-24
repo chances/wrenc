@@ -1,5 +1,7 @@
 project('wrencc', 'cpp', 'c', 'nasm', default_options: ['cpp_std=c++20'])
 
+prog_python = import('python').find_installation('python3')
+
 fmt_lib = static_library('fmt',
   'lib/fmt-8.1.1/src/format.cc',
   include_directories: ['lib/fmt-8.1.1/include'],
@@ -50,6 +52,21 @@ else
 	getopt_dep = []
 endif
 
+rtlib_class_headers = [
+  'rtsrc/Obj.h',
+  'rtsrc/ObjClass.h',
+  'rtsrc/ObjString.h',
+  'rtsrc/ObjMap.h',
+  'rtsrc/ObjRange.h',
+  'rtsrc/ObjSystem.h',
+  'rtsrc/ObjBool.h',
+  'rtsrc/ObjList.h',
+  'rtsrc/ObjNull.h',
+  'rtsrc/ObjNum.h',
+  'rtsrc/ObjFibre.h',
+  'rtsrc/ObjFn.h',
+]
+
 # Common library shared by both the runtime and compiler
 common_lib = static_library('common-lib',
   'common/common.cpp',
@@ -63,6 +80,14 @@ common_lib = static_library('common-lib',
 common = declare_dependency(
   link_with: [common_lib],
   include_directories: ['common'],
+)
+
+# Build the database of native functions, used for variable type analysis in the compiler.
+typeinf_func = custom_target(
+  'wrenc-core-typeinf',
+  output : ['typeinf.gen.cpp'],
+  input : ['rtsrc/gen_bindings.py', rtlib_class_headers],
+  command : [prog_python, '@INPUT@', '--output', '@OUTPUT@', '--type-inference'],
 )
 
 # If we're building LLVM statically, we have to link plugin code statically to avoid
@@ -103,6 +128,7 @@ wrenc = executable('wrencc',
   'src/SymbolTable.cpp',
   'src/ArenaAllocator.cpp',
   'src/CcValue.cpp',
+  'src/VarType.cpp',
   'src/Scope.cpp',
   'src/ClassInfo.cpp',
   'src/Utils.cpp',
@@ -110,7 +136,9 @@ wrenc = executable('wrencc',
   'src/passes/IRCleanup.cpp',
   'src/passes/BasicBlockPass.cpp',
   'src/passes/SSAPass.cpp',
+  'src/passes/TypeInferencePass.cpp',
   'src/backend_qbe/QbeBackend.cpp',
+  typeinf_func,
 
   dependencies: [
     fmt,
@@ -191,25 +219,10 @@ binding_options = []
 if get_option('pre_entry_gc')
   binding_options += '--pre-entry-gc'
 endif
-prog_python = import('python').find_installation('python3')
 rtlib_bindings = custom_target(
   'rtlib-bindings',
   output : ['bindings.gen.cpp'],
-  input : [
-    'rtsrc/gen_bindings.py',
-    'rtsrc/Obj.h',
-    'rtsrc/ObjClass.h',
-    'rtsrc/ObjString.h',
-    'rtsrc/ObjMap.h',
-    'rtsrc/ObjRange.h',
-    'rtsrc/ObjSystem.h',
-    'rtsrc/ObjBool.h',
-    'rtsrc/ObjList.h',
-    'rtsrc/ObjNull.h',
-    'rtsrc/ObjNum.h',
-    'rtsrc/ObjFibre.h',
-    'rtsrc/ObjFn.h',
-  ],
+  input : ['rtsrc/gen_bindings.py', rtlib_class_headers],
   command : [prog_python, '@INPUT@', '--output', '@OUTPUT@', binding_options],
 )
 

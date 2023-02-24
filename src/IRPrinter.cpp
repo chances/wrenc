@@ -4,6 +4,7 @@
 
 #include "IRPrinter.h"
 #include "ClassInfo.h"
+#include "VarType.h"
 #include "CompContext.h"
 #include "HashUtil.h"
 #include "Scope.h"
@@ -260,7 +261,13 @@ void IRPrinter::VisitStmtAssign(StmtAssign *node) {
 		return;
 	}
 
-	IRVisitor::VisitStmtAssign(node);
+	VisitVar(node->var);
+
+	if (ssaResult && ssaResult->type) {
+		FullTag("type: " + ssaResult->type->ToString());
+	}
+
+	Visit(node->expr);
 }
 
 void IRPrinter::VisitStmtBeginUpvalues(StmtBeginUpvalues *node) {
