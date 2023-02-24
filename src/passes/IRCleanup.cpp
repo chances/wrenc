@@ -234,7 +234,19 @@ IRExpr *IRCleanup::SubstituteExprFuncCall(ExprFuncCall *node) {
 		return node;
 
 	// Move the function call out, so that when ExprRunStatements are pulled out all the observed actions still
-	// occur in the same order.
+	// occur in the same order. For example:
+	//
+	// f( a(), [b()] )
+	//
+	// Since a() isn't an ExprRunStatements node but [b()] is, when the ExprRunStatements are extracted you
+	// get the following:
+	//
+	// var tmp = []
+	// tmp.add(b())
+	// f( a(), tmp )
+	//
+	// And here, b() is now called before a(). To avoid that, pull out all the function calls. This is
+	// done as the function arguments are processed for the outer function ('f' in the example above).
 
 	// Make a temporary variable, and set it to the result of the call
 	LocalVariable *tmpVar = m_allocator->New<LocalVariable>();
