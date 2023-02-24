@@ -23,7 +23,6 @@ class BlockInfo : public BackendNodeData {
 	// The function this block belongs to
 	IRFn *fn = nullptr;
 
-	std::vector<StmtBlock *> successors;   // aka 'children', blocks that this block jumps to.
 	std::vector<StmtBlock *> predecessors; // aka 'parents', blocks that jump to this block.
 
 	/// Statements to be prepended to this block. Adding them here means they're all prepended
@@ -138,7 +137,6 @@ void SSAPass::Process(IRFn *fn) {
 			if (!jump)
 				break;
 
-			getBI(block)->successors.push_back(block);
 			getBI(jump->target->basicBlock)->predecessors.push_back(block);
 		}
 
@@ -162,14 +160,23 @@ void SSAPass::Process(IRFn *fn) {
 		StmtBlock *block = (StmtBlock *)blockStmt;
 		BlockInfo *bi = getBI(block);
 
-		if (block->statements.empty())
-			continue;
+		if (!block->statements.empty()) {
+			block->statements.insert(block->statements.begin(), bi->prepend.begin(), bi->prepend.end());
 
-		block->statements.insert(block->statements.begin(), bi->prepend.begin(), bi->prepend.end());
+			// Only fill in the SSA input data now that it's actually required.
+			// This lets us skip filling it into blocks that don't have Phi nodes.
+			block->ssaInputs = bi->predecessors;
+		}
 
-		// Only fill in the SSA input data now that it's actually required.
-		// This lets us skip filling it into blocks that don't have Phi nodes.
-		block->ssaInputs = bi->predecessors;
+		block->backendData.reset();
+	}
+
+	// Release all the memory used by the custom variable data.
+	for (LocalVariable *local : fn->locals) {
+		local->backendVarData.reset();
+	}
+	for (SSAVariable *ssa : fn->ssaVars) {
+		ssa->backendVarData.reset();
 	}
 }
 
