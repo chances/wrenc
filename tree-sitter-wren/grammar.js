@@ -40,6 +40,10 @@ module.exports = grammar({
 			optional('foreign'),
 			'class',
 			field('name', $.identifier),
+			optional(seq(
+				'is',
+				field('supertype', $._restricted_expression),
+			)),
 			'{',
 			repeat($._class_item),
 			'}',
@@ -97,16 +101,23 @@ module.exports = grammar({
 			)),
 		),
 
-		_expression: $ => choice(
+		// Used to resolve conflicts on the class import.
+		// This isn't a distinction that exists in actual Wren, but it's
+		// highly unlikely to ever matter.
+		_restricted_expression: $ => choice(
 			$.true_literal,
 			$.false_literal,
 			$.null_literal,
 			$.string_literal,
 			$.number,
+			$.identifier,
+			$.expr_brackets,
+		),
+		_expression: $ => choice(
+			$._restricted_expression,
 			$.function_call,
 			$.this_call,
 			$.infix_call,
-			$.identifier,
 			$.list_initialiser,
 			$.map_initialiser,
 		),
@@ -117,6 +128,8 @@ module.exports = grammar({
 
 		// TODO interpolation, escapes
 		string_literal: $ => /"[^"]*"/,
+
+		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 
 		function_call: $ => choice(
 			// Closure-creating call

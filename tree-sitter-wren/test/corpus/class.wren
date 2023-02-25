@@ -203,3 +203,22 @@ a.abc[1, 2, 3] = 123
     (this_call name: (identifier) (number) (number) (number) (number))
     (function_call receiver: (identifier) name: (identifier) (number) (number) (number) (number))
 )
+
+==============
+Superclass extends
+==============
+
+// This is where one class extends another - the test name isn't great
+
+class A is B {}
+class A is (B.hello) {}
+class A is ("hello, world!") {}
+
+-----
+
+(source_file
+    (comment)
+    (class_definition name: (identifier) supertype: (identifier))
+    (class_definition name: (identifier) supertype: (expr_brackets (function_call receiver: (identifier) name: (identifier))))
+    (class_definition name: (identifier) supertype: (expr_brackets (string_literal)))
+)
