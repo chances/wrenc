@@ -98,8 +98,8 @@ module.exports = grammar({
 		string_literal: $ => /"[^"]*"/,
 
 		function_call: $ => choice(
-			seq(field('receiver', $._expression), '.', $.identifier, optional($._func_args)),
-			prec.right(seq(field('receiver', $._expression), '.', $.identifier, '=', $._expression)),
+			seq(field('receiver', $._expression), '.', field('name', $.identifier), optional($._func_args)),
+			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), '=', $._expression)),
 		),
 
 		// The infix function calls - https://wren.io/syntax.html

@@ -39,9 +39,9 @@ class A {
         (method name: (identifier)
             (arg_list (identifier))
             (stmt_block
-                (function_call receiver: (identifier) (identifier) (number))
-                (function_call receiver: (identifier) (identifier) (number) (function_call receiver: (identifier) (identifier)))
-                (function_call receiver: (identifier) (identifier) (number) (number) (number) (number) (number))
+                (function_call receiver: (identifier) name: (identifier) (number))
+                (function_call receiver: (identifier) name: (identifier) (number) (function_call receiver: (identifier) name: (identifier)))
+                (function_call receiver: (identifier) name: (identifier) (number) (number) (number) (number) (number))
             )
         )
     )
