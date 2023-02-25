@@ -192,7 +192,7 @@ module.exports = grammar({
 			optional('static'),
 			optional('construct'),
 			field('name', $.identifier),
-			optional($.arg_list),
+			optional($.param_list),
 			$.stmt_block,
 		),
 
@@ -201,10 +201,10 @@ module.exports = grammar({
 			optional('static'),
 			optional('construct'),
 			field('name', $.identifier),
-			optional($.arg_list),
+			optional($.param_list),
 		),
 
-		arg_list: $ => choice(
+		param_list: $ => choice(
 			seq('=', '(', $.identifier, ')'),
 			seq('(', ')'),
 			seq('(', $.identifier, repeat(seq(',', $.identifier)), ')'),

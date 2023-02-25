@@ -25,7 +25,7 @@ class A {
     (comment)
     (class_definition name: (identifier)
         (method name: (identifier)
-            (arg_list
+            (param_list
                 (identifier) (identifier) (identifier) (identifier)
             )
             (stmt_block
@@ -37,7 +37,7 @@ class A {
             )
         )
         (method name: (identifier)
-            (arg_list (identifier))
+            (param_list (identifier))
             (stmt_block
                 (function_call receiver: (identifier) name: (identifier) (number))
                 (function_call receiver: (identifier) name: (identifier) (number) (function_call receiver: (identifier) name: (identifier)))

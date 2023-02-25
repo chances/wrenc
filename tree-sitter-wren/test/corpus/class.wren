@@ -42,9 +42,9 @@ class Cls {
 (source_file
     (class_definition name: (identifier)
         (method name: (identifier) (stmt_block))
-        (method name: (identifier) (arg_list) (stmt_block))
-        (method name: (identifier) (arg_list (identifier)) (stmt_block))
-        (method name: (identifier) (arg_list (identifier) (identifier) (identifier)) (stmt_block))
+        (method name: (identifier) (param_list) (stmt_block))
+        (method name: (identifier) (param_list (identifier)) (stmt_block))
+        (method name: (identifier) (param_list (identifier) (identifier) (identifier)) (stmt_block))
     )
 )
 
@@ -63,8 +63,8 @@ class Cls {
 (source_file
     (class_definition name: (identifier)
         (method name: (identifier) (stmt_block))
-        (method name: (identifier) (arg_list) (stmt_block))
-        (method name: (identifier) (arg_list (identifier)) (stmt_block))
+        (method name: (identifier) (param_list) (stmt_block))
+        (method name: (identifier) (param_list (identifier)) (stmt_block))
     )
 )
 
@@ -87,9 +87,9 @@ class Cls {
 (source_file
     (class_definition name: (identifier)
         (foreign_method name: (identifier))
-        (foreign_method name: (identifier) (arg_list))
-        (foreign_method name: (identifier) (arg_list (identifier) (identifier) (identifier)))
-        (foreign_method name: (identifier) (arg_list (identifier)))
+        (foreign_method name: (identifier) (param_list))
+        (foreign_method name: (identifier) (param_list (identifier) (identifier) (identifier)))
+        (foreign_method name: (identifier) (param_list (identifier)))
 
         (foreign_method name: (identifier))
         (foreign_method name: (identifier))
