@@ -36,6 +36,7 @@ module.exports = grammar({
 		stmt_block: $ => seq('{', optional($._statement_sequence), '}'),
 
 		class_definition: $ => seq(
+			optional('foreign'),
 			'class',
 			field('name', $.identifier),
 			'{',
@@ -168,12 +169,23 @@ module.exports = grammar({
 
 		_class_item: $ => choice(
 			$.method,
+			$.foreign_method,
 		),
 
 		method: $ => seq(
+			optional('static'),
+			optional('construct'),
 			field('name', $.identifier),
 			optional($.arg_list),
 			$.stmt_block,
+		),
+
+		foreign_method: $ => seq(
+			'foreign',
+			optional('static'),
+			optional('construct'),
+			field('name', $.identifier),
+			optional($.arg_list),
 		),
 
 		arg_list: $ => choice(
