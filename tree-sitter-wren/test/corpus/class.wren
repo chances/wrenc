@@ -97,6 +97,46 @@ class Cls {
 )
 
 ==============
+This dispatch
+==============
+
+class Cls {
+    method {
+        a // Treated as an identifier, not a method call
+        a()
+        a(1)
+        a(1,2,3)
+        a = 123
+
+        a {}
+        a(1,2,3) {}
+
+        a
+        {}
+    }
+}
+
+-----
+
+(source_file
+    (class_definition name: (identifier)
+        (method name: (identifier) (stmt_block
+            (identifier) (comment)
+            (this_call name: (identifier))
+            (this_call name: (identifier) (number))
+            (this_call name: (identifier) (number) (number) (number))
+            (this_call name: (identifier) (number))
+
+            (this_call name: (identifier) (stmt_block))
+            (this_call name: (identifier) (number) (number) (number) (stmt_block))
+
+            (identifier)
+            (stmt_block)
+        ))
+    )
+)
+
+==============
 Foreign class
 ==============
 

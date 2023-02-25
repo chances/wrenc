@@ -86,6 +86,7 @@ module.exports = grammar({
 			$.string_literal,
 			$.number,
 			$.function_call,
+			$.this_call,
 			$.infix_call,
 			$.identifier,
 			$.list_initialiser,
@@ -109,6 +110,21 @@ module.exports = grammar({
 
 			// Setter calls
 			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), '=', $._expression)),
+		),
+
+		// TODO deduplicate with function_call
+		this_call: $ => choice(
+			// Closure-creating call
+			seq(field('name', $.identifier), optional($._func_args), $.stmt_block),
+
+			// Regular method call
+			// Require function arguments here, to avoid ambiguity with an
+			// identifier expression. That can only be found with symbol
+			// lookups.
+			seq(field('name', $.identifier), $._func_args),
+
+			// Setter calls
+			prec.right(seq(field('name', $.identifier), '=', $._expression)),
 		),
 
 		// The infix function calls - https://wren.io/syntax.html
