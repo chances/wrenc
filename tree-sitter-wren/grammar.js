@@ -21,6 +21,22 @@ let infix_operators = [
 // are left-associative.
 let prefix_operators = ['!', '-', '~'];
 
+// Make a list of all the possible operators, so they can be used in
+// method definitions.
+let all_operators
+{
+	let tmp = new Set();
+	for (let operator of infix_operators) {
+		for (var i=2; i<operator.length; i++) {
+			tmp.add(operator[i]);
+		}
+	}
+	for (let operator of prefix_operators) {
+		tmp.add(operator);
+	}
+	all_operators = Array.from(tmp);
+}
+
 module.exports = grammar({
 	name: 'wren',
 
@@ -273,16 +289,21 @@ module.exports = grammar({
 		method: $ => seq(
 			optional('static'),
 			optional('construct'),
-			field('name', $.identifier),
+			// Operators are valid names, as that's how infix and unary
+			// operator functions are declared.
+			field('name', choice($.identifier, $.operator_method_name)),
 			optional($.param_list),
 			$.stmt_block,
 		),
+		// Put this into it's own rule, so it's possible to find the name
+		// of the method since there's no identifier.
+		operator_method_name: $ => choice(...all_operators),
 
 		foreign_method: $ => seq(
 			'foreign',
 			optional('static'),
 			optional('construct'),
-			field('name', $.identifier),
+			field('name', choice($.identifier, $.operator_method_name)),
 			optional($.param_list),
 		),
 

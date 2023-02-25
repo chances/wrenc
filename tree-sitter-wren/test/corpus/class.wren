@@ -225,6 +225,46 @@ a + -b
 )
 
 ==============
+Infix function definitions
+==============
+
+class A {
+    -(other) {}
+    /(other) {}
+    &&(other) {}
+}
+
+-----
+
+(source_file (class_definition (identifier)
+    (method (operator_method_name) (param_list (identifier)) (stmt_block))
+    (method (operator_method_name) (param_list (identifier)) (stmt_block))
+    (method (operator_method_name) (param_list (identifier)) (stmt_block))
+))
+
+==============
+Prefix function definitions
+==============
+
+class A {
+    - {}
+    ! {}
+    ~ {}
+    foreign !
+    abc {}
+}
+
+-----
+
+(source_file (class_definition (identifier)
+    (method (operator_method_name) (stmt_block))
+    (method (operator_method_name) (stmt_block))
+    (method (operator_method_name) (stmt_block))
+    (foreign_method (operator_method_name))
+    (method (identifier) (stmt_block))
+))
+
+==============
 Superclass extends
 ==============
 
