@@ -110,6 +110,9 @@ module.exports = grammar({
 
 			// Setter calls
 			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), '=', $._expression)),
+
+			// Subscript calls (getter and setter)
+			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), $._subscript_args, optional(seq('=', $._expression)))),
 		),
 
 		// TODO deduplicate with function_call
@@ -125,6 +128,9 @@ module.exports = grammar({
 
 			// Setter calls
 			prec.right(seq(field('name', $.identifier), '=', $._expression)),
+
+			// Subscript calls (getter and setter)
+			prec.right(seq(field('name', $.identifier), $._subscript_args, optional(seq('=', $._expression)))),
 		),
 
 		// The infix function calls - https://wren.io/syntax.html
@@ -171,6 +177,10 @@ module.exports = grammar({
 			seq('(', $._expression, ')'),
 			seq('(', $._expression, repeat(seq(',', $._expression)), ')'),
 		),
+		_subscript_args: $ => choice(
+			seq('[', $._expression, ']'),
+			seq('[', $._expression, repeat(seq(',', $._expression)), ']'),
+		),
 
 		list_initialiser: $ => seq(
 			'[',
@@ -208,6 +218,7 @@ module.exports = grammar({
 			seq('=', '(', $.identifier, ')'),
 			seq('(', ')'),
 			seq('(', $.identifier, repeat(seq(',', $.identifier)), ')'),
+			seq('[', $.identifier, repeat(seq(',', $.identifier)), ']', optional(seq('=', '(', $.identifier, ')'))),
 		),
 
 		comment: $ => /\/\/.*/, // Single-line comment

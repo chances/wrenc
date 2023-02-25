@@ -147,3 +147,59 @@ foreign class Cls {}
 (source_file
     (class_definition name: (identifier))
 )
+
+==============
+Subscript methods
+==============
+
+class Cls {
+    func[a] {}
+    func[a, b] {}
+    func[a, b, c] {}
+
+    func[a]=(v) {}
+    func[a, b]=(v) {}
+    func[a, b, c]=(v) {}
+}
+
+-----
+
+(source_file
+    (class_definition name: (identifier)
+        (method name: (identifier) (param_list (identifier)) (stmt_block))
+        (method name: (identifier) (param_list (identifier) (identifier)) (stmt_block))
+        (method name: (identifier) (param_list (identifier) (identifier) (identifier)) (stmt_block))
+
+        (method name: (identifier) (param_list (identifier) (identifier)) (stmt_block))
+        (method name: (identifier) (param_list (identifier) (identifier) (identifier)) (stmt_block))
+        (method name: (identifier) (param_list (identifier) (identifier) (identifier) (identifier)) (stmt_block))
+    )
+)
+
+==============
+Subscript calls
+==============
+
+abc[1]
+abc[1, 2]
+abc[1, 2, 3]
+a.abc[1, 2, 3]
+
+abc[1] = 123
+abc[1, 2] = 123
+abc[1, 2, 3] = 123
+a.abc[1, 2, 3] = 123
+
+-----
+
+(source_file
+    (this_call name: (identifier) (number))
+    (this_call name: (identifier) (number) (number))
+    (this_call name: (identifier) (number) (number) (number))
+    (function_call receiver: (identifier) name: (identifier) (number) (number) (number))
+
+    (this_call name: (identifier) (number) (number))
+    (this_call name: (identifier) (number) (number) (number))
+    (this_call name: (identifier) (number) (number) (number) (number))
+    (function_call receiver: (identifier) name: (identifier) (number) (number) (number) (number))
+)
