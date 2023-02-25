@@ -13,6 +13,7 @@ module.exports = grammar({
 			$.stmt_if,
 			$.stmt_for,
 			$.stmt_return,
+			$.stmt_import,
 			$.var_decl,
 			$._expression,
 
@@ -68,6 +69,23 @@ module.exports = grammar({
 		stmt_return: $ => seq(
 			'return',
 			optional($._expression),
+		),
+
+		stmt_import: $ => seq(
+			'import',
+			field('module', $.string_literal),
+			optional(seq(
+				'for',
+				$._import_clause,
+				repeat(seq(',', $._import_clause)),
+			)),
+		),
+		_import_clause: $ => seq(
+			$.identifier,
+			optional(seq(
+				'as',
+				field('as', $.identifier),
+			)),
 		),
 
 		var_decl: $ => seq(

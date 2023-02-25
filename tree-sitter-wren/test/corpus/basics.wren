@@ -166,3 +166,30 @@ Binary operators
     (infix_call (number) (number))
     (infix_call (number) (number))
 )
+
+==============
+Imports
+==============
+
+// These go here because there's not really a better place to put them
+
+import "my_module"
+import "my_module" for A
+import "my_module" for A, B
+import "my_module" for A, B, C
+import "my_module" for A as a, B, C as c
+
+-----
+
+(source_file
+    (comment)
+    (stmt_import module: (string_literal))
+    (stmt_import module: (string_literal) (identifier))
+    (stmt_import module: (string_literal) (identifier) (identifier))
+    (stmt_import module: (string_literal) (identifier) (identifier) (identifier))
+    (stmt_import module: (string_literal)
+        (identifier) as: (identifier)
+        (identifier)
+        (identifier) as: (identifier)
+    )
+)
