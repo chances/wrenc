@@ -9,6 +9,33 @@ String literals
 (source_file (string_literal))
 
 ==============
+Number literals
+==============
+
+1
+123
+123.456
+
+-123
+-123.456
+
+123e1
+0.1e1
+10e-1
+0.1e+1
+
+0xdeadbeef
+
+-----
+
+(source_file
+    (number) (number) (number)
+    (number) (number)
+    (number) (number) (number) (number)
+    (number)
+)
+
+==============
 List literals
 ==============
 

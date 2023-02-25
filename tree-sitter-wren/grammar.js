@@ -240,7 +240,10 @@ module.exports = grammar({
 
 		_newline: $ => '\n',
 		identifier: $ => /[A-Za-z_][A-Za-z0-9_]*/,
-		number: $ => /[0-9]+/,
+		number: $ => choice(
+			/-?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)?/,
+			/0x[0-9a-fA-F]+/,
+		),
 	},
 
 	extras: $ => [
