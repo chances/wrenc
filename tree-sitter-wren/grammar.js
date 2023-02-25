@@ -90,6 +90,7 @@ module.exports = grammar({
 			$.infix_call,
 			$.identifier,
 			$.list_initialiser,
+			$.map_initialiser,
 		),
 
 		true_literal: $ => 'true',
@@ -192,6 +193,19 @@ module.exports = grammar({
 			)),
 			']'
 		),
+
+		// Use a lower precidence to prefer stmt_block
+		map_initialiser: $ => prec(-1, seq(
+			'{',
+			optional(seq(
+				$._map_init_key,
+				repeat(seq(
+					',', $._map_init_key,
+				)),
+			)),
+			'}'
+		)),
+		_map_init_key: $ => seq($._expression, ':', $._expression),
 
 		_class_item: $ => choice(
 			$.method,
