@@ -82,6 +82,7 @@ module.exports = grammar({
 			$.true_literal,
 			$.false_literal,
 			$.null_literal,
+			$.string_literal,
 			$.number,
 			$.function_call,
 			$.infix_call,
@@ -92,6 +93,9 @@ module.exports = grammar({
 		true_literal: $ => 'true',
 		false_literal: $ => 'false',
 		null_literal: $ => 'null',
+
+		// TODO interpolation, escapes
+		string_literal: $ => /"[^"]*"/,
 
 		function_call: $ => choice(
 			seq(field('receiver', $._expression), '.', $.identifier, optional($._func_args)),
