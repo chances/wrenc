@@ -122,6 +122,18 @@ Only one comment
 (source_file (comment))
 
 ==============
+Empty blocks
+==============
+
+{}
+
+{ }
+
+-----
+
+(source_file (stmt_block) (stmt_block))
+
+==============
 Binary operators
 ==============
 
