@@ -287,31 +287,38 @@ module.exports = grammar({
 		),
 
 		method: $ => seq(
+			$._method_sig,
+			$.stmt_block,
+		),
+		foreign_method: $ => seq(
+			'foreign',
+			$._method_sig,
+		),
+		_method_sig: $ => seq(
 			optional('static'),
 			optional('construct'),
 			// Operators are valid names, as that's how infix and unary
 			// operator functions are declared.
-			field('name', choice($.identifier, $.operator_method_name)),
-			optional($.param_list),
-			$.stmt_block,
+			choice(seq(
+				field('name', choice($.identifier, $.operator_method_name)),
+				optional($.param_list),
+			), seq(
+				$.subscript_param_list,
+			)),
 		),
+
 		// Put this into it's own rule, so it's possible to find the name
 		// of the method since there's no identifier.
 		operator_method_name: $ => choice(...all_operators),
-
-		foreign_method: $ => seq(
-			'foreign',
-			optional('static'),
-			optional('construct'),
-			field('name', choice($.identifier, $.operator_method_name)),
-			optional($.param_list),
-		),
 
 		param_list: $ => choice(
 			seq('=', '(', $.identifier, ')'),
 			seq('(', ')'),
 			seq('(', $.identifier, repeat(seq(',', $.identifier)), ')'),
-			seq('[', $.identifier, repeat(seq(',', $.identifier)), ']', optional(seq('=', '(', $.identifier, ')'))),
+		),
+		subscript_param_list: $ => seq(
+			'[', $.identifier, repeat(seq(',', $.identifier)), ']',
+			optional(seq('=', '(', $.identifier, ')')),
 		),
 
 		comment: $ => /\/\/.*/, // Single-line comment

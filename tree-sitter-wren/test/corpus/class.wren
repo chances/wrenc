@@ -153,26 +153,26 @@ Subscript methods
 ==============
 
 class Cls {
-    func[a] {}
-    func[a, b] {}
-    func[a, b, c] {}
+    [a] {}
+    [a, b] {}
+    [a, b, c] {}
 
-    func[a]=(v) {}
-    func[a, b]=(v) {}
-    func[a, b, c]=(v) {}
+    [a]=(v) {}
+    [a, b]=(v) {}
+    [a, b, c]=(v) {}
 }
 
 -----
 
 (source_file
     (class_definition name: (identifier)
-        (method name: (identifier) (param_list (identifier)) (stmt_block))
-        (method name: (identifier) (param_list (identifier) (identifier)) (stmt_block))
-        (method name: (identifier) (param_list (identifier) (identifier) (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier) (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier) (identifier) (identifier)) (stmt_block))
 
-        (method name: (identifier) (param_list (identifier) (identifier)) (stmt_block))
-        (method name: (identifier) (param_list (identifier) (identifier) (identifier)) (stmt_block))
-        (method name: (identifier) (param_list (identifier) (identifier) (identifier) (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier) (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier) (identifier) (identifier)) (stmt_block))
+        (method (subscript_param_list (identifier) (identifier) (identifier) (identifier)) (stmt_block))
     )
 )
 
