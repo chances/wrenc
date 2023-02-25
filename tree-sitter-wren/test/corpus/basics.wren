@@ -118,3 +118,37 @@ Only one comment
 -----
 
 (source_file (comment))
+
+==============
+Binary operators
+==============
+
+1 + 2
+1 / 2
+1 .. 2
+1 << 2
+1 & 2
+1 ^ 2
+1 | 2
+1 < 2
+1 is 2
+1 == 2
+1 && 2
+1 || 2
+
+-----
+
+(source_file
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+    (infix_call (number) (number))
+)
