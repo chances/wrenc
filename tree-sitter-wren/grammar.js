@@ -98,7 +98,15 @@ module.exports = grammar({
 		string_literal: $ => /"[^"]*"/,
 
 		function_call: $ => choice(
+			// Closure-creating call
+			seq(field('receiver', $._expression), '.', field('name', $.identifier), optional($._func_args),
+				$.stmt_block,
+			),
+
+			// Regular function call
 			seq(field('receiver', $._expression), '.', field('name', $.identifier), optional($._func_args)),
+
+			// Setter calls
 			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), '=', $._expression)),
 		),
 
