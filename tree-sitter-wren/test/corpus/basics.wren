@@ -15,6 +15,7 @@ class A {
     setter=(value) {
         this.abc = 123
         System.print(1234, value.hello)
+        System.print(1, 2, 3, 4, 5)
     }
 }
 
@@ -40,6 +41,7 @@ class A {
             (stmt_block
                 (function_call receiver: (identifier) (identifier) (number))
                 (function_call receiver: (identifier) (identifier) (number) (function_call receiver: (identifier) (identifier)))
+                (function_call receiver: (identifier) (identifier) (number) (number) (number) (number) (number))
             )
         )
     )

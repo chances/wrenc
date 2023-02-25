@@ -144,7 +144,7 @@ module.exports = grammar({
 		_func_args: $ => choice(
 			seq('(', ')'),
 			seq('(', $._expression, ')'),
-			seq('(', $._expression, ',', repeat($._expression), ')'),
+			seq('(', $._expression, repeat(seq(',', $._expression)), ')'),
 		),
 
 		list_initialiser: $ => seq(
