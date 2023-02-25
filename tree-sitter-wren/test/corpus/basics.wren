@@ -168,6 +168,20 @@ Binary operators
 )
 
 ==============
+Precidence
+==============
+
+a * b - c
+a - b * c
+
+-----
+
+(source_file
+    (infix_call (infix_call (identifier) (identifier)) (identifier))
+    (infix_call (identifier) (infix_call (identifier) (identifier)))
+)
+
+==============
 Imports
 ==============
 

@@ -190,14 +190,20 @@ module.exports = grammar({
 				for (var i=2; i<operator.length; i++) {
 					let sym = operator[i];
 					let associativity = operator[0];
-					let precidence = operator[1];
+
+					// Fix the direction problem with Wren and Tree-sitter
+					// using different meanings for precidence, and bias
+					// it so they're mostly positive (aside from the really
+					// low precedence ones like a?b:c for which it makes
+					// sense).
+					let precidence = 10 - operator[1];
 
 					let rule = seq($._expression, sym, $._expression);
 
 					if (associativity == 'left') {
-						choices.push(prec.left(3, rule));
+						choices.push(prec.left(precidence, rule));
 					} else {
-						choices.push(prec.right(3, rule));
+						choices.push(prec.right(precidence, rule));
 					}
 				}
 			}
