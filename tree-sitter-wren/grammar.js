@@ -1,3 +1,26 @@
+// The infix function calls - from https://wren.io/syntax.html
+// These are in the order of associativity, precidence, and the symbols.
+// NOTE: these precidences are the opposite of tree-sitter's precidence!
+//  In the Wren numbers, higher means it binds more loosely.
+let infix_operators = [
+	['left',   3, '*', '/', '%'],
+	['left',   4, '+', '-'],
+	['left',   5, '..', '...'],
+	['left',   6, '<<', '>>'],
+	['left',   7, '&'],
+	['left',   8, '^'],
+	['left',   9, '|'],
+	['left',  10, '<', '<=', '>', '>='],
+	['left',  11, 'is'],
+	['left',  12, '==', '!='],
+	['left',  13, '&&'],
+	['left',  14, '||'],
+];
+
+// The prefix (unary) operators - these are all precidence 2, and
+// are left-associative.
+let prefix_operators = ['!', '-', '~'];
+
 module.exports = grammar({
 	name: 'wren',
 
@@ -118,6 +141,7 @@ module.exports = grammar({
 			$.function_call,
 			$.this_call,
 			$.infix_call,
+			$.prefix_call,
 			$.list_initialiser,
 			$.map_initialiser,
 		),
@@ -170,23 +194,8 @@ module.exports = grammar({
 		// a bit hacky and use some imperitive code to generate
 		// the rules.
 		infix_call: $ => {
-			let operators = [
-				['left',   3, '*', '/', '%'],
-				['left',   4, '+', '-'],
-				['left',   5, '..', '...'],
-				['left',   6, '<<', '>>'],
-				['left',   7, '&'],
-				['left',   8, '^'],
-				['left',   9, '|'],
-				['left',  10, '<', '<=', '>', '>='],
-				['left',  11, 'is'],
-				['left',  12, '==', '!='],
-				['left',  13, '&&'],
-				['left',  14, '||'],
-			];
-
 			let choices = [];
-			for (let operator of operators) {
+			for (let operator of infix_operators) {
 				for (var i=2; i<operator.length; i++) {
 					let sym = operator[i];
 					let associativity = operator[0];
@@ -206,6 +215,18 @@ module.exports = grammar({
 						choices.push(prec.right(precidence, rule));
 					}
 				}
+			}
+
+			return choice(...choices);
+		},
+		prefix_call: $ => {
+			let choices = [];
+			for (let sym of prefix_operators) {
+				let precidence = 10 - 2; // See https://wren.io/syntax.html
+
+				let rule = seq(sym, $._expression);
+
+				choices.push(prec.right(precidence, rule));
 			}
 
 			return choice(...choices);

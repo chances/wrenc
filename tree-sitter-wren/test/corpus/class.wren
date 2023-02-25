@@ -205,6 +205,26 @@ a.abc[1, 2, 3] = 123
 )
 
 ==============
+Mixed infix and unary calls
+==============
+
+-a + 3
+!a * 3
+~a && 3
+
+a + -b
+
+-----
+
+(source_file
+    (infix_call (prefix_call (identifier)) (number))
+    (infix_call (prefix_call (identifier)) (number))
+    (infix_call (prefix_call (identifier)) (number))
+
+    (infix_call (identifier) (prefix_call (identifier)))
+)
+
+==============
 Superclass extends
 ==============
 
