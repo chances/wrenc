@@ -217,9 +217,7 @@ module.exports = grammar({
 
 			return prec(func_call_prec, choice(
 			// Closure-creating call
-			seq(...rec_and_name(), optional($._func_args),
-				$.stmt_block,
-			),
+			seq(...rec_and_name(), optional($._func_args), $.closure_block),
 
 			// Regular function call
 			seq(...rec_and_name(), optional($._func_args)),
@@ -242,7 +240,7 @@ module.exports = grammar({
 		// TODO deduplicate with function_call
 		this_call: $ => choice(
 			// Closure-creating call
-			seq(field('name', $.identifier), optional($._func_args), $.stmt_block),
+			seq(field('name', $.identifier), optional($._func_args), $.closure_block),
 
 			// Regular method call
 			// Require function arguments here, to avoid ambiguity with an
@@ -300,6 +298,8 @@ module.exports = grammar({
 			seq('[', $._expression, ']'),
 			seq('[', $._expression, repeat(seq(',', $._expression)), ']'),
 		),
+		closure_block: $ => seq('{', optional($.closure_params), optional($._statement_sequence), '}'),
+		closure_params: $ => seq('|', $.identifier, repeat(seq( ',', $.identifier, )), '|'),
 
 		conditional: $ => prec.right(conditional_prec, seq($._expression, '?', $._expression, ':', $._expression)),
 

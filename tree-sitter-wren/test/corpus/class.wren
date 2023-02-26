@@ -14,16 +14,37 @@ Fn.new(1) {
 
 (source_file
     (function_call receiver: (identifier) name: (identifier)
-        (stmt_block
+        (closure_block
             (function_call receiver: (identifier) name: (identifier) (string_literal))
         )
     )
 
     (function_call receiver: (identifier) name: (identifier) (number)
-        (stmt_block
+        (closure_block
             (function_call receiver: (identifier) name: (identifier) (string_literal))
         )
     )
+
+)
+
+==============
+Closure parameters
+==============
+
+new { }
+new { |a| }
+new { |a, b| }
+new { |a, b, c| }
+Fn.new { |a| }
+
+-----
+
+(source_file
+    (this_call name: (identifier) (closure_block))
+    (this_call name: (identifier) (closure_block (closure_params (identifier)) ))
+    (this_call name: (identifier) (closure_block (closure_params (identifier) (identifier)) ))
+    (this_call name: (identifier) (closure_block (closure_params (identifier) (identifier) (identifier)) ))
+    (function_call receiver: (identifier) name: (identifier) (closure_block (closure_params (identifier))))
 )
 
 ==============
@@ -127,8 +148,8 @@ class Cls {
             (this_call name: (identifier) (number) (number) (number))
             (this_call name: (identifier) (number))
 
-            (this_call name: (identifier) (stmt_block))
-            (this_call name: (identifier) (number) (number) (number) (stmt_block))
+            (this_call name: (identifier) (closure_block))
+            (this_call name: (identifier) (number) (number) (number) (closure_block))
 
             (identifier)
             (stmt_block)
