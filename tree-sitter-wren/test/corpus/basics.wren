@@ -286,3 +286,13 @@ a + 1 ? !b : c.d - 5
         (infix_call (function_call receiver: (identifier) name: (identifier)) (number))
     )
 )
+
+==============
+UNIX Interpreter directive
+==============
+
+#!/hello/whatever
+
+-----
+
+(source_file (unix_interpreter))

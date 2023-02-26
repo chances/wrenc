@@ -57,7 +57,14 @@ module.exports = grammar({
 
 	rules: {
 		// TODO: add the actual grammar rules
-		source_file: $ => optional($._statement_sequence),
+		source_file: $ => seq(
+			optional($.unix_interpreter),
+			optional($._statement_sequence)
+		),
+
+		// This is the '#!' that can appear at the start of files to indicate
+		// which executable should run them on UNIX.
+		unix_interpreter: $ => /#!.*/,
 
 		_statement: $ => choice(
 			$.stmt_block,
