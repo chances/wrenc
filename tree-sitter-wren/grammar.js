@@ -287,6 +287,8 @@ module.exports = grammar({
 				repeat(seq(
 					',', $._map_init_key,
 				)),
+				// Allow trailing commas
+				optional(','),
 			)),
 			'}'
 		)),

@@ -101,6 +101,10 @@ a = {1:1, 2:{2:"inner!"}, 3:3}
 
 {}
 
+// Trailing commas
+a = {1:2,}
+a = {1:2,3:4,}
+
 -----
 
 (source_file
@@ -114,4 +118,7 @@ a = {1:1, 2:{2:"inner!"}, 3:3}
         (number) (number))
     )
     (stmt_block)
+    (comment)
+    (this_call name: (identifier) (map_initialiser (number) (number)))
+    (this_call name: (identifier) (map_initialiser (number) (number) (number) (number)))
 )
