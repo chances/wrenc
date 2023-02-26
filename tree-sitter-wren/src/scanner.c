@@ -1,8 +1,9 @@
 #include "tree_sitter/parser.h"
+#include <assert.h>
 
-enum TokenType { DOT, NEWLINE, STRING };
+enum TokenType { DOT, NEWLINE, STRING, STRING_START, STRING_MID, STRING_END };
 
-static bool readString(TSLexer *lexer);
+static bool readString(TSLexer *lexer, bool inInterpolation, bool permitInterpolation);
 static bool readRawString(TSLexer *lexer);
 
 void *tree_sitter_wren_external_scanner_create() { return NULL; }
@@ -43,11 +44,23 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 	// We also handle strings here, because properly handling interpolation
 	// and escaping in regexes would be a huge pain.
 
-	// Search for strings. We shouldn't ever only be able to search for one
-	// type of string, and implementing that would be really painful.
+	// Search for strings. If we can find interpolated strings, normal
+	// strings should be fine too!
+	if (valid_symbols[STRING_START]) {
+		assert(valid_symbols[STRING] && "Strings must be valid if interpolated ones are!");
+	}
 	if (valid_symbols[STRING]) {
 		if (getChar(lexer) == '"') {
-			return readString(lexer);
+			return readString(lexer, false, valid_symbols[STRING_START]);
+		}
+	}
+
+	// If we can find a middle section of an interpolated string, we should
+	// also be able to find it's end.
+	assert(valid_symbols[STRING_MID] == valid_symbols[STRING_END]);
+	if (valid_symbols[STRING_MID]) {
+		if (getChar(lexer) == ')') {
+			return readString(lexer, true, true);
 		}
 	}
 
@@ -115,10 +128,10 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 
 // String handling implementation
 
-static bool readString(TSLexer *lexer) {
-	// Accept the first quote
+static bool readString(TSLexer *lexer, bool inInterpolation, bool permitInterpolation) {
+	// Accept the first quote (or closing bracket, if we just finished an
+	// interpolated expression).
 	lexer->advance(lexer, false);
-	lexer->result_symbol = STRING;
 
 	bool isStringStart = true;
 	bool isEscaped = false;
@@ -131,7 +144,7 @@ static bool readString(TSLexer *lexer) {
 
 			// Check if there's another quote - if so and we're at the start
 			// of the string, this indicates a raw string literal.
-			if (isStringStart && lexer->lookahead == '"') {
+			if (isStringStart && lexer->lookahead == '"' && !inInterpolation) {
 				// Accept the third quote
 				lexer->advance(lexer, false);
 
@@ -153,7 +166,24 @@ static bool readString(TSLexer *lexer) {
 			if (lexer->lookahead == '\\') {
 				thisIsEscape = true;
 			}
-			// TODO interpolation
+
+			// String interpolation
+			if (lexer->lookahead == '%') {
+				if (!permitInterpolation)
+					return false;
+
+				// Accept the percent, and check it's followed by a bracket
+				lexer->advance(lexer, false);
+
+				if (lexer->lookahead == '(') {
+					lexer->advance(lexer, false);
+					lexer->result_symbol = inInterpolation ? STRING_MID : STRING_START;
+					return true;
+				}
+
+				// If not, there's no interpolation. It's an error, but don't
+				// say the string doesn't exist in that case.
+			}
 		}
 
 		isStringStart = false;
@@ -163,6 +193,7 @@ static bool readString(TSLexer *lexer) {
 		lexer->advance(lexer, false);
 	}
 
+	lexer->result_symbol = inInterpolation ? STRING_END : STRING;
 	return true;
 }
 
@@ -191,5 +222,6 @@ static bool readRawString(TSLexer *lexer) {
 	}
 
 	// We've already consumed all three closing quotes.
+	lexer->result_symbol = STRING;
 	return true;
 }

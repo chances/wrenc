@@ -46,6 +46,29 @@ There's no such thing as escape characters here: \"""
 )
 
 ==============
+Interpolated strings
+==============
+
+"hello %( get_world() )!"
+
+"you can inclide quotes in the interpolation: %( a("hi") )."
+
+"and newlines: %(
+123
+)."
+
+"You can include lots of interpolations in a string: %(1) %("2") %(abc)"
+
+-----
+
+(source_file
+    (interpolated_string (this_call name: (identifier)) )
+    (interpolated_string (this_call name: (identifier) (string_literal)) )
+    (interpolated_string (number) )
+    (interpolated_string (number) (string_literal) (identifier) )
+)
+
+==============
 Number literals
 ==============
 

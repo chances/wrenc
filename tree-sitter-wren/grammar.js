@@ -197,6 +197,7 @@ module.exports = grammar({
 			$.conditional,
 			$.list_initialiser,
 			$.map_initialiser,
+			$.interpolated_string,
 		),
 
 		true_literal: $ => 'true',
@@ -324,6 +325,17 @@ module.exports = grammar({
 		)),
 		_map_init_key: $ => seq($._expression, ':', $._expression),
 
+		// An interpolated string is made of a sequence of fragments (which are
+		// strings that end with the start of an interpolation) followed by an
+		// ending fragment.
+		interpolated_string: $ => seq(
+			$._string_start_fragment,
+			repeat(seq(
+				$._expression, $._string_mid_fragment,
+			)),
+			$._expression, $._string_end_fragment,
+		),
+
 		_class_item: $ => choice(
 			$.method,
 			$.foreign_method,
@@ -390,6 +402,9 @@ module.exports = grammar({
 		$._dot,
 		$._newline,
 		$.string_literal,
+		$._string_start_fragment, // " hello %(
+		$._string_mid_fragment,   // ) many  %(
+		$._string_end_fragment,   // ) worlds!"
 	],
 
 	word: $ => $.identifier,
