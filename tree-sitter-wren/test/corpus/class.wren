@@ -190,18 +190,34 @@ abc[1, 2] = 123
 abc[1, 2, 3] = 123
 a.abc[1, 2, 3] = 123
 
+// We should be able to make subscript calls on any expression
+a()[1]
+123[1]
+a()[1] = 123
+123[1] = 123
+
 -----
 
 (source_file
-    (this_call name: (identifier) (number))
-    (this_call name: (identifier) (number) (number))
-    (this_call name: (identifier) (number) (number) (number))
-    (function_call receiver: (identifier) name: (identifier) (number) (number) (number))
+    (subscript_call receiver: (identifier) (number))
+    (subscript_call receiver: (identifier) (number) (number))
+    (subscript_call receiver: (identifier) (number) (number) (number))
+    (subscript_call
+        receiver: (function_call receiver: (identifier) name: (identifier))
+        (number) (number) (number))
 
-    (this_call name: (identifier) (number) (number))
-    (this_call name: (identifier) (number) (number) (number))
-    (this_call name: (identifier) (number) (number) (number) (number))
-    (function_call receiver: (identifier) name: (identifier) (number) (number) (number) (number))
+    (subscript_call receiver: (identifier) (number) assignment: (number))
+    (subscript_call receiver: (identifier) (number) (number) assignment: (number))
+    (subscript_call receiver: (identifier) (number) (number) (number) assignment: (number))
+    (subscript_call
+        receiver: (function_call receiver: (identifier) name: (identifier))
+        (number) (number) (number) assignment: (number))
+
+    (comment)
+    (subscript_call receiver: (this_call name: (identifier)) (number))
+    (subscript_call receiver: (number) (number))
+    (subscript_call receiver: (this_call name: (identifier)) (number) assignment: (number))
+    (subscript_call receiver: (number) (number) assignment: (number))
 )
 
 ==============

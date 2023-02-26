@@ -184,6 +184,7 @@ module.exports = grammar({
 		_expression: $ => choice(
 			$._restricted_expression,
 			$.function_call,
+			$.subscript_call,
 			$.this_call,
 			$.infix_call,
 			$.prefix_call,
@@ -222,10 +223,14 @@ module.exports = grammar({
 			// mimic Wren's parser) Wren's parser doesn't know whether or not
 			// a function call is a setter until it's already selected it.
 			prec.right(func_call_prec, seq(...rec_and_name(), '=', $._expression)),
-
-			// Subscript calls (getter and setter)
-			prec.right(func_call_prec, seq(...rec_and_name(), $._subscript_args, optional(seq('=', $._expression)))),
 		));},
+
+		// Subscript calls (getter and setter)
+		subscript_call: $ => prec.right(func_call_prec, seq(
+			field('receiver', $._expression),
+			$._subscript_args,
+			optional(seq('=', field('assignment', $._expression)))
+		)),
 
 		// TODO deduplicate with function_call
 		this_call: $ => choice(
@@ -240,9 +245,6 @@ module.exports = grammar({
 
 			// Setter calls
 			prec.right(seq(field('name', $.identifier), '=', $._expression)),
-
-			// Subscript calls (getter and setter)
-			prec.right(seq(field('name', $.identifier), $._subscript_args, optional(seq('=', $._expression)))),
 		),
 
 		// The infix function calls - https://wren.io/syntax.html
