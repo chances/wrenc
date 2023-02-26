@@ -60,6 +60,7 @@ module.exports = grammar({
 			$.stmt_continue,
 			$.stmt_if,
 			$.stmt_for,
+			$.stmt_while,
 			$.stmt_return,
 			$.stmt_import,
 			$.var_decl,
@@ -117,6 +118,14 @@ module.exports = grammar({
 			'(',
 			$.identifier,
 			'in',
+			$._expression,
+			')',
+			$._statement,
+		),
+
+		stmt_while: $ => seq(
+			'while',
+			'(',
 			$._expression,
 			')',
 			$._statement,

@@ -99,6 +99,20 @@ if (false) if (true) System.a else System.b
 )
 
 ==============
+While
+==============
+
+while(true) {}
+while(a()) b()
+
+-----
+
+(source_file
+    (stmt_while (true_literal) (stmt_block))
+    (stmt_while (this_call name: (identifier)) (this_call name: (identifier)))
+)
+
+==============
 Comments
 ==============
 
