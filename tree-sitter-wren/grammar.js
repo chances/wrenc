@@ -182,7 +182,6 @@ module.exports = grammar({
 			$.true_literal,
 			$.false_literal,
 			$.null_literal,
-			$.raw_string_literal,
 			$.string_literal,
 			$.number,
 			$.identifier,
@@ -203,12 +202,6 @@ module.exports = grammar({
 		true_literal: $ => 'true',
 		false_literal: $ => 'false',
 		null_literal: $ => 'null',
-
-		// TODO interpolation
-		// This handles escapes in an ugly (entirely in regex) but usable way.
-		string_literal: $ => /"([^\\"]*(\\.)?)+"/,
-
-		raw_string_literal: $ => /"""([^\\"]*(\\.)?(""?[^\\"])?)+"""/,
 
 		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 
@@ -391,9 +384,12 @@ module.exports = grammar({
 	// I can't find a way to properly handle Wren's rule that
 	// expression<newline>.func is valid, so parse the newlines and dot in C
 	// so we can make them interact specially.
+	// Also, handle strings there. Interpolation would be completely horrible
+	// to implement with regexes.
 	externals: $ => [
 		$._dot,
 		$._newline,
+		$.string_literal,
 	],
 
 	word: $ => $.identifier,

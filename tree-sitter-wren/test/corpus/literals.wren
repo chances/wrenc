@@ -29,16 +29,20 @@ hello world!
 """
 a string containing "quotes" and "" <= doubled-up quotes.
 
-What about \""" three quotes but with an escape on the first one?
-
 At the end of the line: ""
-"""
+
+There's no such thing as escape characters here: \"""
+
+// Empty strings shouldn't confuse the raw string handler:
+""
 
 -----
 
 (source_file
-    (this_call (identifier) (raw_string_literal))
-    (raw_string_literal)
+    (this_call (identifier) (string_literal))
+    (string_literal)
+
+    (comment) (string_literal)
 )
 
 ==============

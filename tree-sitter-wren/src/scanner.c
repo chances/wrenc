@@ -1,6 +1,9 @@
 #include "tree_sitter/parser.h"
 
-enum TokenType { DOT, NEWLINE };
+enum TokenType { DOT, NEWLINE, STRING };
+
+static bool readString(TSLexer *lexer);
+static bool readRawString(TSLexer *lexer);
 
 void *tree_sitter_wren_external_scanner_create() { return NULL; }
 
@@ -18,7 +21,7 @@ void tree_sitter_wren_external_scanner_deserialize(void *payload, const char *bu
 }
 
 // Get the lookahead character from the lexer, ignoring whitespace.
-static int32_t get_char(TSLexer *lexer) {
+static int32_t getChar(TSLexer *lexer) {
 	// Always ignore non-newline whitespace
 	while (lexer->lookahead == ' ' || lexer->lookahead == '\t' || lexer->lookahead == '\r') {
 		lexer->advance(lexer, true);
@@ -36,6 +39,17 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 	//
 	// It is valid Wren code, but it doesn't fit very nicely into the LR(1) scanner.
 	// Thus we handle it, and just make the dot swallow up the newlines.
+	//
+	// We also handle strings here, because properly handling interpolation
+	// and escaping in regexes would be a huge pain.
+
+	// Search for strings. We shouldn't ever only be able to search for one
+	// type of string, and implementing that would be really painful.
+	if (valid_symbols[STRING]) {
+		if (getChar(lexer) == '"') {
+			return readString(lexer);
+		}
+	}
 
 	// Try and find a dot in preference to a newline - there's nowhere a dot would fit
 	// better than a newline if both are possible.
@@ -43,7 +57,7 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 		bool found_newline = false;
 		while (true) {
 			// Advance through any non-newline whitespace.
-			int32_t c = get_char(lexer);
+			int32_t c = getChar(lexer);
 
 			// Dots are exactly what we're looking for.
 			if (c == '.') {
@@ -89,7 +103,7 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 
 	// Search for a single newline
 	if (valid_symbols[NEWLINE]) {
-		if (get_char(lexer) == '\n') {
+		if (getChar(lexer) == '\n') {
 			lexer->advance(lexer, false);
 			lexer->result_symbol = NEWLINE;
 			return true;
@@ -97,4 +111,85 @@ bool tree_sitter_wren_external_scanner_scan(void *payload, TSLexer *lexer, const
 	}
 
 	return false;
+}
+
+// String handling implementation
+
+static bool readString(TSLexer *lexer) {
+	// Accept the first quote
+	lexer->advance(lexer, false);
+	lexer->result_symbol = STRING;
+
+	bool isStringStart = true;
+	bool isEscaped = false;
+
+	while (true) {
+		// Check for the end-of-string quote.
+		if (lexer->lookahead == '"' && !isEscaped) {
+			// Accept the quote
+			lexer->advance(lexer, false);
+
+			// Check if there's another quote - if so and we're at the start
+			// of the string, this indicates a raw string literal.
+			if (isStringStart && lexer->lookahead == '"') {
+				// Accept the third quote
+				lexer->advance(lexer, false);
+
+				return readRawString(lexer);
+			}
+
+			break;
+		}
+
+		// If we hit EOF, reject this unterminated string as not being valid.
+		if (lexer->eof(lexer)) {
+			return false;
+		}
+
+		bool thisIsEscape = false;
+
+		// Escapes prevent the next character from having any significance.
+		if (!isEscaped) {
+			if (lexer->lookahead == '\\') {
+				thisIsEscape = true;
+			}
+			// TODO interpolation
+		}
+
+		isStringStart = false;
+		isEscaped = thisIsEscape;
+
+		// Accept the character
+		lexer->advance(lexer, false);
+	}
+
+	return true;
+}
+
+static bool readRawString(TSLexer *lexer) {
+	// Copied and modified from wren_compiler.
+	// The first three quotes have already been consumed.
+
+	// We need to match groups of three characters, so store the last three
+	// characters we've parsed. The current last three are the opening quotes, so
+	// use spaces as dummy characters to avoid another quote ending the string.
+	char c1 = ' ', c2 = ' ', c3 = ' ';
+
+	for (;;) {
+		c1 = c2;
+		c2 = c3;
+		c3 = lexer->lookahead;
+		lexer->advance(lexer, false);
+
+		if (c1 == '"' && c2 == '"' && c3 == '"')
+			break;
+
+		// Is this an unterminated string?
+		if (lexer->eof(lexer)) {
+			return false;
+		}
+	}
+
+	// We've already consumed all three closing quotes.
+	return true;
 }
