@@ -100,13 +100,17 @@ module.exports = grammar({
 		stmt_break: $ => 'break',
 		stmt_continue: $ => 'continue',
 
-		stmt_if: $ => seq(
+		stmt_if: $ => prec.right(seq(
 			'if',
 			'(',
 			field('condition', $._expression),
 			')',
 			$._statement,
-		),
+			optional(seq(
+				'else',
+				$._statement,
+			)),
+		)),
 
 		stmt_for: $ => seq(
 			'for',

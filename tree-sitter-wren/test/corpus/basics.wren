@@ -64,6 +64,41 @@ if (true) {
 )
 
 ==============
+If else
+==============
+
+if (true) {}
+if (true) {} else {}
+if (true) {} else if (true) {} else {}
+
+// This is potentially ambiguous:
+// It could be: if (false) { if (true) a   else b }
+// Or:          if (false) { if (true) a } else b
+// You can run it on https://wren.io/try, and observe that
+// nothing is printed. This indicates the former interpretation
+// is correct.
+if (false) if (true) System.a else System.b
+
+-----
+
+(source_file
+    (stmt_if condition: (true_literal) (stmt_block))
+    (stmt_if condition: (true_literal) (stmt_block) (stmt_block))
+    (stmt_if condition: (true_literal)
+        (stmt_block)
+        (stmt_if condition: (true_literal) (stmt_block) (stmt_block))
+    )
+
+    (comment) (comment) (comment) (comment) (comment) (comment)
+    (stmt_if condition: (false_literal)
+        (stmt_if condition: (true_literal)
+            (function_call receiver: (identifier) name: (identifier))
+            (function_call receiver: (identifier) name: (identifier))
+        )
+    )
+)
+
+==============
 Comments
 ==============
 
