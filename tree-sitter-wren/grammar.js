@@ -198,21 +198,24 @@ module.exports = grammar({
 
 		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 
-		function_call: $ => choice(
+		function_call: $ => {
+			let rec_and_name = () => [field('receiver', $._expression), '.', field('name', $.identifier)];
+
+			return choice(
 			// Closure-creating call
-			seq(field('receiver', $._expression), '.', field('name', $.identifier), optional($._func_args),
+			seq(...rec_and_name(), optional($._func_args),
 				$.stmt_block,
 			),
 
 			// Regular function call
-			seq(field('receiver', $._expression), '.', field('name', $.identifier), optional($._func_args)),
+			seq(...rec_and_name(), optional($._func_args)),
 
 			// Setter calls
-			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), '=', $._expression)),
+			prec.right(seq(...rec_and_name(), '=', $._expression)),
 
 			// Subscript calls (getter and setter)
-			prec.right(seq(field('receiver', $._expression), '.', field('name', $.identifier), $._subscript_args, optional(seq('=', $._expression)))),
-		),
+			prec.right(seq(...rec_and_name(), $._subscript_args, optional(seq('=', $._expression)))),
+		);},
 
 		// TODO deduplicate with function_call
 		this_call: $ => choice(
