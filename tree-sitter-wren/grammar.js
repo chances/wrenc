@@ -166,8 +166,9 @@ module.exports = grammar({
 		false_literal: $ => 'false',
 		null_literal: $ => 'null',
 
-		// TODO interpolation, escapes
-		string_literal: $ => /"[^"]*"/,
+		// TODO interpolation
+		// This handles escapes in an ugly (entirely in regex) but usable way.
+		string_literal: $ => /"([^\\"]*(\\.)?)+"/,
 
 		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 

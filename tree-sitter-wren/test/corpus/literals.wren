@@ -9,6 +9,16 @@ String literals
 (source_file (string_literal))
 
 ==============
+String escapes
+==============
+
+"hello \" \n \\ "
+
+-----
+
+(source_file (string_literal))
+
+==============
 Number literals
 ==============
 
