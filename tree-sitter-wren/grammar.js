@@ -37,6 +37,15 @@ let all_operators
 	all_operators = Array.from(tmp);
 }
 
+// Fix the direction problem with Wren and Tree-sitter
+// using different meanings for precidence, and bias
+// it so they're mostly positive (aside from the really
+// low precedence ones like a?b:c for which it makes
+// sense).
+function wren_to_ts_prec(wren_precidence) {
+	return 10 - wren_precidence;
+}
+
 module.exports = grammar({
 	name: 'wren',
 
@@ -159,6 +168,7 @@ module.exports = grammar({
 			$.this_call,
 			$.infix_call,
 			$.prefix_call,
+			$.conditional,
 			$.list_initialiser,
 			$.map_initialiser,
 		),
@@ -220,12 +230,7 @@ module.exports = grammar({
 					let sym = operator[i];
 					let associativity = operator[0];
 
-					// Fix the direction problem with Wren and Tree-sitter
-					// using different meanings for precidence, and bias
-					// it so they're mostly positive (aside from the really
-					// low precedence ones like a?b:c for which it makes
-					// sense).
-					let precidence = 10 - operator[1];
+					let precidence = wren_to_ts_prec(operator[1]);
 
 					let rule = seq($._expression, sym, $._expression);
 
@@ -242,7 +247,7 @@ module.exports = grammar({
 		prefix_call: $ => {
 			let choices = [];
 			for (let sym of prefix_operators) {
-				let precidence = 10 - 2; // See https://wren.io/syntax.html
+				let precidence = wren_to_ts_prec(2); // See https://wren.io/syntax.html
 
 				let rule = seq(sym, $._expression);
 
@@ -260,6 +265,8 @@ module.exports = grammar({
 			seq('[', $._expression, ']'),
 			seq('[', $._expression, repeat(seq(',', $._expression)), ']'),
 		),
+
+		conditional: $ => prec.right(wren_to_ts_prec(15), seq($._expression, '?', $._expression, ':', $._expression)),
 
 		list_initialiser: $ => seq(
 			'[',

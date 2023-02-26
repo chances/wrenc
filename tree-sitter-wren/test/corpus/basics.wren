@@ -207,3 +207,22 @@ import "my_module" for A as a, B, C as c
         (identifier) as: (identifier)
     )
 )
+
+==============
+Conditionals
+==============
+
+a ? b : c
+
+a + 1 ? !b : c.d - 5
+
+-----
+
+(source_file
+    (conditional (identifier) (identifier) (identifier))
+    (conditional
+        (infix_call (identifier) (number))
+        (prefix_call (identifier))
+        (infix_call (function_call receiver: (identifier) name: (identifier)) (number))
+    )
+)
