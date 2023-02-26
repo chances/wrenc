@@ -319,3 +319,78 @@ class A is ("hello, world!") {}
     (class_definition name: (identifier) supertype: (expr_brackets (function_call receiver: (identifier) name: (identifier))))
     (class_definition name: (identifier) supertype: (expr_brackets (string_literal)))
 )
+
+==============
+Basic attributes
+==============
+
+#a = true
+#b = 123
+#c
+#!runtime_item
+class A {
+    #attr
+    my_method {}
+
+    #attr
+    #!runtime_item
+    foreign my_foreign
+}
+
+-----
+
+(source_file
+    (class_definition
+        (attribute (identifier) (true_literal))
+        (attribute (identifier) (number))
+        (attribute (identifier))
+        (runtime_attribute (identifier))
+        name: (identifier)
+
+        (method
+            (attribute (identifier))
+            name: (identifier)
+            (stmt_block)
+        )
+        (foreign_method
+            (attribute (identifier))
+            (runtime_attribute (identifier))
+            name: (identifier)
+        )
+    )
+)
+
+==============
+Group attributes
+==============
+
+#empty_group()
+#one_group(key)
+#my_group(key=value, other_key=123, bool_key)
+#!runtime_group(key)
+class A {
+    #method_group(hello)
+    my_method {}
+}
+
+-----
+
+(source_file
+    (class_definition
+        (attribute (identifier))
+        (attribute (identifier) (group_item (identifier)))
+        (attribute (identifier)
+            (group_item (identifier) (identifier))
+            (group_item (identifier) (number))
+            (group_item (identifier))
+        )
+        (runtime_attribute (identifier) (group_item (identifier)))
+        name: (identifier)
+
+        (method
+            (attribute (identifier) (group_item (identifier) ))
+            name: (identifier)
+            (stmt_block)
+        )
+    )
+)

@@ -116,6 +116,7 @@ module.exports = grammar({
 		stmt_block: $ => seq('{', optional($._statement_sequence), '}'),
 
 		class_definition: $ => seq(
+			repeat($._attribute),
 			optional('foreign'),
 			'class',
 			field('name', $.identifier),
@@ -351,10 +352,12 @@ module.exports = grammar({
 		),
 
 		method: $ => seq(
+			repeat($._attribute),
 			$._method_sig,
 			$.stmt_block,
 		),
 		foreign_method: $ => seq(
+			repeat($._attribute),
 			'foreign',
 			$._method_sig,
 		),
@@ -382,6 +385,32 @@ module.exports = grammar({
 		subscript_param_list: $ => seq(
 			'[', comma_list_one($.identifier), ']',
 			optional(seq('=', '(', $.identifier, ')')),
+		),
+
+		_attribute: $ => choice($.attribute, $.runtime_attribute),
+		attribute: $ => seq(
+			'#',
+			$.identifier,
+			optional(choice(
+				seq('=', $._attr_value),
+				seq('(', comma_list_none($.group_item), ')'),
+			)),
+		),
+		runtime_attribute: $ => seq(
+			'#!',
+			$.identifier,
+			optional(choice(
+				seq('=', $._attr_value),
+				seq('(', comma_list_none($.group_item), ')'),
+			)),
+		),
+		group_item: $ => seq($.identifier, optional(seq('=', $._attr_value))),
+		_attr_value: $ => choice(
+			$.true_literal,
+			$.false_literal,
+			$.string_literal,
+			$.number,
+			$.identifier,
 		),
 
 		comment: $ => /\/\/.*/, // Single-line comment
