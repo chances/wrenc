@@ -25,6 +25,7 @@ Number literals
 0.1e+1
 
 0xdeadbeef
+-0xdeadbeef
 
 -----
 
@@ -32,7 +33,7 @@ Number literals
     (number) (number) (number)
     (number) (number)
     (number) (number) (number) (number)
-    (number)
+    (number) (number)
 )
 
 ==============
