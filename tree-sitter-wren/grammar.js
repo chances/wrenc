@@ -52,6 +52,23 @@ const prefix_call_prec = wren_to_ts_prec(2);
 const conditional_prec = wren_to_ts_prec(15);
 const assignment_prec = wren_to_ts_prec(16);
 
+// A utility function to make a comma-separated list from some given rule.
+// This rule accepts an empty list of input rules.
+// For example, comma_list_none(number) accepts all the following:
+// <no input>
+// 1
+// 1,2
+// 1,2,3
+/// etc.
+function comma_list_none(rule) {
+	return optional(comma_list_one(rule));
+}
+
+// Same as comma_list, but requires at least one entry is present.
+function comma_list_one(rule) {
+	return seq(repeat(seq(rule, ',')), rule);
+}
+
 module.exports = grammar({
 	name: 'wren',
 
@@ -154,8 +171,7 @@ module.exports = grammar({
 			field('module', $.string_literal),
 			optional(seq(
 				'for',
-				$._import_clause,
-				repeat(seq(',', $._import_clause)),
+				comma_list_one($._import_clause),
 			)),
 		),
 		_import_clause: $ => seq(
@@ -283,17 +299,10 @@ module.exports = grammar({
 
 			return choice(...choices);
 		},
-		_func_args: $ => choice(
-			seq('(', ')'),
-			seq('(', $._expression, ')'),
-			seq('(', $._expression, repeat(seq(',', $._expression)), ')'),
-		),
-		_subscript_args: $ => choice(
-			seq('[', $._expression, ']'),
-			seq('[', $._expression, repeat(seq(',', $._expression)), ']'),
-		),
+		_func_args: $ => seq('(', comma_list_none($._expression), ')'),
+		_subscript_args: $ => seq('[', comma_list_one($._expression), ']'),
 		closure_block: $ => seq('{', optional($.closure_params), optional($._statement_sequence), '}'),
-		closure_params: $ => seq('|', $.identifier, repeat(seq( ',', $.identifier, )), '|'),
+		closure_params: $ => seq('|', comma_list_one($.identifier), '|'),
 
 		conditional: $ => prec.right(conditional_prec, seq($._expression, '?', $._expression, ':', $._expression)),
 
@@ -368,11 +377,10 @@ module.exports = grammar({
 
 		param_list: $ => choice(
 			seq('=', '(', $.identifier, ')'),
-			seq('(', ')'),
-			seq('(', $.identifier, repeat(seq(',', $.identifier)), ')'),
+			seq('(', comma_list_none($.identifier), ')'),
 		),
 		subscript_param_list: $ => seq(
-			'[', $.identifier, repeat(seq(',', $.identifier)), ']',
+			'[', comma_list_one($.identifier), ']',
 			optional(seq('=', '(', $.identifier, ')')),
 		),
 
