@@ -113,6 +113,17 @@ while(a()) b()
 )
 
 ==============
+Whitespace between calls
+==============
+
+test
+.a
+
+-----
+
+(source_file (function_call receiver: (identifier) name: (identifier) ))
+
+==============
 Comments
 ==============
 

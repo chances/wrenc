@@ -46,6 +46,12 @@ function wren_to_ts_prec(wren_precidence) {
 	return 10 - wren_precidence;
 }
 
+// See https://wren.io/syntax.html
+const func_call_prec = wren_to_ts_prec(1);
+const prefix_call_prec = wren_to_ts_prec(2);
+const conditional_prec = wren_to_ts_prec(15);
+const assignment_prec = wren_to_ts_prec(16);
+
 module.exports = grammar({
 	name: 'wren',
 
@@ -199,9 +205,9 @@ module.exports = grammar({
 		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 
 		function_call: $ => {
-			let rec_and_name = () => [field('receiver', $._expression), '.', field('name', $.identifier)];
+			let rec_and_name = () => [field('receiver', $._expression), $._dot, field('name', $.identifier)];
 
-			return choice(
+			return prec(func_call_prec, choice(
 			// Closure-creating call
 			seq(...rec_and_name(), optional($._func_args),
 				$.stmt_block,
@@ -211,11 +217,15 @@ module.exports = grammar({
 			seq(...rec_and_name(), optional($._func_args)),
 
 			// Setter calls
-			prec.right(seq(...rec_and_name(), '=', $._expression)),
+			// Note that these still use the standard precidence, despite the
+			// existance of the setter precidence. That's because (trying to
+			// mimic Wren's parser) Wren's parser doesn't know whether or not
+			// a function call is a setter until it's already selected it.
+			prec.right(func_call_prec, seq(...rec_and_name(), '=', $._expression)),
 
 			// Subscript calls (getter and setter)
-			prec.right(seq(...rec_and_name(), $._subscript_args, optional(seq('=', $._expression)))),
-		);},
+			prec.right(func_call_prec, seq(...rec_and_name(), $._subscript_args, optional(seq('=', $._expression)))),
+		));},
 
 		// TODO deduplicate with function_call
 		this_call: $ => choice(
@@ -263,7 +273,7 @@ module.exports = grammar({
 		prefix_call: $ => {
 			let choices = [];
 			for (let sym of prefix_operators) {
-				let precidence = wren_to_ts_prec(2); // See https://wren.io/syntax.html
+				let precidence = prefix_call_prec;
 
 				let rule = seq(sym, $._expression);
 
@@ -282,7 +292,7 @@ module.exports = grammar({
 			seq('[', $._expression, repeat(seq(',', $._expression)), ']'),
 		),
 
-		conditional: $ => prec.right(wren_to_ts_prec(15), seq($._expression, '?', $._expression, ':', $._expression)),
+		conditional: $ => prec.right(conditional_prec, seq($._expression, '?', $._expression, ':', $._expression)),
 
 		list_initialiser: $ => seq(
 			'[',
@@ -355,7 +365,6 @@ module.exports = grammar({
 		comment: $ => /\/\/.*/, // Single-line comment
 		block_comment: $ => seq('/*', repeat(choice($.block_comment, /[^/*]+/)), '*/'),
 
-		_newline: $ => '\n',
 		identifier: $ => /[A-Za-z_][A-Za-z0-9_]*/,
 		number: $ => choice(
 			/-?[0-9]+(\.[0-9]+)?(e[+-]?[0-9]+)?/,
@@ -368,6 +377,14 @@ module.exports = grammar({
 		$.block_comment,
 		$._newline,
 		/\s/, // Whitespace
+	],
+
+	// I can't find a way to properly handle Wren's rule that
+	// expression<newline>.func is valid, so parse the newlines and dot in C
+	// so we can make them interact specially.
+	externals: $ => [
+		$._dot,
+		$._newline,
 	],
 
 	word: $ => $.identifier,
