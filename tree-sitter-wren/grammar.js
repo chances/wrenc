@@ -279,6 +279,8 @@ module.exports = grammar({
 				repeat(seq(
 					',', $._expression,
 				)),
+				// Allow trailing commas
+				optional(','),
 			)),
 			']'
 		),

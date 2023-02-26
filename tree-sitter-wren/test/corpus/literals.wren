@@ -79,6 +79,11 @@ List literals
 [1,2,3]
 [1,[2],3]
 
+// Trailing commas
+[1,]
+[1,2,]
+[1,2,3,]
+
 -----
 
 (source_file
@@ -87,6 +92,11 @@ List literals
     (list_initialiser (number) (number))
     (list_initialiser (number) (number) (number))
     (list_initialiser (number) (list_initialiser (number)) (number))
+
+    (comment)
+    (list_initialiser (number))
+    (list_initialiser (number) (number))
+    (list_initialiser (number) (number) (number))
 )
 
 ==============
