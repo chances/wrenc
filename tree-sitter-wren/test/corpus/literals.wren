@@ -19,6 +19,29 @@ String escapes
 (source_file (string_literal))
 
 ==============
+Raw string literals
+==============
+
+a = """
+hello world!
+"""
+
+"""
+a string containing "quotes" and "" <= doubled-up quotes.
+
+What about \""" three quotes but with an escape on the first one?
+
+At the end of the line: ""
+"""
+
+-----
+
+(source_file
+    (this_call (identifier) (raw_string_literal))
+    (raw_string_literal)
+)
+
+==============
 Number literals
 ==============
 

@@ -147,6 +147,7 @@ module.exports = grammar({
 			$.true_literal,
 			$.false_literal,
 			$.null_literal,
+			$.raw_string_literal,
 			$.string_literal,
 			$.number,
 			$.identifier,
@@ -169,6 +170,8 @@ module.exports = grammar({
 		// TODO interpolation
 		// This handles escapes in an ugly (entirely in regex) but usable way.
 		string_literal: $ => /"([^\\"]*(\\.)?)+"/,
+
+		raw_string_literal: $ => /"""([^\\"]*(\\.)?(""?[^\\"])?)+"""/,
 
 		expr_brackets: $ => prec(1, seq('(', $._expression, ')')),
 
