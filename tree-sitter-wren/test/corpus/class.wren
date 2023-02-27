@@ -13,15 +13,15 @@ Fn.new(1) {
 -----
 
 (source_file
-    (function_call receiver: (identifier) name: (identifier)
+    (function_call receiver: (var_load (identifier)) name: (identifier)
         (closure_block
-            (function_call receiver: (identifier) name: (identifier) (string_literal))
+            (function_call receiver: (var_load (identifier)) name: (identifier) (string_literal))
         )
     )
 
-    (function_call receiver: (identifier) name: (identifier) (number)
+    (function_call receiver: (var_load (identifier)) name: (identifier) (number)
         (closure_block
-            (function_call receiver: (identifier) name: (identifier) (string_literal))
+            (function_call receiver: (var_load (identifier)) name: (identifier) (string_literal))
         )
     )
 
@@ -44,7 +44,7 @@ Fn.new { |a| }
     (this_call name: (identifier) (closure_block (closure_params (identifier)) ))
     (this_call name: (identifier) (closure_block (closure_params (identifier) (identifier)) ))
     (this_call name: (identifier) (closure_block (closure_params (identifier) (identifier) (identifier)) ))
-    (function_call receiver: (identifier) name: (identifier) (closure_block (closure_params (identifier))))
+    (function_call receiver: (var_load (identifier)) name: (identifier) (closure_block (closure_params (identifier))))
 )
 
 ==============
@@ -142,7 +142,7 @@ class Cls {
 (source_file
     (class_definition name: (identifier)
         (method name: (identifier) (stmt_block
-            (identifier) (comment)
+            (var_load (identifier)) (comment)
             (this_call name: (identifier))
             (this_call name: (identifier) (number))
             (this_call name: (identifier) (number) (number) (number))
@@ -151,7 +151,7 @@ class Cls {
             (this_call name: (identifier) (closure_block))
             (this_call name: (identifier) (number) (number) (number) (closure_block))
 
-            (identifier)
+            (var_load (identifier))
             (stmt_block)
         ))
     )
@@ -220,18 +220,18 @@ a()[1] = 123
 -----
 
 (source_file
-    (subscript_call receiver: (identifier) (number))
-    (subscript_call receiver: (identifier) (number) (number))
-    (subscript_call receiver: (identifier) (number) (number) (number))
+    (subscript_call receiver: (var_load (identifier)) (number))
+    (subscript_call receiver: (var_load (identifier)) (number) (number))
+    (subscript_call receiver: (var_load (identifier)) (number) (number) (number))
     (subscript_call
-        receiver: (function_call receiver: (identifier) name: (identifier))
+        receiver: (function_call receiver: (var_load (identifier)) name: (identifier))
         (number) (number) (number))
 
-    (subscript_call receiver: (identifier) (number) assignment: (number))
-    (subscript_call receiver: (identifier) (number) (number) assignment: (number))
-    (subscript_call receiver: (identifier) (number) (number) (number) assignment: (number))
+    (subscript_call receiver: (var_load (identifier)) (number) assignment: (number))
+    (subscript_call receiver: (var_load (identifier)) (number) (number) assignment: (number))
+    (subscript_call receiver: (var_load (identifier)) (number) (number) (number) assignment: (number))
     (subscript_call
-        receiver: (function_call receiver: (identifier) name: (identifier))
+        receiver: (function_call receiver: (var_load (identifier)) name: (identifier))
         (number) (number) (number) assignment: (number))
 
     (comment)
@@ -254,11 +254,11 @@ a + -b
 -----
 
 (source_file
-    (infix_call (prefix_call (identifier)) (number))
-    (infix_call (prefix_call (identifier)) (number))
-    (infix_call (prefix_call (identifier)) (number))
+    (infix_call (prefix_call (var_load (identifier))) (number))
+    (infix_call (prefix_call (var_load (identifier))) (number))
+    (infix_call (prefix_call (var_load (identifier))) (number))
 
-    (infix_call (identifier) (prefix_call (identifier)))
+    (infix_call (var_load (identifier)) (prefix_call (var_load (identifier))))
 )
 
 ==============
@@ -315,8 +315,8 @@ class A is ("hello, world!") {}
 
 (source_file
     (comment)
-    (class_definition name: (identifier) supertype: (identifier))
-    (class_definition name: (identifier) supertype: (expr_brackets (function_call receiver: (identifier) name: (identifier))))
+    (class_definition name: (identifier) supertype: (var_load (identifier)))
+    (class_definition name: (identifier) supertype: (expr_brackets (function_call receiver: (var_load (identifier)) name: (identifier))))
     (class_definition name: (identifier) supertype: (expr_brackets (string_literal)))
 )
 

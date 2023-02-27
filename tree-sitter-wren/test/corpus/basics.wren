@@ -30,18 +30,18 @@ class A {
             )
             (stmt_block
                 (stmt_if
-                    condition: (infix_call (identifier) (number))
+                    condition: (infix_call (var_load (identifier)) (number))
                     (stmt_block (stmt_return (null_literal)))
                 )
-                (stmt_return (infix_call (identifier) (number)))
+                (stmt_return (infix_call (var_load (identifier)) (number)))
             )
         )
         (method name: (identifier)
             (param_list (identifier))
             (stmt_block
-                (function_call receiver: (identifier) name: (identifier) (number))
-                (function_call receiver: (identifier) name: (identifier) (number) (function_call receiver: (identifier) name: (identifier)))
-                (function_call receiver: (identifier) name: (identifier) (number) (number) (number) (number) (number))
+                (function_call receiver: (var_load (identifier)) name: (identifier) (number))
+                (function_call receiver: (var_load (identifier)) name: (identifier) (number) (function_call receiver: (var_load (identifier)) name: (identifier)))
+                (function_call receiver: (var_load (identifier)) name: (identifier) (number) (number) (number) (number) (number))
             )
         )
     )
@@ -92,8 +92,8 @@ if (false) if (true) System.a else System.b
     (comment) (comment) (comment) (comment) (comment) (comment)
     (stmt_if condition: (false_literal)
         (stmt_if condition: (true_literal)
-            (function_call receiver: (identifier) name: (identifier))
-            (function_call receiver: (identifier) name: (identifier))
+            (function_call receiver: (var_load (identifier)) name: (identifier))
+            (function_call receiver: (var_load (identifier)) name: (identifier))
         )
     )
 )
@@ -121,7 +121,7 @@ test
 
 -----
 
-(source_file (function_call receiver: (identifier) name: (identifier) ))
+(source_file (function_call receiver: (var_load (identifier)) name: (identifier) ))
 
 ==============
 Comments
@@ -231,14 +231,14 @@ Binary operators
 Precidence
 ==============
 
-a * b - c
-a - b * c
+1 * 2 - 3
+1 - 2 * 3
 
 -----
 
 (source_file
-    (infix_call (infix_call (identifier) (identifier)) (identifier))
-    (infix_call (identifier) (infix_call (identifier) (identifier)))
+    (infix_call (infix_call (number) (number)) (number))
+    (infix_call (number) (infix_call (number) (number)))
 )
 
 ==============
@@ -279,11 +279,11 @@ a + 1 ? !b : c.d - 5
 -----
 
 (source_file
-    (conditional (identifier) (identifier) (identifier))
+    (conditional (var_load (identifier)) (var_load (identifier)) (var_load (identifier)))
     (conditional
-        (infix_call (identifier) (number))
-        (prefix_call (identifier))
-        (infix_call (function_call receiver: (identifier) name: (identifier)) (number))
+        (infix_call (var_load (identifier)) (number))
+        (prefix_call (var_load (identifier)))
+        (infix_call (function_call receiver: (var_load (identifier)) name: (identifier)) (number))
     )
 )
 

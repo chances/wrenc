@@ -65,7 +65,7 @@ Interpolated strings
     (interpolated_string (this_call name: (identifier)) )
     (interpolated_string (this_call name: (identifier) (string_literal)) )
     (interpolated_string (number) )
-    (interpolated_string (number) (string_literal) (identifier) )
+    (interpolated_string (number) (string_literal) (var_load (identifier)) )
 )
 
 ==============

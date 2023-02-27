@@ -201,7 +201,7 @@ module.exports = grammar({
 			$.null_literal,
 			$.string_literal,
 			$.number,
-			$.identifier,
+			$.var_load,
 			$.expr_brackets,
 		),
 		_expression: $ => choice(
@@ -216,6 +216,10 @@ module.exports = grammar({
 			$.map_initialiser,
 			$.interpolated_string,
 		),
+
+		// This is just an identifier, but it's in it's own rule to make
+		// processing ASTs easier.
+		var_load: $ => $.identifier,
 
 		true_literal: $ => 'true',
 		false_literal: $ => 'false',

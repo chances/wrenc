@@ -25,7 +25,7 @@ for (i in
     (stmt_for
         (identifier)
         (list_initialiser (number))
-        (function_call receiver: (identifier) name: (identifier) (identifier))
+        (function_call receiver: (var_load (identifier)) name: (identifier) (var_load (identifier)))
     )
 
     (comment)
@@ -33,7 +33,7 @@ for (i in
         (identifier)
         (list_initialiser (number))
         (stmt_block
-            (function_call receiver: (identifier) name: (identifier) (identifier))
+            (function_call receiver: (var_load (identifier)) name: (identifier) (var_load (identifier)))
         )
     )
 
@@ -41,6 +41,6 @@ for (i in
     (stmt_for
         (identifier)
         (list_initialiser (number))
-        (function_call receiver: (identifier) name: (identifier) (identifier))
+        (function_call receiver: (var_load (identifier)) name: (identifier) (var_load (identifier)))
     )
 )
