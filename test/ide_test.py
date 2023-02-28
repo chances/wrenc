@@ -115,6 +115,12 @@ class Test:
         with open(self.path, 'rb') as file:
             full_file = file.read()
             for line_num, line in enumerate(full_file.splitlines()):
+                # If this line is a comment, cut it off, to allow
+                # commenting-out tests.
+                # Don't bother with multi-line comments or '//' in strings,
+                # "just don't do that" is fine since we're writing the tests.
+                line = line.split(b'//')[0]
+
                 # Find all the command strings
                 while True:
                     assert_start = line.find('¬'.encode('utf-8'))
