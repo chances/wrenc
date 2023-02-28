@@ -185,7 +185,7 @@ module.exports = grammar({
 
 		var_decl: $ => seq(
 			'var',
-			$.identifier,
+			field('name', $.identifier),
 			optional(seq(
 				'=',
 				$._expression,

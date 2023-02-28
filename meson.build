@@ -324,3 +324,5 @@ if build_machine.system() == 'windows'
 endif
 
 subdir('test')
+
+subdir('ide-support')
