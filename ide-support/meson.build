@@ -41,6 +41,10 @@ ide_test_tool = executable('ide-test-tool',
   'ActiveFile.cpp',
   'GrammarInfo.cpp',
 
+  # Include the HashUtil file again, rather than using the common library as
+  # that has lots of stuff we don't need. Not very nice, but it'll do.
+  '../common/HashUtil.cpp',
+
   '../tree-sitter-wren/src/scanner.c', # Manually written, not generated
   tree_sitter_generated,
 

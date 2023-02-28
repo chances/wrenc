@@ -6,10 +6,14 @@
 // each scope representing something like a class, method or a '{}' block
 // of code. Each scope is built in isolation: neither it's parent nor it's
 // children may affect it's contents. This is to allow for fast updates when
-// the source code changes: we walk the old and new tree-sitter trees at the
-// same time, such that blocks of code that haven't changed between them can
-// be identified. Those that are have the scope containing them re-parsed, and
-// that replaces the old scope in the previous data structure.
+// the source code changes: we'll walk the old and new trees, and for each
+// scope take a non-cryptographic hash of the tokens. We can thus easily and
+// quickly figure out which scopes we can re-use, and which need to be
+// parsed fresh.
+//
+// (Using ts_tree_get_changed_ranges for this would be better, but we want
+//  to support the Godot editor, and that doesn't seem to have a clean way
+//  to get the edited regions. This method always works.)
 //
 // There's a few exceptions to this: perhaps most obviously, scopes have
 // pointers to their parents and children, which are handled specially after
@@ -45,25 +49,214 @@
 #include "ide_devtool.h"
 #include "ide_util.h"
 
+// Ugly, but don't add common to the include directories just
+// for this one file.
+#include "../common/HashUtil.h"
+
 #include <assert.h>
+#include <functional>
+#include <string.h>
 #include <string>
 
 void ActiveFile::Update(TSTree *tree, const std::string &text) {
 	m_currentTree = tree;
 	m_contents = text;
 
+	// TODO reuse what we can
+	m_scopePool.clear();
+	m_scopeMappings.clear();
+
 	TSNode root = ts_tree_root_node(tree);
 	TSTreeCursor cursor = ts_tree_cursor_new(root);
 
-	std::string prefix;
+	// First, build a hash tree of the new tree. We'll compare this with
+	// the old tree, to figure out which scopes need re-parsing.
 
-	// TODO reuse what we can
-	m_scopePool.clear();
+	HashedScopeNode newTree = BuildScopeHashTree(&cursor, text);
 
-	// Walk over the entire tree, parsing what we can without backtracking.
-	m_rootScope = BuildScope(&cursor, 0);
+	// Build the tree using either new or recycled scopes.
+	std::function<AScope *(const HashedScopeNode &node, AScope *parent)> getScope;
+	getScope = [&](const HashedScopeNode &node, AScope *parent) -> AScope * {
+		ts_tree_cursor_reset(&cursor, node.node);
+
+		ideDebug("Parsing scope");
+		AScope *scope = BuildScope(&cursor, 0);
+
+		// Reset the fields that are changed after the scope is built, as
+		// they will have been previously set.
+		scope->parent = parent;
+		scope->subScopes.clear();
+		scope->classes.clear();
+
+		m_scopeMappings[node.node.id] = scope;
+
+		// Populate this node's parents
+		for (const HashedScopeNode &childNode : node.children) {
+			AScope *childScope = getScope(childNode, scope);
+			scope->subScopes.push_back(childScope);
+
+			if (childScope->classDef) {
+				scope->classes[childScope->classDef->name] = childScope->classDef;
+			}
+		}
+
+		return scope;
+	};
+
+	m_rootScope = getScope(newTree, nullptr);
 
 	ts_tree_cursor_delete(&cursor);
+}
+
+ActiveFile::HashedScopeNode ActiveFile::BuildScopeHashTree(TSTreeCursor *cursor, const std::string &text) {
+	struct HashNode {
+		TSSymbol symbol;
+
+		// The number of bytes this symbol is from the start of the scope,
+		// or the newest scope - whichever is later. This will cause the
+		// hash to change if anything in this block is moved around, but
+		// not if one of the blocks inside it is changed.
+		// The MSB is set to indicate this is the end of a block.
+		// The symbol's field ID is them xored into it.
+		// This probably won't wrap around (it's about 300 lines of
+		// 100-byte-long lines), but if it does that doesn't matter.
+		// The purpose of this is to identify when the whitespace inside
+		// a block changes, so the old line numbers (relative to the block
+		// start) are broken.
+		// For a similar reason, the offset and field ID changes cancelling
+		// each other out is very unlikely, without at least one other
+		// symbol in the entire scope also changing.
+		uint16_t blockOffset;
+	};
+
+	// Pick an arbitrary seed for hashing
+	static const uint64_t SEED = hash_util::hashString("ide scope hashing", 0);
+
+	// A big buffer where we'll put all the scope data to hash. If one scope
+	// contains another, we keep putting that scope's data on, but pop it off
+	// once that scope finishes.
+	std::vector<uint8_t> buffer;
+
+	std::vector<HashedScopeNode> scopes;
+	scopes.push_back(HashedScopeNode{
+	    .node = ts_tree_cursor_current_node(cursor),
+	    .dataStartIdx = 0,
+	});
+
+	// The position relative to which identifier positions are measured.
+	// There's no need to store this on a stack, since it's always either
+	// the start of the current scope (if the scope hasn't found it's
+	// first child yet) or the end position of the last child scope.
+	int relativePositionBase = 0;
+
+	bool isNodeExit = false;
+	bool endOfChildren = false;
+
+	while (true) {
+		isNodeExit = endOfChildren;
+
+		TSNode current = ts_tree_cursor_current_node(cursor);
+		TSSymbol symbol = ts_node_symbol(current);
+		TSFieldId fieldId = ts_tree_cursor_current_field_id(cursor);
+
+		int position = ts_node_start_byte(current) - relativePositionBase;
+
+		HashNode node = {
+		    .symbol = symbol,
+		    .blockOffset = (uint16_t)(position ^ fieldId),
+		};
+
+		if (!isNodeExit && ts_tree_cursor_goto_first_child(cursor)) {
+			// Next iteration, we'll be visiting one of this node's children.
+		} else if (ts_tree_cursor_goto_next_sibling(cursor)) {
+			// No prefix change
+		} else if (ts_tree_cursor_goto_parent(cursor)) {
+			// Don't immediately go back to the same children again
+			endOfChildren = true;
+		} else {
+			// End of the root node
+			break;
+		}
+
+		if (isNodeExit) {
+			node.blockOffset |= 0x8000;
+		}
+
+		// Identifiers and numbers are the only two nodes that represent
+		// different things based on a difference in their content, not
+		// in their children.
+		int textStart = 0;
+		int textLength = 0;
+		if (symbol == grammarInfo->symIdentifier || symbol == grammarInfo->symNumber) {
+			textStart = ts_node_start_byte(current);
+			textLength = ts_node_end_byte(current) - textStart;
+		}
+
+		auto writeBlock = [&]() {
+			int destPos = buffer.size();
+			buffer.resize(buffer.size() + sizeof(node) + textLength);
+			memcpy(buffer.data() + destPos, &node, sizeof(node));
+			destPos += sizeof(node);
+			memcpy(buffer.data() + destPos, text.data() + textStart, textLength);
+		};
+		writeBlock();
+
+		// If we're entering or exiting a scope-splitting node, that means
+		// setting up or finalising a scope.
+		if (!IsScopeSplitter(symbol))
+			continue;
+
+		if (!endOfChildren) {
+			// Entering a new scope
+
+			// Create the scope block, and mark the point in the buffer that
+			// contains the new scope's data.
+			scopes.push_back(HashedScopeNode{
+			    .node = current,
+			    .fileOffset = (int)ts_node_start_byte(current),
+			    .dataStartIdx = (int)buffer.size(),
+			});
+
+			relativePositionBase = ts_node_start_byte(current);
+
+			// Write the node out a second time, so it appears in both the old
+			// and new scope's hash. Don't include the file offset however - if
+			// this scope is moved around inside the parent scope, we don't
+			// need to re-compute it.
+			node.blockOffset = 0;
+			writeBlock();
+		} else {
+			// Exiting a scope
+
+			// Hash all the current node data, and pop it off the buffer (which
+			// we're basically using as a stack).
+			int startPos = scopes.back().dataStartIdx;
+			uint64_t hash = hash_util::hashData(buffer.data() + startPos, buffer.size() - startPos, SEED);
+			buffer.resize(startPos);
+
+			// Pop this scope off the stack, moving it to it's parent stack.
+			HashedScopeNode scope = std::move(scopes.back());
+			scope.hash = hash;
+			scopes.pop_back();
+			scopes.back().children.push_back(std::move(scope));
+
+			// We're now back in the parent scope, anything we put on
+			// the buffer will go into the parent scope's hash.
+			// Don't bother putting a closing block into the parent
+			// scope, it doesn't do anything useful.
+
+			// Set the relative position counter, so this block changing
+			// won't invalidate it's parent blocks.
+			relativePositionBase = ts_node_end_byte(current);
+		}
+	}
+
+	// Calculate the root scope's hash, which is just the hash of the remaining
+	// data on the buffer - all the data from the scopes has been removed.
+	scopes.back().hash = hash_util::hashData(buffer.data(), buffer.size(), SEED);
+
+	// Hand out the root scope.
+	return std::move(scopes.back());
 }
 
 void ActiveFile::WalkNodes(TSTreeCursor *cursor, AScope *scope, TSSymbol parentSym, int debugDepth) {
@@ -79,21 +272,9 @@ void ActiveFile::WalkNodes(TSTreeCursor *cursor, AScope *scope, TSSymbol parentS
 	    ts_tree_cursor_current_field_name(cursor));
 
 	// Check if this is one of the special nodes that create their own scope.
-	if (sym == grammarInfo->symBlock || sym == grammarInfo->symClassDef) {
-		AScope *nested = BuildScope(cursor, debugDepth);
-		nested->parent = scope;
-		scope->subScopes.push_back(nested);
-
-		// Class definitions define a local corresponding to that class.
-		// It's not really how wrenc works, but it is how Wren works
-		// internally, and it's certainly fine to provide useful
-		// completions.
-		if (nested->classDef) {
-			scope->locals[nested->classDef->name] = ALocalVariable{
-			    .classDef = nested->classDef,
-			};
-		}
-
+	// If so, skip it - all the scopes are built separately when they change.
+	if (IsScopeSplitter(sym)) {
+		ideDebug("<child scope inserted here>");
 		return;
 	}
 
@@ -132,8 +313,6 @@ AScope *ActiveFile::BuildScope(TSTreeCursor *cursor, int debugDepth) {
 	// Allocate a new scope
 	m_scopePool.push_back(std::make_unique<AScope>());
 	AScope *scope = m_scopePool.back().get();
-
-	m_scopeMappings[current.id] = scope;
 
 	scope->node = current;
 
@@ -219,6 +398,10 @@ std::string ActiveFile::GetNodeText(TSNode node) {
 	return std::string(srcStart, srcLength);
 }
 
+bool ActiveFile::IsScopeSplitter(TSSymbol symbol) {
+	return symbol == grammarInfo->symBlock || symbol == grammarInfo->symClassDef;
+}
+
 AutoCompleteResult ActiveFile::AutoComplete(TSPoint point) {
 	using ACR = AutoCompleteResult;
 	AutoCompleteResult result;
@@ -245,18 +428,28 @@ AutoCompleteResult ActiveFile::AutoComplete(TSPoint point) {
 
 	std::string nodeStr = GetNodeText(query.nodes.back());
 
+	auto suggestCompletion = [&](ACR::Entry entry) {
+		// Check if this variable starts with what the user has already typed
+		// TODO add fuzzy-searching, so the user doesn't have to type exactly this
+		if (!entry.identifier.starts_with(nodeStr)) {
+			ideDebug("  Found variable '%s', not a match.", entry.identifier.c_str());
+			return;
+		}
+
+		ideDebug("  Found variable '%s', adding auto-complete entry.", entry.identifier.c_str());
+		result.entries.push_back(entry);
+	};
+
 	for (AScope *scope = query.enclosingScope; scope; scope = scope->parent) {
 		ideDebug("Scanning next scope for variables");
-		for (const auto &entry : scope->locals) {
-			// Check if this variable starts with what the user has already typed
-			// TODO add fuzzy-searching, so the user doesn't have to type exactly this
-			if (!entry.first.starts_with(nodeStr)) {
-				ideDebug("  Found variable '%s', not a match.", entry.first.c_str());
-				continue;
-			}
 
-			ideDebug("  Found variable '%s', adding auto-complete entry.", entry.first.c_str());
-			result.entries.push_back(ACR::Entry{
+		for (const auto &entry : scope->locals) {
+			suggestCompletion(ACR::Entry{
+			    .identifier = entry.first,
+			});
+		}
+		for (const auto &entry : scope->classes) {
+			suggestCompletion(ACR::Entry{
 			    .identifier = entry.first,
 			});
 		}
@@ -264,13 +457,7 @@ AutoCompleteResult ActiveFile::AutoComplete(TSPoint point) {
 		if (scope->classDef) {
 			ideDebug("  Found class '%s', entering:", scope->classDef->name.c_str());
 			for (const AMethod &method : scope->classDef->methods) {
-				if (!method.name.starts_with(nodeStr)) {
-					ideDebug("    Found method '%s', not a match.", method.name.c_str());
-					continue;
-				}
-
-				ideDebug("    Found method '%s', adding auto-complete entry.", method.name.c_str());
-				result.entries.push_back(ACR::Entry{
+				suggestCompletion(ACR::Entry{
 				    .identifier = method.name,
 				});
 			}

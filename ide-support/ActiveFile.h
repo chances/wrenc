@@ -36,6 +36,21 @@ class ActiveFile {
 	std::string GetNodeText(TSNode node);
 
   private:
+	struct HashedScopeNode {
+		uint64_t hash = 0;
+		std::vector<HashedScopeNode> children;
+
+		// The root node of this block
+		TSNode node = {};
+
+		// The index (in bytes) of this node, relative to the
+		// start of the source file.
+		int fileOffset = 0;
+
+		// Temporary value used while building it.
+		int dataStartIdx = 0;
+	};
+
 	// FIXME figure out how to store the file contents properly
 	std::string m_contents;
 
@@ -51,6 +66,13 @@ class ActiveFile {
 	// Not sure if we're supposed to use the node ID or not, but it looks
 	// awfully convenient.
 	std::unordered_map<const void *, AScope *> m_scopeMappings;
+
+	// Checks if a given symbol indicates a new scope.
+	static bool IsScopeSplitter(TSSymbol symbol);
+
+	// Quickly walk the entire tree, building a hash of all the scopes.
+	// This is used for figuring out which scopes need re-parsing.
+	static HashedScopeNode BuildScopeHashTree(TSTreeCursor *cursor, const std::string &text);
 
 	// Recursively walk and parse a set of 'regular' nodes. These are nodes
 	// that don't open up a scope - see the block comment in the implementation
@@ -72,13 +94,19 @@ class AScope {
 	TSNode node = {};
 
 	/// The scope containing this scope.
+	// NOTE: This is varies when the scope is re-used across parses.
 	AScope *parent = nullptr;
 
 	/// The scopes contained within this scope.
+	// NOTE: This is varies when the scope is re-used across parses.
 	std::vector<AScope *> subScopes;
 
 	/// The local variables contained in this scope.
 	std::unordered_map<std::string, ALocalVariable> locals;
+
+	/// The classes contained in this scope.
+	// NOTE: This is varies when the scope is re-used across parses.
+	std::unordered_map<std::string, AClassDef *> classes;
 
 	/// If this scope represents a class definition, this indicates which
 	/// one it is.

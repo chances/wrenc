@@ -15,6 +15,7 @@ class GrammarInfo {
 	TSSymbol symBlock;
 	TSSymbol symVarDecl;
 	TSSymbol symIdentifier;
+	TSSymbol symNumber;
 	TSSymbol symVarLoad;
 	TSSymbol symClassDef;
 	TSSymbol symMethod;

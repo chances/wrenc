@@ -31,6 +31,7 @@ GrammarInfo::GrammarInfo() {
 	symBlock = lookupSym("stmt_block");
 	symVarDecl = lookupSym("var_decl");
 	symIdentifier = lookupSym("identifier");
+	symNumber = lookupSym("number");
 	symVarLoad = lookupSym("var_load");
 	symClassDef = lookupSym("class_definition");
 	symMethod = lookupSym("method");

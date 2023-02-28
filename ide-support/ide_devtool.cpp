@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 
 		tree = ts_parser_parse_string(parser, NULL, fileContents.c_str(), fileContents.length());
 	} catch (const std::fstream::failure &ex) {
-		fprintf(stderr, "Failed to write assembly: %s\n", ex.what());
+		fprintf(stderr, "Failed to open input file: %s\n", ex.what());
 		exit(1);
 	}
 
