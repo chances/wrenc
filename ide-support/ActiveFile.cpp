@@ -1,4 +1,42 @@
 //
+// Support for parsing actively-changing files, and responding to queries
+// based on that information.
+//
+// The information parsed out of the type-sitter tree is broken into 'scopes',
+// each scope representing something like a class, method or a '{}' block
+// of code. Each scope is built in isolation: neither it's parent nor it's
+// children may affect it's contents. This is to allow for fast updates when
+// the source code changes: we walk the old and new tree-sitter trees at the
+// same time, such that blocks of code that haven't changed between them can
+// be identified. Those that are have the scope containing them re-parsed, and
+// that replaces the old scope in the previous data structure.
+//
+// There's a few exceptions to this: perhaps most obviously, scopes have
+// pointers to their parents and children, which are handled specially after
+// they're built, and are updated during this process.
+//
+// Another exception is type inference. Consider the following:
+//
+//   var v = null    <- outer scope
+//   if (thing) {
+//     v = "Hello"   <- inner scope
+//   }
+//
+// In this example, there's a variable defined in (which thus belongs to)
+// the outer scope, however it's only assigned to an interesting type in
+// the inner block. Thus the inner block records a set of 'contributions',
+// which state how it affects 'v', without pointing to a specific block.
+//
+// When the inner block is updated, all the variables it affected are marked.
+// Once the new inner block is in place, all the marked variables have their
+// types re-calculated from the set of contributions. If that variable is then
+// used to infer the types of other variables, this can be repeated until
+// it propagates through everything. There will be some cases where only
+// considering blocks in isolation prevents types from being inferred, and
+// that can be delt with when any of the involved variables are used in a
+// query - we only gather type information that's cheap, but the vast majority
+// of variables won't be queried before the next edit.
+//
 // Created by znix on 27/02/23.
 //
 
@@ -7,6 +45,7 @@
 #include "ide_devtool.h"
 #include "ide_util.h"
 
+#include <assert.h>
 #include <string>
 
 void ActiveFile::Update(TSTree *tree, const std::string &text) {
@@ -21,132 +60,128 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 	// TODO reuse what we can
 	m_scopePool.clear();
 
-	m_scopePool.push_back(std::make_unique<AScope>());
-	m_rootScope = m_scopePool.back().get();
-
 	// Walk over the entire tree, parsing what we can without backtracking.
-	bool justExitedASTNode = false;
-	std::vector<AScope *> stack;
-	std::vector<TSSymbol> symbolStack;
-	stack.push_back(m_rootScope);
-	while (true) {
-		TSNode current = ts_tree_cursor_current_node(&cursor);
-		TSPoint start = ts_node_start_point(current);
-		TSFieldId fieldId = ts_tree_cursor_current_field_id(&cursor);
+	m_rootScope = BuildScope(&cursor, 0);
 
-		std::string extra;
-		if (justExitedASTNode) {
-			extra += " (EXIT)";
-		} else {
-			// Uncomment to print the node text - it's VERY verbose, since
-			// each node includes the text of all it's child nodes.
-			// printf(": %.*s", srcLength, srcStart);
-		}
+	ts_tree_cursor_delete(&cursor);
+}
 
-		ideDebug("%snode %d.%d '%s' (field='%s')%s", prefix.c_str(), start.row, start.column, ts_node_type(current),
-		    ts_tree_cursor_current_field_name(&cursor), extra.c_str());
+void ActiveFile::WalkNodes(TSTreeCursor *cursor, AScope *scope, TSSymbol parentSym, int debugDepth) {
+	TSNode current = ts_tree_cursor_current_node(cursor);
+	TSPoint start = ts_node_start_point(current);
+	TSFieldId fieldId = ts_tree_cursor_current_field_id(cursor);
+	TSSymbol sym = ts_node_symbol(current);
 
-		if (!justExitedASTNode && !symbolStack.empty()) {
-			// Main node processing.
-			TSSymbol sym = ts_node_symbol(current);
-			TSSymbol parent = symbolStack.back();
+	// TODO skip calculating the indentation if debug logging is off.
+	std::string indentation;
+	indentation.assign(debugDepth, ' ');
+	ideDebug("%snode %d.%d '%s' (field='%s')", indentation.c_str(), start.row, start.column, ts_node_type(current),
+	    ts_tree_cursor_current_field_name(cursor));
 
-			auto pushScope = [&]() {
-				AScope *prevTop = stack.back();
+	// Check if this is one of the special nodes that create their own scope.
+	if (sym == grammarInfo->symBlock || sym == grammarInfo->symClassDef) {
+		AScope *nested = BuildScope(cursor, debugDepth);
+		nested->parent = scope;
+		scope->subScopes.push_back(nested);
 
-				// Allocate a new scope
-				std::unique_ptr<AScope> uniqueScope = std::make_unique<AScope>();
-				AScope *scope = uniqueScope.get();
-				m_scopePool.push_back(std::move(uniqueScope));
-
-				stack.push_back(scope);
-				prevTop->subScopes.push_back(scope);
-
-				m_scopeMappings[current.id] = scope;
-
-				scope->parent = prevTop;
-				scope->node = current;
+		// Class definitions define a local corresponding to that class.
+		// It's not really how wrenc works, but it is how Wren works
+		// internally, and it's certainly fine to provide useful
+		// completions.
+		if (nested->classDef) {
+			scope->locals[nested->classDef->name] = ALocalVariable{
+			    .classDef = nested->classDef,
 			};
-
-			if (sym == grammarInfo->symBlock) {
-				// Entering a block
-				pushScope();
-			}
-
-			if (parent == grammarInfo->symVarDecl && fieldId == grammarInfo->fName) {
-				std::string token = GetNodeText(current);
-				stack.back()->locals[token] = ALocalVariable{};
-			}
-
-			// Class definitions define a local corresponding to that class.
-			// It's not really how wrenc works, but it is how Wren works
-			// internally, and it's certainly fine to provide useful
-			// completions.
-			if (sym == grammarInfo->symClassDef) {
-				m_classPool.push_back(std::make_unique<AClassDef>());
-				AClassDef *def = m_classPool.back().get();
-
-				// Make a scope for this class. While this doesn't really
-				// exist, it'll make it easier to find out where class
-				// boundaries are when we loop through the scopes.
-				pushScope();
-
-				stack.back()->classDef = def;
-			}
-			// Set the name for a class. We can't define the class now, since
-			// we don't have access to the previous node anymore.
-			if (parent == grammarInfo->symClassDef && fieldId == grammarInfo->fName) {
-				AClassDef *def = m_classPool.back().get();
-				std::string name = GetNodeText(current);
-
-				def->name = name;
-
-				// Add this local variable. We've just pushed the class's scope
-				// onto the stack, so we want the one before it as that
-				// contains the class.
-				stack.at(stack.size() - 2)->locals[name] = ALocalVariable{.classDef = def};
-			}
-
-			// Method handling
-			if (grammarInfo->IsMethod(sym)) {
-				stack.back()->classDef->methods.push_back(AMethod{
-				    .name = "<<UNNAMED>>",
-				    .node = current,
-				});
-			}
-			if (grammarInfo->IsMethod(parent) && fieldId == grammarInfo->fName) {
-				stack.back()->classDef->methods.back().name = GetNodeText(current);
-			}
 		}
 
-		if (justExitedASTNode) {
-			// Exiting this scope
+		return;
+	}
 
-			// Check if this block corresponds to the previous node in the stack.
-			if (!stack.empty() && ts_node_eq(stack.back()->node, current)) {
-				stack.pop_back();
-			}
-		}
+	// Main node processing.
 
-		bool madeExit = false;
-		if (!justExitedASTNode && ts_tree_cursor_goto_first_child(&cursor)) {
-			// Entering a scope
-			prefix.push_back(' ');
-			symbolStack.push_back(ts_node_symbol(current));
-		} else if (ts_tree_cursor_goto_next_sibling(&cursor)) {
-			// No prefix change
-		} else if (ts_tree_cursor_goto_parent(&cursor)) {
-			prefix.pop_back();
-			symbolStack.pop_back();
+	if (parentSym == grammarInfo->symVarDecl && fieldId == grammarInfo->fName) {
+		std::string token = GetNodeText(current);
+		scope->locals[token] = ALocalVariable{};
+	}
 
-			// Don't immediately go back to the same children again
-			madeExit = true;
-		} else {
-			// End of the root node
+	// Set the name for a class. This will be used later, for adding the class variable.
+	if (parentSym == grammarInfo->symClassDef && fieldId == grammarInfo->fName) {
+		AClassDef *def = m_classPool.back().get();
+		def->name = GetNodeText(current);
+	}
+
+	// Method handling
+	if (grammarInfo->IsMethod(sym)) {
+		scope->classDef->methods.push_back(AMethod{
+		    .name = "<<UNNAMED>>",
+		    .node = current,
+		});
+	}
+	if (grammarInfo->IsMethod(parentSym) && fieldId == grammarInfo->fName) {
+		scope->classDef->methods.back().name = GetNodeText(current);
+	}
+
+	// Loop through this node's children
+	WalkChildren(cursor, scope, debugDepth);
+}
+
+AScope *ActiveFile::BuildScope(TSTreeCursor *cursor, int debugDepth) {
+	TSNode current = ts_tree_cursor_current_node(cursor);
+	TSSymbol sym = ts_node_symbol(current);
+
+	// Allocate a new scope
+	m_scopePool.push_back(std::make_unique<AScope>());
+	AScope *scope = m_scopePool.back().get();
+
+	m_scopeMappings[current.id] = scope;
+
+	scope->node = current;
+
+	if (sym == grammarInfo->symClassDef) {
+		m_classPool.push_back(std::make_unique<AClassDef>());
+		AClassDef *def = m_classPool.back().get();
+
+		scope->classDef = def;
+	}
+
+	WalkChildren(cursor, scope, debugDepth);
+
+	return scope;
+}
+
+void ActiveFile::WalkChildren(TSTreeCursor *cursor, AScope *scope, int debugDepth) {
+	TSNode startNode = ts_tree_cursor_current_node(cursor);
+	TSSymbol symbol = ts_node_symbol(startNode);
+
+	// Try stepping into our first child node. If this fails, we don't have
+	// any children and can stop here.
+	if (!ts_tree_cursor_goto_first_child(cursor)) {
+		return;
+	}
+
+	// Go through all our child nodes.
+	while (true) {
+		WalkNodes(cursor, scope, symbol, debugDepth + 1);
+
+		// Advance to the next child, unless we're at the end of the list.
+		if (!ts_tree_cursor_goto_next_sibling(cursor)) {
 			break;
 		}
-		justExitedASTNode = madeExit;
 	}
+
+	// We must be able to step back out. This should only fail if the current
+	// child is the root node, which is obviously impossible.
+	if (!ts_tree_cursor_goto_parent(cursor)) {
+		// TODO a proper ideAbort function that prints a prefix and everything.
+		fprintf(stderr, "Couldn't step out of node during iteration!\n");
+		abort();
+	}
+
+	// We should have ended up at the same node we started at. Anything else
+	// and we'll break the next WalkChildren call (this is called by WalkNodes,
+	// and is thus called recursively). Catch that and fail now, when it'll
+	// hopefully be more obvious what happened.
+	assert(ts_node_eq(startNode, ts_tree_cursor_current_node(cursor)));
 }
 
 APointQueryResult ActiveFile::PointQuery(TSPoint point) {

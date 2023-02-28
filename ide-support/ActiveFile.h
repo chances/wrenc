@@ -51,6 +51,18 @@ class ActiveFile {
 	// Not sure if we're supposed to use the node ID or not, but it looks
 	// awfully convenient.
 	std::unordered_map<const void *, AScope *> m_scopeMappings;
+
+	// Recursively walk and parse a set of 'regular' nodes. These are nodes
+	// that don't open up a scope - see the block comment in the implementation
+	// file for more information.
+	void WalkNodes(TSTreeCursor *cursor, AScope *scope, TSSymbol parentSym, int debugDepth);
+
+	// Build a scope from a suitable node. This is effectively a version of
+	// WalkNodes that's called for blocks.
+	AScope *BuildScope(TSTreeCursor *cursor, int debugDepth);
+
+	// This is the part of WalkNodes that iterates through all the child nodes.
+	void WalkChildren(TSTreeCursor *cursor, AScope *scope, int debugDepth);
 };
 
 class AScope {
