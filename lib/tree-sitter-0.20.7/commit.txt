@@ -1,0 +1,12 @@
+Tree sitter 0.20.7
+
+https://github.com/tree-sitter/tree-sitter/releases/tag/v0.20.7
+
+All the non-library stuff has been removed to save space. The generator tool
+itself uses Rust, so it's not built as part of the build process.
+
+The web and rust runtime library bindings were also removed, since we only
+need the C implementation.
+
+This is purely needed for the IDE support: the compiler itself uses a modified
+version of upstream Wren's parser.
