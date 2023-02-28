@@ -25,7 +25,7 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 	m_rootScope = m_scopePool.back().get();
 
 	// Walk over the entire tree, parsing what we can without backtracking.
-	bool justExitedScope = false;
+	bool justExitedASTNode = false;
 	std::vector<AScope *> stack;
 	std::vector<TSSymbol> symbolStack;
 	stack.push_back(m_rootScope);
@@ -35,7 +35,7 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 		TSFieldId fieldId = ts_tree_cursor_current_field_id(&cursor);
 
 		std::string extra;
-		if (justExitedScope) {
+		if (justExitedASTNode) {
 			extra += " (EXIT)";
 		} else {
 			// Uncomment to print the node text - it's VERY verbose, since
@@ -46,14 +46,12 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 		ideDebug("%snode %d.%d '%s' (field='%s')%s", prefix.c_str(), start.row, start.column, ts_node_type(current),
 		    ts_tree_cursor_current_field_name(&cursor), extra.c_str());
 
-		if (!justExitedScope && !symbolStack.empty()) {
+		if (!justExitedASTNode && !symbolStack.empty()) {
 			// Main node processing.
 			TSSymbol sym = ts_node_symbol(current);
 			TSSymbol parent = symbolStack.back();
 
-			if (sym == grammarInfo->symBlock) {
-				// Entering a block
-
+			auto pushScope = [&]() {
 				AScope *prevTop = stack.back();
 
 				// Allocate a new scope
@@ -68,15 +66,60 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 
 				scope->parent = prevTop;
 				scope->node = current;
+			};
+
+			if (sym == grammarInfo->symBlock) {
+				// Entering a block
+				pushScope();
 			}
 
 			if (parent == grammarInfo->symVarDecl && fieldId == grammarInfo->fName) {
 				std::string token = GetNodeText(current);
 				stack.back()->locals[token] = ALocalVariable{};
 			}
+
+			// Class definitions define a local corresponding to that class.
+			// It's not really how wrenc works, but it is how Wren works
+			// internally, and it's certainly fine to provide useful
+			// completions.
+			if (sym == grammarInfo->symClassDef) {
+				m_classPool.push_back(std::make_unique<AClassDef>());
+				AClassDef *def = m_classPool.back().get();
+
+				// Make a scope for this class. While this doesn't really
+				// exist, it'll make it easier to find out where class
+				// boundaries are when we loop through the scopes.
+				pushScope();
+
+				stack.back()->classDef = def;
+			}
+			// Set the name for a class. We can't define the class now, since
+			// we don't have access to the previous node anymore.
+			if (parent == grammarInfo->symClassDef && fieldId == grammarInfo->fName) {
+				AClassDef *def = m_classPool.back().get();
+				std::string name = GetNodeText(current);
+
+				def->name = name;
+
+				// Add this local variable. We've just pushed the class's scope
+				// onto the stack, so we want the one before it as that
+				// contains the class.
+				stack.at(stack.size() - 2)->locals[name] = ALocalVariable{.classDef = def};
+			}
+
+			// Method handling
+			if (grammarInfo->IsMethod(sym)) {
+				stack.back()->classDef->methods.push_back(AMethod{
+				    .name = "<<UNNAMED>>",
+				    .node = current,
+				});
+			}
+			if (grammarInfo->IsMethod(parent) && fieldId == grammarInfo->fName) {
+				stack.back()->classDef->methods.back().name = GetNodeText(current);
+			}
 		}
 
-		if (justExitedScope) {
+		if (justExitedASTNode) {
 			// Exiting this scope
 
 			// Check if this block corresponds to the previous node in the stack.
@@ -86,7 +129,7 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 		}
 
 		bool madeExit = false;
-		if (!justExitedScope && ts_tree_cursor_goto_first_child(&cursor)) {
+		if (!justExitedASTNode && ts_tree_cursor_goto_first_child(&cursor)) {
 			// Entering a scope
 			prefix.push_back(' ');
 			symbolStack.push_back(ts_node_symbol(current));
@@ -102,7 +145,7 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 			// End of the root node
 			break;
 		}
-		justExitedScope = madeExit;
+		justExitedASTNode = madeExit;
 	}
 }
 
@@ -111,6 +154,10 @@ APointQueryResult ActiveFile::PointQuery(TSPoint point) {
 	TSTreeCursor cursor = ts_tree_cursor_new(root);
 
 	APointQueryResult result;
+
+	// If we don't find any scope containing this node, we're in the
+	// global scope.
+	result.enclosingScope = m_rootScope;
 
 	// Each call descends one node deeper towards our target.
 	while (true) {
@@ -177,6 +224,21 @@ AutoCompleteResult ActiveFile::AutoComplete(TSPoint point) {
 			result.entries.push_back(ACR::Entry{
 			    .identifier = entry.first,
 			});
+		}
+
+		if (scope->classDef) {
+			ideDebug("  Found class '%s', entering:", scope->classDef->name.c_str());
+			for (const AMethod &method : scope->classDef->methods) {
+				if (!method.name.starts_with(nodeStr)) {
+					ideDebug("    Found method '%s', not a match.", method.name.c_str());
+					continue;
+				}
+
+				ideDebug("    Found method '%s', adding auto-complete entry.", method.name.c_str());
+				result.entries.push_back(ACR::Entry{
+				    .identifier = method.name,
+				});
+			}
 		}
 	}
 	ideDebug("Variable scope scanning complete");

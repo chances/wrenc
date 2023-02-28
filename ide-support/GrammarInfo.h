@@ -16,6 +16,11 @@ class GrammarInfo {
 	TSSymbol symVarDecl;
 	TSSymbol symIdentifier;
 	TSSymbol symVarLoad;
+	TSSymbol symClassDef;
+	TSSymbol symMethod;
+	TSSymbol symMethodForeign;
 
 	TSFieldId fName;
+
+	bool IsMethod(TSSymbol symbol) const;
 };

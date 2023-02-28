@@ -32,6 +32,11 @@ GrammarInfo::GrammarInfo() {
 	symVarDecl = lookupSym("var_decl");
 	symIdentifier = lookupSym("identifier");
 	symVarLoad = lookupSym("var_load");
+	symClassDef = lookupSym("class_definition");
+	symMethod = lookupSym("method");
+	symMethodForeign = lookupSym("foreign_method");
 
 	fName = lookupField("name");
 }
+
+bool GrammarInfo::IsMethod(TSSymbol symbol) const { return symbol == symMethod || symbol == symMethodForeign; }
