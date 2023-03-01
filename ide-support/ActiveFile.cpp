@@ -62,9 +62,16 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 	m_currentTree = tree;
 	m_contents = text;
 
-	// TODO reuse what we can
-	m_scopePool.clear();
+	// We'll have to rebuild the scope mappings afterwards.
 	m_scopeMappings.clear();
+
+	// Set aside the old scopes for reuse. Note we can have multiple blocks
+	// with the same hash if they're identical.
+	std::unordered_map<uint64_t, std::vector<std::unique_ptr<AScope>>> oldScopes;
+	for (std::unique_ptr<AScope> &scope : m_scopePool) {
+		oldScopes[scope->hash].push_back(std::move(scope));
+	}
+	m_scopePool.clear();
 
 	TSNode root = ts_tree_root_node(tree);
 	TSTreeCursor cursor = ts_tree_cursor_new(root);
@@ -79,8 +86,17 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 	getScope = [&](const HashedScopeNode &node, AScope *parent) -> AScope * {
 		ts_tree_cursor_reset(&cursor, node.node);
 
-		ideDebug("Parsing scope");
-		AScope *scope = BuildScope(&cursor, 0);
+		// Reuse an existing scope if we can, otherwise re-parse it.
+		AScope *scope;
+		std::vector<std::unique_ptr<AScope>> &cached = oldScopes[node.hash];
+		if (cached.empty()) {
+			ideDebug("Parsing scope");
+			scope = BuildScope(&cursor, 0);
+			scope->hash = node.hash;
+		} else {
+			m_scopePool.push_back(std::move(cached.back()));
+			scope = m_scopePool.back().get();
+		}
 
 		// Reset the fields that are changed after the scope is built, as
 		// they will have been previously set.
@@ -96,7 +112,7 @@ void ActiveFile::Update(TSTree *tree, const std::string &text) {
 			scope->subScopes.push_back(childScope);
 
 			if (childScope->classDef) {
-				scope->classes[childScope->classDef->name] = childScope->classDef;
+				scope->classes[childScope->classDef->name] = childScope->classDef.get();
 			}
 		}
 
@@ -287,15 +303,13 @@ void ActiveFile::WalkNodes(TSTreeCursor *cursor, AScope *scope, TSSymbol parentS
 
 	// Set the name for a class. This will be used later, for adding the class variable.
 	if (parentSym == grammarInfo->symClassDef && fieldId == grammarInfo->fName) {
-		AClassDef *def = m_classPool.back().get();
-		def->name = GetNodeText(current);
+		scope->classDef->name = GetNodeText(current);
 	}
 
 	// Method handling
 	if (grammarInfo->IsMethod(sym)) {
 		scope->classDef->methods.push_back(AMethod{
 		    .name = "<<UNNAMED>>",
-		    .node = current,
 		});
 	}
 	if (grammarInfo->IsMethod(parentSym) && fieldId == grammarInfo->fName) {
@@ -314,13 +328,8 @@ AScope *ActiveFile::BuildScope(TSTreeCursor *cursor, int debugDepth) {
 	m_scopePool.push_back(std::make_unique<AScope>());
 	AScope *scope = m_scopePool.back().get();
 
-	scope->node = current;
-
 	if (sym == grammarInfo->symClassDef) {
-		m_classPool.push_back(std::make_unique<AClassDef>());
-		AClassDef *def = m_classPool.back().get();
-
-		scope->classDef = def;
+		scope->classDef = std::make_unique<AClassDef>();
 	}
 
 	WalkChildren(cursor, scope, debugDepth);

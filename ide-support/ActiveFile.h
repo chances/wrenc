@@ -60,8 +60,6 @@ class ActiveFile {
 
 	std::vector<std::unique_ptr<AScope>> m_scopePool;
 
-	std::vector<std::unique_ptr<AClassDef>> m_classPool;
-
 	// The NodeID-to-scope mappings.
 	// Not sure if we're supposed to use the node ID or not, but it looks
 	// awfully convenient.
@@ -89,10 +87,6 @@ class ActiveFile {
 
 class AScope {
   public:
-	/// The node that defines this scope, such as a stmt_block or a
-	/// class definition.
-	TSNode node = {};
-
 	/// The scope containing this scope.
 	// NOTE: This is varies when the scope is re-used across parses.
 	AScope *parent = nullptr;
@@ -104,13 +98,16 @@ class AScope {
 	/// The local variables contained in this scope.
 	std::unordered_map<std::string, ALocalVariable> locals;
 
-	/// The classes contained in this scope.
+	/// The classes contained in this scope. These are stored separately
+	/// since they're re-calculated when this scope's children change.
 	// NOTE: This is varies when the scope is re-used across parses.
 	std::unordered_map<std::string, AClassDef *> classes;
 
-	/// If this scope represents a class definition, this indicates which
-	/// one it is.
-	AClassDef *classDef = nullptr;
+	/// If this scope represents a class definition, this is it.
+	std::unique_ptr<AClassDef> classDef;
+
+	/// The content hash of this scope, used for incremental updates.
+	uint64_t hash = 0;
 };
 
 struct ALocalVariable {
@@ -130,7 +127,6 @@ struct AClassDef {
 struct AMethod {
   public:
 	std::string name;
-	TSNode node = {};
 };
 
 struct APointQueryResult {
