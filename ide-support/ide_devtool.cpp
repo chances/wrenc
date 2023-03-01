@@ -118,6 +118,60 @@ int main(int argc, char **argv) {
 			for (const AutoCompleteResult::Entry &entry : result.entries) {
 				printf("entry %s\n", entry.identifier.c_str());
 			}
+		} else if (command == "edit") {
+			int eraseCount;
+			int cmdOffset = 0;
+			sscanf(line.c_str(), "%d:%n", &eraseCount, &cmdOffset);
+			if (cmdOffset == 0) {
+				fprintf(stderr, "Invalid edit command!\n");
+				return 1;
+			}
+
+			// The input string is percent-encoded so it can be passed in one line.
+			std::string replacement;
+			replacement.reserve(line.size());
+			for (int i = cmdOffset; i < (int)line.size(); i++) {
+				char c = line.at(i);
+				if (c == '%') {
+					char c1 = line.at(++i);
+					char c2 = line.at(++i);
+
+					// Do the most horrible hex decode, which only handles
+					// capitals and doesn't have any kind of error handling.
+					int upper = c1 >= 'A' ? (c1 - 'A' + 10) : c1 - '0';
+					int lower = c2 >= 'A' ? (c2 - 'A' + 10) : c2 - '0';
+					replacement.push_back((upper << 4) | lower);
+				} else {
+					replacement.push_back(c);
+				}
+			}
+
+			// Find the appropriate line offset
+			size_t offset = 0;
+			for (int i = 0; i < lineNum; i++) {
+				offset = fileContents.find('\n', offset);
+				if (offset == std::string::npos) {
+					fprintf(stderr, "Too high line number for command '%s'\n", command.c_str());
+					return 1;
+				}
+
+				// We found the newline, advance by one to get to the start
+				// of the next line.
+				offset++;
+			}
+
+			// Add on the column number to find the byte at the start of the
+			// sequence we want to edit.
+			offset += column;
+
+			// Perform the edit.
+			fileContents.erase(offset, eraseCount);
+			fileContents.insert(offset, replacement);
+
+			// Update the file with the results of the edit.
+			ts_tree_delete(tree);
+			tree = ts_parser_parse_string(parser, NULL, fileContents.c_str(), fileContents.length());
+			file.Update(tree, fileContents);
 		} else {
 			fprintf(stderr, "Invalid command: '%s'\n", command.c_str());
 			return 1;

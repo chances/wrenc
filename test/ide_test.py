@@ -46,6 +46,9 @@ class Assertion:
     # The argument to the assertion, in the above example it's 'a,b,c'.
     arg: str
 
+    # The length of the line this assertion is on. Set for edit commands.
+    length_of_line: int
+
     def __init__(self, assertion: str, line: int, position: int):
         self.line = line
         self.position = position
@@ -57,19 +60,28 @@ class Assertion:
 
         parts = assertion.split(':', 2)
         self.mode = parts[0]
-        self.arg = parts[1]
+        self.arg = parts[1] if len(parts) > 1 else ''
 
-        if self.mode not in ['complete']:
+        if self.mode not in ['complete', 'delete-line']:
             raise Exception(f"Invalid assertion '{assertion}': bad mode '{self.mode}'.")
 
     def get_command(self) -> str:
         if self.mode == 'complete':
-            return f'complete:'
-        else:
-            raise Exception('Unknown mode for assertion.get_command: ' + self.mode)
+            return f''
+        if self.mode == 'delete-line':
+            # Replace the contents of this line (but not the newline, to
+            # keep the line numbering constant) with an empty string.
+            return f'{self.length_of_line}:'
+
+        raise Exception('Unknown mode for assertion.get_command: ' + self.mode)
+
+    def cmd_name(self) -> str:
+        if self.mode == 'delete-line':
+            return 'edit'
+        return self.mode
 
     def validate(self, output_lines: List[str]) -> Optional[str]:
-        header = f'========== COMMAND {self.line}.{self.position} {self.mode}'
+        header = f'========== COMMAND {self.line}.{self.cmd_position()} {self.cmd_name()}'
         if output_lines[0] != header:
             return f'Invalid header. Expected: "{header}", got "{output_lines[0]}".'
 
@@ -77,8 +89,13 @@ class Assertion:
 
         if self.mode == 'complete':
             return self._validate_complete(output_lines)
-        else:
-            raise Exception('Unknown mode for assertion.validate: ' + self.mode)
+
+        # Anything that edits text won't get a response back, it's just to
+        # set things up for other tests.
+        if self.cmd_name() == 'edit':
+            return None
+
+        raise Exception('Unknown mode for assertion.validate: ' + self.mode)
 
     def _validate_complete(self, output_lines: List[str]) -> Optional[str]:
         completions = []
@@ -90,10 +107,25 @@ class Assertion:
             completions.append(parts[1])
 
         for thing in self.arg.split(','):
-            if thing not in completions:
+            negate = thing[0] == '/'
+            if negate:
+                thing = thing[1:]
+            matched = thing in completions
+
+            if not negate and not matched:
                 return f'Missing expected completion "{thing}". Available completions: {completions}'
+            if negate and matched:
+                return f'Found unexpected completion "{thing}". Available completions: {completions}'
 
         return None
+
+    def cmd_position(self) -> int:
+        if self.mode == 'delete-line':
+            return 0
+        return self.position
+
+    def update(self, lines: List[str]):
+        self.length_of_line = len(lines[self.line])
 
 
 class Test:
@@ -109,6 +141,8 @@ class Test:
 
     def parse(self):
         global expectations
+
+        lines = []
 
         # Use binary mode, as we need to get byte offsets for the query
         # commands to send to the devtool.
@@ -144,7 +178,12 @@ class Test:
                     obj = Assertion(assertion, line_num, assert_start)
                     self.assertions.append(obj)
 
+                lines.append(line)
+
         expectations += len(self.assertions)
+
+        for assertion in self.assertions:
+            assertion.update(lines)
 
         return True
 
@@ -169,8 +208,12 @@ class Test:
 
         # Feed in the commands that the assertions will validate
         command_input = ''
-        for assertion in self.assertions:
-            command_input += f'cmd:{assertion.line}.{assertion.position}:{assertion.get_command()}\n'
+        for cmd in self.assertions:
+            command_input += f'cmd:{cmd.line}.{cmd.cmd_position()}:{cmd.cmd_name()}:{cmd.get_command()}\n'
+
+        if args.show_raw_output:
+            print(f'\nCommand input for {get_test_name(self.path)}:')
+            print(command_input.strip())
 
         try:
             timer.start()
@@ -183,13 +226,13 @@ class Test:
 
         # Debug printing
         if args.show_raw_output:
-            print(f'\nCommand output for {get_test_name(self.path)}:')
+            print(f'Command output for {get_test_name(self.path)}:')
             print(out)
 
         if timed_out[0]:
             self.failed('Timed out.')
         elif proc.returncode != 0:
-            self.failed(f'Dev tool exited with non-zero return code: {proc.returncode}')
+            self.failed(f'Dev tool exited with non-zero return code: {proc.returncode} (error: {err.strip()})')
         elif err:
             self.failed(f'Got non-empty stderr: {err}')
         else:
