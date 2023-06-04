@@ -88,11 +88,18 @@ int main(int argc, char **argv) {
 
 	std::string line;
 	while (std::getline(std::cin, line)) {
+		// Remove all carriage returns, so we don't have to deal with newlines twice.
+		for (int i = line.size() - 1; i >= 0; i--) {
+			if (line[i] == '\r') {
+				line.erase(i);
+			}
+		}
+
 		// Parse out the line/column numbers
 		int lineNum = 0, column = 0;
-		char *cCommand = nullptr;
+		std::vector<char> commandChars(line.size());
 		int countConsumed = 0;
-		if (sscanf(line.c_str(), "cmd:%d.%d:%m[^:]:%n", &lineNum, &column, &cCommand, &countConsumed) != 3) {
+		if (sscanf(line.c_str(), "cmd:%d.%d:%[^:]:%n", &lineNum, &column, commandChars.data(), &countConsumed) != 3) {
 			fprintf(stderr, "Invalid command: '%s'\n", line.c_str());
 			return 1;
 		}
@@ -101,9 +108,7 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 
-		std::string command = cCommand;
-		free(cCommand);
-		cCommand = nullptr;
+		std::string command = commandChars.data();
 
 		// Cut off the line/column numbers and command, leaving a command-specific argument.
 		line.erase(0, countConsumed);
