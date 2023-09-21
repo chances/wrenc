@@ -228,7 +228,7 @@ Binary operators
 )
 
 ==============
-Precidence
+Precedence
 ==============
 
 1 * 2 - 3

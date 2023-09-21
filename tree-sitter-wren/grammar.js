@@ -1,6 +1,6 @@
 // The infix function calls - from https://wren.io/syntax.html
-// These are in the order of associativity, precidence, and the symbols.
-// NOTE: these precidences are the opposite of tree-sitter's precidence!
+// These are in the order of associativity, precedence, and the symbols.
+// NOTE: these precedences are the opposite of tree-sitter's precedence!
 //  In the Wren numbers, higher means it binds more loosely.
 let infix_operators = [
 	['left',   3, '*', '/', '%'],
@@ -17,7 +17,7 @@ let infix_operators = [
 	['left',  14, '||'],
 ];
 
-// The prefix (unary) operators - these are all precidence 2, and
+// The prefix (unary) operators - these are all precedence 2, and
 // are left-associative.
 let prefix_operators = ['!', '-', '~'];
 
@@ -38,12 +38,12 @@ let all_operators
 }
 
 // Fix the direction problem with Wren and Tree-sitter
-// using different meanings for precidence, and bias
+// using different meanings for precedence, and bias
 // it so they're mostly positive (aside from the really
 // low precedence ones like a?b:c for which it makes
 // sense).
-function wren_to_ts_prec(wren_precidence) {
-	return 10 - wren_precidence;
+function wren_to_ts_prec(wren_precedence) {
+	return 10 - wren_precedence;
 }
 
 // See https://wren.io/syntax.html
@@ -73,7 +73,6 @@ module.exports = grammar({
 	name: 'wren',
 
 	rules: {
-		// TODO: add the actual grammar rules
 		source_file: $ => seq(
 			optional($.unix_interpreter),
 			optional($._statement_sequence)
@@ -81,6 +80,7 @@ module.exports = grammar({
 
 		// This is the '#!' that can appear at the start of files to indicate
 		// which executable should run them on UNIX.
+		// See https://en.wikipedia.org/wiki/Shebang_(Unix)
 		unix_interpreter: $ => /#!.*/,
 
 		_statement: $ => choice(
@@ -96,7 +96,7 @@ module.exports = grammar({
 			$.var_decl,
 			$._expression,
 
-			// FIXME There's a bug in tree-sitter causing it to not recognise
+			// FIXME: There's a bug in tree-sitter causing it to not recognise
 			// rules only used in extras. Thus we have to use the comment
 			// rule from somewhere in the main rules, otherwise block_comment
 			// will cause a crash.
@@ -238,8 +238,8 @@ module.exports = grammar({
 			seq(...rec_and_name(), optional($._func_args)),
 
 			// Setter calls
-			// Note that these still use the standard precidence, despite the
-			// existance of the setter precidence. That's because (trying to
+			// Note that these still use the standard precedence, despite the
+			// existence of the setter precedence. That's because (trying to
 			// mimic Wren's parser) Wren's parser doesn't know whether or not
 			// a function call is a setter until it's already selected it.
 			prec.right(func_call_prec, seq(...rec_and_name(), '=', $._expression)),
@@ -269,7 +269,7 @@ module.exports = grammar({
 
 		// The infix function calls - https://wren.io/syntax.html
 		// To avoid a huge number of nearly-identical rules, we'll be
-		// a bit hacky and use some imperitive code to generate
+		// a bit hacky and use some imperative code to generate
 		// the rules.
 		infix_call: $ => {
 			let choices = [];
@@ -278,14 +278,14 @@ module.exports = grammar({
 					let sym = operator[i];
 					let associativity = operator[0];
 
-					let precidence = wren_to_ts_prec(operator[1]);
+					let precedence = wren_to_ts_prec(operator[1]);
 
 					let rule = seq($._expression, sym, $._expression);
 
 					if (associativity == 'left') {
-						choices.push(prec.left(precidence, rule));
+						choices.push(prec.left(precedence, rule));
 					} else {
-						choices.push(prec.right(precidence, rule));
+						choices.push(prec.right(precedence, rule));
 					}
 				}
 			}
@@ -295,11 +295,11 @@ module.exports = grammar({
 		prefix_call: $ => {
 			let choices = [];
 			for (let sym of prefix_operators) {
-				let precidence = prefix_call_prec;
+				let precedence = prefix_call_prec;
 
 				let rule = seq(sym, $._expression);
 
-				choices.push(prec.right(precidence, rule));
+				choices.push(prec.right(precedence, rule));
 			}
 
 			return choice(...choices);
@@ -324,7 +324,7 @@ module.exports = grammar({
 			']'
 		),
 
-		// Use a lower precidence to prefer stmt_block
+		// Use a lower precedence to prefer stmt_block
 		map_initialiser: $ => prec(-1, seq(
 			'{',
 			optional(seq(
